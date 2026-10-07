@@ -1,7 +1,36 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const modulePath = new URL("../public/input-recovery.mjs", `file://${__filename.replace(/\\/g, "/")}`);
+const adapterPath = new URL("../public/input-recovery-adapter.mjs", `file://${__filename.replace(/\\/g, "/")}`);
+
+function pointerEvent(type, pointerId, pointerType = "touch") {
+  const event = new Event(type);
+  Object.defineProperties(event, {
+    pointerId: { value: pointerId },
+    pointerType: { value: pointerType },
+  });
+  return event;
+}
+
+class PointerTarget extends EventTarget {
+  #capturedPointers = new Set();
+
+  setPointerCapture(pointerId) {
+    this.#capturedPointers.add(pointerId);
+  }
+
+  hasPointerCapture(pointerId) {
+    return this.#capturedPointers.has(pointerId);
+  }
+
+  losePointerCapture(pointerId) {
+    this.#capturedPointers.delete(pointerId);
+    this.dispatchEvent(pointerEvent("lostpointercapture", pointerId));
+  }
+}
 
 const eligiblePointerState = {
   phase: "combat",
@@ -73,6 +102,163 @@ test("rejects pointer capture for menus tours hidden pages and non-mouse modes",
   for (const exclusion of exclusions) {
     assert.equal(canCaptureGameplayPointer({ ...eligiblePointerState, ...exclusion }), false);
   }
+});
+
+test("a canvas touch handoff clears mouse recovery without exposing pointer lock", async () => {
+  const { applyCanvasPointerHandoff } = await import(adapterPath);
+  let inputMode = "mouse";
+  let pointerResumeRequired = true;
+  const modes = [];
+
+  const result = applyCanvasPointerHandoff(pointerEvent("pointerdown", 17), {
+    inputMode,
+    pointerResumeRequired,
+    setInputMode(nextMode) {
+      modes.push(nextMode);
+      inputMode = nextMode;
+      if (nextMode !== "mouse") pointerResumeRequired = false;
+    },
+  });
+
+  assert.deepEqual(result, {
+    inputMode: "touch",
+    pointerLockCandidate: false,
+    consumesCanvasAction: true,
+  });
+  assert.deepEqual(modes, ["touch"]);
+  assert.equal(inputMode, "touch");
+  assert.equal(pointerResumeRequired, false);
+});
+
+test("normal touch canvas input preserves the existing fire-action path", async () => {
+  const { applyCanvasPointerHandoff } = await import(adapterPath);
+
+  const result = applyCanvasPointerHandoff(pointerEvent("pointerdown", 19), {
+    inputMode: "touch",
+    pointerResumeRequired: false,
+    setInputMode() {},
+  });
+
+  assert.equal(result.inputMode, "touch");
+  assert.equal(result.pointerLockCandidate, false);
+  assert.equal(result.consumesCanvasAction, false);
+});
+
+test("mouse handoff preserves the pointer-lock eligibility path", async () => {
+  const { applyCanvasPointerHandoff } = await import(adapterPath);
+  const modes = [];
+
+  const result = applyCanvasPointerHandoff(pointerEvent("pointerdown", 18, "mouse"), {
+    setInputMode: mode => modes.push(mode),
+  });
+
+  assert.deepEqual(result, {
+    inputMode: "mouse",
+    pointerLockCandidate: true,
+    consumesCanvasAction: false,
+  });
+  assert.deepEqual(modes, ["mouse"]);
+});
+
+test("unexpected capture loss from either touch stick routes through a complete reset", async () => {
+  const { bindTransientPointerInterrupts } = await import(adapterPath);
+  const { resolveTransientInputReset } = await import(modulePath);
+  const moveStick = new PointerTarget();
+  const aimStick = new PointerTarget();
+  let localInput = {
+    firing: true,
+    ads: true,
+    keys: { w: true, arrowup: true },
+    touch: { mx: 0.8, mz: -0.4, ax: 0.6, az: -0.2, fire: true },
+    controllerButtons: [true, false],
+  };
+  const interruptions = [];
+  const unbind = bindTransientPointerInterrupts({
+    targets: [moveStick, aimStick],
+    interrupt(reason) {
+      interruptions.push(reason);
+      const reset = resolveTransientInputReset({
+        reason,
+        pointerResumeEligible: false,
+        keys: localInput.keys,
+        touch: localInput.touch,
+        controllerButtons: localInput.controllerButtons,
+      });
+      localInput = { ...localInput, ...reset.state };
+    },
+  });
+
+  moveStick.dispatchEvent(pointerEvent("pointerdown", 21));
+  moveStick.setPointerCapture(21);
+  moveStick.losePointerCapture(21);
+
+  assert.deepEqual(interruptions, ["pointer-capture-lost"]);
+  assert.equal(localInput.firing, false);
+  assert.equal(localInput.ads, false);
+  assert.equal(Object.values(localInput.keys).some(Boolean), false);
+  assert.deepEqual(localInput.touch, { mx: 0, mz: 0, ax: 0, az: 0, fire: false });
+
+  localInput.touch.ax = 0.75;
+  aimStick.dispatchEvent(pointerEvent("pointerdown", 22));
+  aimStick.setPointerCapture(22);
+  aimStick.losePointerCapture(22);
+
+  assert.deepEqual(interruptions, ["pointer-capture-lost", "pointer-capture-lost"]);
+  assert.equal(localInput.touch.ax, 0);
+  unbind();
+});
+
+test("touch cancel and uncaptured leave interrupt all local transients", async () => {
+  const { bindTransientPointerInterrupts } = await import(adapterPath);
+  const moveStick = new PointerTarget();
+  const fireButton = new PointerTarget();
+  const interruptions = [];
+  const unbind = bindTransientPointerInterrupts({
+    targets: [moveStick, fireButton],
+    interrupt: reason => interruptions.push(reason),
+  });
+
+  moveStick.dispatchEvent(pointerEvent("pointerdown", 31));
+  moveStick.setPointerCapture(31);
+  moveStick.dispatchEvent(pointerEvent("pointercancel", 31));
+
+  fireButton.dispatchEvent(pointerEvent("pointerdown", 32));
+  fireButton.dispatchEvent(pointerEvent("pointerleave", 32));
+
+  assert.deepEqual(interruptions, ["pointer-capture-lost", "pointer-capture-lost"]);
+  unbind();
+});
+
+test("normal pointer release does not clear a second active touch", async () => {
+  const { bindTransientPointerInterrupts } = await import(adapterPath);
+  const moveStick = new PointerTarget();
+  const aimStick = new PointerTarget();
+  const interruptions = [];
+  const unbind = bindTransientPointerInterrupts({
+    targets: [moveStick, aimStick],
+    interrupt: reason => interruptions.push(reason),
+  });
+
+  moveStick.dispatchEvent(pointerEvent("pointerdown", 41));
+  moveStick.setPointerCapture(41);
+  aimStick.dispatchEvent(pointerEvent("pointerdown", 42));
+  aimStick.setPointerCapture(42);
+  moveStick.dispatchEvent(pointerEvent("pointerup", 41));
+  moveStick.losePointerCapture(41);
+
+  assert.deepEqual(interruptions, []);
+  assert.equal(aimStick.hasPointerCapture(42), true);
+  unbind();
+});
+
+test("game routes every transient touch capture owner through the tested adapter", () => {
+  const game = fs.readFileSync(path.resolve(__dirname, "../public/game3d.js"), "utf8");
+
+  assert.match(game, /import \{ applyCanvasPointerHandoff, bindTransientPointerInterrupts \} from "\.\/input-recovery-adapter\.mjs"/);
+  assert.match(game, /targets: \[moveStick, aimStick, touchFireButton, touchAdsButton\]/);
+  assert.match(game, /interrupt: interruptLocalInput/);
+  assert.match(game, /touchStickReleases\.forEach\(release => release\(\)\)/);
+  assert.match(game, /element\.addEventListener\("lostpointercapture", release\)/);
 });
 
 test("clears firing ADS keyboard aliases and touch input without mutating the source", async () => {

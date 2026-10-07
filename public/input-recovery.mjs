@@ -67,6 +67,32 @@ export function canCaptureGameplayPointer({
     && rendererReady;
 }
 
+export function resolvePointerInputHandoff({
+  pointerType,
+  inputMode,
+  pointerResumeRequired = false,
+} = {}) {
+  if (pointerType === "touch") {
+    return {
+      inputMode: "touch",
+      pointerLockCandidate: false,
+      consumesCanvasAction: inputMode === "mouse" && Boolean(pointerResumeRequired),
+    };
+  }
+  if (pointerType === "mouse") {
+    return {
+      inputMode: "mouse",
+      pointerLockCandidate: true,
+      consumesCanvasAction: false,
+    };
+  }
+  return {
+    inputMode: null,
+    pointerLockCandidate: false,
+    consumesCanvasAction: false,
+  };
+}
+
 export function clearTransientInput({ keys, controllerButtons } = {}) {
   const clearedKeys = {};
   if (keys && typeof keys === "object" && !Array.isArray(keys)) {

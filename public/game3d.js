@@ -2,6 +2,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
 import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
+import { applyCanvasPointerHandoff, bindTransientPointerInterrupts } from "./input-recovery-adapter.mjs";
 import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
 import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
 import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
@@ -233,6 +234,7 @@ let lobbyRetryTimer = null;
 let voiceMuted = false;
 const voicePeers = new Map();
 const touch = { mx: 0, mz: 0, ax: 0, az: 0, fire: false };
+const touchStickReleases = [];
 const keys = {};
 const coarsePointer = matchMedia("(pointer: coarse)");
 const finePointer = matchMedia("(pointer: fine)");
@@ -1494,6 +1496,7 @@ function clearTransientGameplayInput(reason) {
   adsActive = cleared.ads;
   lastButtons = cleared.controllerButtonLatch;
   if (recovery.requiresPointerClick) pointerResumeRequired = true;
+  touchStickReleases.forEach(release => release());
   document.querySelectorAll("#touchControls .active").forEach(control => control.classList.remove("active"));
   ["moveStick", "aimStick"].forEach(id => {
     const knob = $(id)?.querySelector("i");
@@ -2464,7 +2467,8 @@ function bindTouchStick(id, prefix) {
   const element = $(id);
   const knob = element.querySelector("i");
   let pointerId = null;
-  const release = () => {
+  const release = event => {
+    if (event && pointerId !== null && event.pointerId !== pointerId) return;
     pointerId = null;
     touch[`${prefix}x`] = touch[`${prefix}z`] = 0;
     knob.style.transform = "translate(0,0)";
@@ -2494,6 +2498,12 @@ function bindTouchStick(id, prefix) {
   element.addEventListener("pointermove", move);
   element.addEventListener("pointerup", release);
   element.addEventListener("pointercancel", release);
+  element.addEventListener("lostpointercapture", release);
+  element.addEventListener("pointerleave", event => {
+    if (!element.hasPointerCapture?.(event.pointerId)) release(event);
+  });
+  touchStickReleases.push(release);
+  return element;
 }
 
 function setVoiceStatus(status) { ui.voiceStatus.textContent = status; }
@@ -3159,14 +3169,21 @@ canvas.addEventListener("pointermove", event => {
 });
 canvas.addEventListener("pointerdown", event => {
   if (controllerLocked() || phase === "countdown") return;
+  const pointerHandoff = applyCanvasPointerHandoff(event, {
+    inputMode,
+    pointerResumeRequired,
+    setInputMode,
+  });
   if (controlsTourState?.status === "active") {
-    if (event.pointerType === "mouse") setInputMode("mouse");
     handleControlsTourSignal({ source: "pointer", kind: "down", button: event.button });
     return;
   }
-  if (event.pointerType === "mouse") setInputMode("mouse");
+  if (pointerHandoff.consumesCanvasAction) {
+    wakeAudio();
+    return;
+  }
   const resumingPointer = pointerResumeRequired;
-  if (event.pointerType === "mouse" && frontView && document.pointerLockElement !== canvas) requestGameplayPointerLock(event);
+  if (pointerHandoff.pointerLockCandidate && frontView && document.pointerLockElement !== canvas) requestGameplayPointerLock(event);
   wakeAudio();
   if (resumingPointer || localGameplayInputPaused()) return;
   if (phase !== "combat" || menuOpen || event.button !== 0 || event.isPrimary === false) return;
@@ -3174,8 +3191,8 @@ canvas.addEventListener("pointerdown", event => {
 });
 addEventListener("pointerup", () => { firing = false; });
 
-bindTouchStick("moveStick", "m");
-bindTouchStick("aimStick", "a");
+const moveStick = bindTouchStick("moveStick", "m");
+const aimStick = bindTouchStick("aimStick", "a");
 
 function bindHoldButton(id, onChange) {
   const button = $(id);
@@ -3189,13 +3206,18 @@ function bindHoldButton(id, onChange) {
   button.addEventListener("pointerup", change(false));
   button.addEventListener("pointercancel", change(false));
   button.addEventListener("pointerleave", change(false));
+  return button;
 }
 
-bindHoldButton("touchFireBtn", active => {
+const touchFireButton = bindHoldButton("touchFireBtn", active => {
   if (active && handleControlsTourSignal({ source: "touch-button", control: "fire" })) return;
   touch.fire = active;
 });
-bindHoldButton("touchAdsBtn", active => { adsActive = active; });
+const touchAdsButton = bindHoldButton("touchAdsBtn", active => { adsActive = active; });
+bindTransientPointerInterrupts({
+  targets: [moveStick, aimStick, touchFireButton, touchAdsButton],
+  interrupt: interruptLocalInput,
+});
 $("touchReloadBtn").onclick = () => { setInputMode("touch"); reloadWeapon(true); };
 $("touchWeaponBtn").onclick = () => { setInputMode("touch"); cycleWeapon(1); };
 $("touchInteractBtn").onclick = () => { setInputMode("touch"); interact(); };
