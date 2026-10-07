@@ -37,6 +37,10 @@ export function resolveMenuKeyAction(key, context = {}) {
   return null;
 }
 
+export function isMenuCommandDisabled(command) {
+  return Boolean(command?.disabled || command?.closest?.(".hidden"));
+}
+
 export function createMenuNavigator(commandIds, initialId) {
   const commands = normalizeCommands(commandIds);
   let activeId = commands.some(command => command.id === initialId && !command.disabled)

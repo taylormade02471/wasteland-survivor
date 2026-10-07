@@ -12,6 +12,7 @@ const publicDirectory = path.join(__dirname, "public");
 const rooms = new Map();
 const clients = new Map();
 const readyMatches = new Map();
+const matchCountdownMs = 15000;
 let matchmakingRules;
 const matchmakingRulesReady = import("./public/matchmaking-rules.mjs").then(module => { matchmakingRules = module; });
 const chestAccess = new ChestAccess(2);
@@ -218,11 +219,16 @@ function removeClient(socket) {
   const chestStatus = chestAccess.leave(client.room, client.id);
   room.delete(client.id);
   const capacity = roomCapacity(client.room);
+  const invalidatedPlan = readyMatches.delete(client.room);
   for (const peer of room.values()) send(peer, { type: "peer-left", id: client.id, capacity });
+  if (invalidatedPlan) {
+    for (const peer of room.values()) {
+      send(peer, { type: "match-reset", reason: "player-left", departedId: client.id, humanPlayers: room.size, capacity });
+    }
+  }
   for (const peer of room.values()) send(peer, { type: "chest-status", ...chestStatus });
   if (!room.size) {
     rooms.delete(client.room);
-    readyMatches.delete(client.room);
   }
 }
 
@@ -230,7 +236,11 @@ function emitMatchReady(roomName, room) {
   if (readyMatches.has(roomName)) return readyMatches.get(roomName);
   const teamRoom = matchmakingRules.parseTeamRoomId(roomName);
   if (!teamRoom) return null;
-  const payload = { type: "match-ready", ...matchmakingRules.createMatchPlan(teamRoom.teamSize, [...room.keys()]) };
+  const payload = {
+    type: "match-ready",
+    ...matchmakingRules.createMatchPlan(teamRoom.teamSize, [...room.keys()]),
+    startsAt: Date.now() + matchCountdownMs,
+  };
   readyMatches.set(roomName, payload);
   for (const peer of room.values()) send(peer, payload);
   return payload;

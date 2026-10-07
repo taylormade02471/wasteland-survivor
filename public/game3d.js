@@ -10,8 +10,8 @@ import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
-import { createMenuNavigator, resolveMenuKeyAction } from "./menu-navigation.mjs";
-import { createTeamRoomId, normalizeTeamSize } from "./matchmaking-rules.mjs";
+import { createMenuNavigator, isMenuCommandDisabled, resolveMenuKeyAction } from "./menu-navigation.mjs";
+import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown, resolveMatchReadyAction, resolveMatchResetAction } from "./matchmaking-rules.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -155,7 +155,6 @@ let lobbySocket = null;
 let lobbyId = null;
 let lobbyPeers = 0;
 let activeMatchPlan = null;
-let matchStartRequested = false;
 let chestOccupants = 0;
 let chestAccessGranted = false;
 let lobbyRetryTimer = null;
@@ -210,7 +209,7 @@ function refreshLobbyNavigation(initialId) {
   const previousId = initialId ?? lobbyNavigator?.current().id;
   lobbyNavigator = createMenuNavigator(lobbyCommandButtons().map(button => ({
     id: button.id,
-    disabled: button.disabled || button.classList.contains("hidden"),
+    disabled: isMenuCommandDisabled(button),
   })), previousId);
   renderLobbyNavigation();
 }
@@ -495,7 +494,6 @@ function start() {
   Object.values(guns).forEach(gun => { gun.level = 0; });
   loadProgress(activeProfile);
   activeMatchPlan = null;
-  matchStartRequested = false;
   resetMap();
   ensureLobbyRoom();
   phase = "loadout";
@@ -506,18 +504,43 @@ function start() {
   updateArmory();
 }
 
-function beginCountdown() {
+function beginCountdown(startsAt = Date.now() + 15000) {
+  const countdownState = resolveMatchCountdown(startsAt);
   phase = "countdown";
-  countdown = 15;
-  timer = 15;
-  countdownDeadline = Date.now() + 15000;
+  countdown = countdownState.secondsRemaining;
+  timer = countdownState.millisecondsRemaining / 1000;
+  countdownDeadline = countdownState.startsAt;
   firing = false;
   touch.mx = touch.mz = touch.ax = touch.az = 0;
   touch.fire = false;
   clearKeyboardInput();
+  if (countdownState.expired) {
+    $("matchCountdown").classList.add("hidden");
+    nextCombat();
+    return;
+  }
   $("matchCountdown").classList.remove("hidden");
-  $("countdownNumber").textContent = "15";
+  $("countdownNumber").textContent = String(countdownState.secondsRemaining);
   setNightfallScene("countdown");
+}
+
+function resetMatchReadiness(message = {}) {
+  const action = resolveMatchResetAction(phase);
+  activeMatchPlan = null;
+  if (action === "preserve") {
+    updateNetworkStatus("Room roster changed. Current combat continues.");
+    return;
+  }
+  spawnMatchBots(null);
+  phase = "loadout";
+  timer = 0;
+  countdown = 0;
+  countdownDeadline = 0;
+  firing = false;
+  $("matchCountdown").classList.add("hidden");
+  $("loadoutRoomModal").classList.remove("hidden");
+  const reason = message.reason === "connection-lost" ? "Connection reset" : "Room roster changed";
+  updateNetworkStatus(`${reason}: waiting in loadout`);
 }
 
 function nextCombat() {
@@ -1742,13 +1765,11 @@ function updateVoiceButtons() {
 }
 
 function voiceRoom() {
-  if (mode === "ctf") return `${mapKey}-ctf-${ctfPlayers}`;
-  if (mode === "teams") return createTeamRoomId(mapKey, botTeamSize);
-  return `${mapKey}-solo`;
+  return createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
 }
 
 function lobbyRoom() {
-  return mode === "ctf" ? `${mapKey}-ctf-${ctfPlayers}` : createTeamRoomId(mapKey, botTeamSize);
+  return createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
 }
 
 function closeLobbyRoom() {
@@ -1784,13 +1805,19 @@ function ensureLobbyRoom() {
         lobbyPeers = Math.max(0, lobbyPeers - 1);
         updateNetworkStatus(`Room open: ${lobbyPeers + 1}/${message.capacity || 4}`);
       } else if (message.type === "match-ready") {
+        const action = resolveMatchReadyAction({ phase, currentStartsAt: activeMatchPlan?.startsAt, startsAt: message.startsAt });
+        if (action === "ignore") return;
         activeMatchPlan = message;
+        if (action === "defer") {
+          updateNetworkStatus("Fresh room roster ready for the next round.");
+          return;
+        }
         spawnMatchBots(message);
         updateNetworkStatus(`Match ready: ${message.humanPlayers} human, ${message.botPlayers} bot${message.botPlayers === 1 ? "" : "s"}`);
-        if (matchStartRequested) {
-          $("loadoutRoomModal").classList.add("hidden");
-          beginCountdown();
-        }
+        $("loadoutRoomModal").classList.add("hidden");
+        beginCountdown(message.startsAt);
+      } else if (message.type === "match-reset") {
+        resetMatchReadiness(message);
       } else if (message.type === "room-full") {
         updateNetworkStatus("Room full: waiting for the next room");
       } else if (message.type === "chest-access") {
@@ -1808,7 +1835,8 @@ function ensureLobbyRoom() {
   lobbySocket.onclose = () => {
     lobbySocket = null;
     lobbyId = null;
-    updateNetworkStatus();
+    if (mode === "teams") resetMatchReadiness({ reason: "connection-lost" });
+    else updateNetworkStatus();
     if (!offlineMode && mode !== "solo") {
       clearTimeout(lobbyRetryTimer);
       lobbyRetryTimer = setTimeout(ensureLobbyRoom, 1800);
@@ -2228,11 +2256,7 @@ $("loadoutArmoryBtn").onclick = () => ui.shop.classList.remove("hidden");
 $("loadoutReadyBtn").onclick = () => {
   ui.shop.classList.add("hidden");
   if (mode === "teams" && !offlineMode) {
-    if (activeMatchPlan) {
-      $("loadoutRoomModal").classList.add("hidden");
-      beginCountdown();
-    } else if (lobbySocket?.readyState === WebSocket.OPEN) {
-      matchStartRequested = true;
+    if (lobbySocket?.readyState === WebSocket.OPEN) {
       updateNetworkStatus("Starting match and filling open seats...");
       lobbySocket.send(JSON.stringify({ type: "start-match" }));
     } else {

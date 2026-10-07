@@ -57,13 +57,15 @@ test("unknown tiers use the restrained medium rules", async () => {
   assert.deepEqual(backgroundEffectsForTier("ultra", false), backgroundEffectsForTier("medium", false));
 });
 
-test("match opening uses exactly fifteen seconds without changing round timers", () => {
+test("match opening uses exactly fifteen seconds without changing round timers", async () => {
   const game = fs.readFileSync(path.resolve(__dirname, "../public/game3d.js"), "utf8");
-  const countdownFunction = game.match(/function beginCountdown\(\) \{[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(countdownFunction, /countdown = 15;/);
-  assert.match(countdownFunction, /timer = 15;/);
-  assert.match(countdownFunction, /countdownDeadline = Date\.now\(\) \+ 15000;/);
-  assert.match(countdownFunction, /countdownNumber"\)\.textContent = "15"/);
+  const rules = await import(new URL("../public/matchmaking-rules.mjs", `file://${__filename.replace(/\\/g, "/")}`));
+  const countdown = rules.resolveMatchCountdown(25_000, 10_000);
+  const countdownFunction = game.match(/function beginCountdown\([\s\S]*?\n\}/)?.[0] || "";
+  assert.equal(countdown.secondsRemaining, 15);
+  assert.equal(countdown.millisecondsRemaining, 15_000);
+  assert.match(countdownFunction, /startsAt = Date\.now\(\) \+ 15000/);
+  assert.match(countdownFunction, /resolveMatchCountdown\(startsAt\)/);
   assert.match(countdownFunction, /clearKeyboardInput\(\)/);
   assert.match(countdownFunction, /touch\.mx = touch\.mz = touch\.ax = touch\.az = 0/);
   assert.match(game, /timer = mode === "ctf" \? 300 : 60;/);

@@ -2,10 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  createLobbyRoomId,
   createMatchPlan,
   createTeamRoomId,
   normalizeTeamSize,
   parseTeamRoomId,
+  resolveMatchCountdown,
+  resolveMatchReadyAction,
+  resolveMatchResetAction,
   teamCapacity,
 } from "../public/matchmaking-rules.mjs";
 
@@ -31,6 +35,39 @@ test("creates and parses team-size-specific room ids", () => {
   assert.deepEqual(parseTeamRoomId("inferno-teams-3v3"), { map: "inferno", teamSize: 3, capacity: 6 });
   assert.equal(parseTeamRoomId("wasteland-teams-3v2"), null);
   assert.equal(parseTeamRoomId("unknown-teams-2v2"), null);
+});
+
+test("keeps solo reporting in a solo room while routing multiplayer modes", () => {
+  assert.equal(createLobbyRoomId({ map: "ice", mode: "solo", teamSize: 3, ctfPlayers: 6 }), "ice-solo");
+  assert.equal(createLobbyRoomId({ map: "toxic", mode: "teams", teamSize: 3, ctfPlayers: 4 }), "toxic-teams-3v3");
+  assert.equal(createLobbyRoomId({ map: "inferno", mode: "ctf", teamSize: 2, ctfPlayers: 6 }), "inferno-ctf-6");
+});
+
+test("derives synchronized countdown state from the authoritative start deadline", () => {
+  assert.deepEqual(resolveMatchCountdown(25_000, 10_000), {
+    startsAt: 25_000,
+    millisecondsRemaining: 15_000,
+    secondsRemaining: 15,
+    expired: false,
+  });
+  assert.deepEqual(resolveMatchCountdown(9_000, 10_000), {
+    startsAt: 9_000,
+    millisecondsRemaining: 0,
+    secondsRemaining: 0,
+    expired: true,
+  });
+});
+
+test("starts every pre-combat client once and defers roster changes during combat", () => {
+  assert.equal(resolveMatchReadyAction({ phase: "loadout", currentStartsAt: null, startsAt: 25_000 }), "start");
+  assert.equal(resolveMatchReadyAction({ phase: "countdown", currentStartsAt: 25_000, startsAt: 25_000 }), "ignore");
+  assert.equal(resolveMatchReadyAction({ phase: "combat", currentStartsAt: null, startsAt: 30_000 }), "defer");
+  assert.equal(resolveMatchReadyAction({ phase: "loadout", currentStartsAt: null, startsAt: "invalid" }), "ignore");
+
+  assert.equal(resolveMatchResetAction("loadout"), "loadout");
+  assert.equal(resolveMatchResetAction("countdown"), "loadout");
+  assert.equal(resolveMatchResetAction("combat"), "preserve");
+  assert.equal(resolveMatchResetAction("prep"), "preserve");
 });
 
 test("fills every open 1v1 seat with a bot when no humans have joined", () => {

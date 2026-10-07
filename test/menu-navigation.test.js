@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createMenuNavigator, resolveMenuKeyAction } from "../public/menu-navigation.mjs";
+import { createMenuNavigator, isMenuCommandDisabled, resolveMenuKeyAction } from "../public/menu-navigation.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
@@ -27,6 +27,15 @@ test("skips disabled commands and falls back to the first enabled command", () =
 
   assert.deepEqual(navigator.current(), { id: "online", input: "programmatic" });
   assert.deepEqual(navigator.move("next", "controller"), { id: "online", input: "controller" });
+});
+
+test("disables commands nested inside a collapsed lobby choice group", () => {
+  const collapsedChoice = { disabled: false, closest: selector => selector === ".hidden" ? { id: "teamSizeChoices" } : null };
+  const visibleChoice = { disabled: false, closest: () => null };
+
+  assert.equal(isMenuCommandDisabled(collapsedChoice), true);
+  assert.equal(isMenuCommandDisabled(visibleChoice), false);
+  assert.equal(isMenuCommandDisabled({ ...visibleChoice, disabled: true }), true);
 });
 
 test("hands selected state from mouse to controller movement", () => {
