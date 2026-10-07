@@ -24,6 +24,7 @@
   <div id="matchCountdown" class="match-countdown hidden"><span id="countdownLabel">ENTERING NIGHTFALL</span><b id="countdownNumber">15</b></div>
 
   <section id="welcomeScreen" class="welcome-screen">
+    <button id="profileBackBtn" class="screen-back-button screen-back-control" type="button" aria-label="Back to saved profiles">&#8592; Back</button>
     <div class="welcome-panel">
       <header class="title-hero">
         <div class="title-hero-copy">
@@ -39,7 +40,6 @@
         </div>
       </header>
       <div id="profileStep" class="profile-step">
-        <button id="profileBackBtn" class="screen-back-button" type="button" aria-label="Back to saved profiles">&#8592; Back</button>
         <label for="profileName">Player name <input id="profileName" type="text" maxlength="24" autocomplete="nickname" placeholder="Survivor name" /></label>
         <label for="profileBirthDate">Date of birth <input id="profileBirthDate" type="date" autocomplete="bday" /></label>
         <label for="profileContact">Email or phone <input id="profileContact" type="text" autocomplete="username" placeholder="you@example.com or phone" /></label>
@@ -101,17 +101,24 @@
 
   <section id="lobbyScreen" class="welcome-screen hidden">
     <img id="lobbyBackdropArt" class="lobby-backdrop-art" src="./assets/nightfall/backgrounds/nightfall-lobby-squad-v1.png" alt="" aria-hidden="true">
-    <div class="welcome-panel lobby-panel">
-      <button id="lobbyBackBtn" class="screen-back-button" type="button" aria-label="Back to profile selection">&#8592; Back</button>
+    <button id="lobbyBackBtn" class="screen-back-button screen-back-control" type="button" aria-label="Back to profile selection">&#8592; Back</button>
+    <header class="lobby-title-plate">
       <p class="eyebrow">Survivor Lobby</p>
       <h1>Choose Your Fight</h1>
       <p id="lobbyPlayer" class="welcome-copy"></p>
       <p id="replayStatus" class="replay-status">Cinematic backdrop active. Recent match clips will rotate here automatically.</p>
-      <div class="lobby-options">
-        <button id="survivalLobbyBtn" class="lobby-option" type="button"><b>All-Out Story Survival</b><small>MW3-style endless cycles. Timeline advantages and progress save locally.</small></button>
-        <button id="onlineSurvivalBtn" class="lobby-option hidden" type="button"><b>Online Survival Pair</b><small>Join the waiting player for a shared two-player survival round.</small></button>
-        <button id="teamLobbyBtn" class="lobby-option hidden" type="button"><b>Computer Team Match</b><small>No online players are waiting. Choose 1v1, 2v2, or 3v3 below.</small></button>
-        <button id="ctf6LobbyBtn" class="lobby-option" type="button"><b>6v6 Capture The Flag</b><small>One five-minute match. Three flags. Highest points wins.</small></button>
+    </header>
+    <nav id="lobbyNavigation" class="floating-command-field" aria-label="Lobby commands">
+      <button id="survivalLobbyBtn" class="floating-command" type="button"><b>All-Out Story Survival</b><small>MW3-style endless cycles. Timeline advantages and progress save locally.</small></button>
+      <button id="onlineSurvivalBtn" class="floating-command hidden" type="button"><b>Online Survival Pair</b><small>Join the waiting player for a shared two-player survival round.</small></button>
+      <button id="teamLobbyBtn" class="floating-command hidden" type="button"><b>Computer Team Match</b><small>No online players are waiting. Choose 1v1, 2v2, or 3v3 below.</small></button>
+      <button id="ctf6LobbyBtn" class="floating-command" type="button"><b>6v6 Capture The Flag</b><small>One five-minute match. Three flags. Highest points wins.</small></button>
+      <button id="dashboardBtn" class="floating-command floating-command-secondary" type="button">Loadout</button>
+      <button id="editProfileBtn" class="floating-command floating-command-secondary" type="button">Profile</button>
+      <button id="lobbySettingsBtn" class="floating-command floating-command-secondary" type="button">Settings</button>
+      <button id="signOutProfileBtn" class="floating-command floating-command-secondary" type="button">Switch Profile</button>
+    </nav>
+    <section class="lobby-support-plate" aria-label="Lobby options">
         <div class="lobby-settings-row">
           <label for="botTeamSize">Computer team size <select id="botTeamSize"><option value="1">1v1</option><option value="2" selected>2v2</option><option value="3">3v3</option></select></label>
           <label for="botDifficulty">Difficulty <select id="botDifficulty"><option value="0.10">Easy</option><option value="0.22" selected>Medium</option><option value="0.35">Expert</option><option value="0.75">Insane</option></select></label>
@@ -119,19 +126,12 @@
           <label for="riskLevel">Risk and reward <select id="riskLevel"><option value="protected">Protected</option><option value="standard" selected>Standard</option><option value="high">High Risk</option></select></label>
         </div>
         <p id="riskPreview" class="risk-preview"></p>
-      </div>
-      <nav class="lobby-secondary-nav" aria-label="Survivor options">
-        <button id="dashboardBtn" type="button">Loadout</button>
-        <button id="editProfileBtn" type="button">Profile</button>
-        <button id="lobbySettingsBtn" type="button">Settings</button>
-        <button id="signOutProfileBtn" type="button">Switch Profile</button>
-      </nav>
+    </section>
       <details class="lobby-roster-gallery">
         <summary>View Survivors And Radioactive Threats</summary>
         <figure><img src="./assets/nightfall/characters/survivor-roster-v1.png" alt="Six survivor avatars"><figcaption>Scout · Ranger · Heavy · Tech Runner · Field Medic · Warden</figcaption></figure>
         <figure><img src="./assets/nightfall/enemies/radioactive-enemy-roster-v1.png" alt="Eight radioactive enemy archetypes"><figcaption>Rusher · Shooter · Sniper · Shield Brute · Heavy · Drone · Mutant · Boss</figcaption></figure>
       </details>
-    </div>
   </section>
 
   <section id="hud">
@@ -174,11 +174,6 @@
 
   <div id="topRightMenu">
     <button id="menuToggle" type="button">Menu</button>
-    <div class="mode-control"><button id="soloMode" type="button" class="active">Solo</button><button id="teamMode" type="button">2v2</button><button id="ctfMode" type="button">CTF</button></div>
-    <div id="ctfPlayerControl" class="mode-control hidden"><button data-ctf-players="4" type="button" class="active">4 Players</button><button data-ctf-players="6" type="button">6 Players</button></div>
-    <div class="map-control"><button data-map="wasteland" type="button" class="active">Wasteland</button><button data-map="toxic" type="button">Toxic</button><button data-map="ice" type="button">Ice</button><button data-map="inferno" type="button">Inferno</button></div>
-    <button id="openShopBtn" type="button">Armory</button>
-    <button id="settingsBtn" type="button">Settings</button>
   </div>
 
   <section id="gameMenu" class="game-menu hidden" aria-label="In-game menu">
@@ -191,10 +186,17 @@
         <option value="front">Front view</option>
         <option value="lobby">Return to lobby</option>
       </select>
+      <div class="game-menu-match-controls" aria-label="Match setup">
+        <div class="mode-control"><button id="soloMode" type="button" class="active">Solo</button><button id="teamMode" type="button">2v2</button><button id="ctfMode" type="button">CTF</button></div>
+        <div id="ctfPlayerControl" class="mode-control hidden"><button data-ctf-players="4" type="button" class="active">4 Players</button><button data-ctf-players="6" type="button">6 Players</button></div>
+        <div class="map-control"><button data-map="wasteland" type="button" class="active">Wasteland</button><button data-map="toxic" type="button">Toxic</button><button data-map="ice" type="button">Ice</button><button data-map="inferno" type="button">Inferno</button></div>
+      </div>
       <div class="game-menu-actions">
         <button id="resumeGameBtn" type="button">Resume</button>
         <button id="frontViewBtn" type="button">Arena View</button>
+        <button id="openShopBtn" type="button">Armory</button>
         <button id="menuSettingsBtn" type="button">Settings</button>
+        <button id="settingsBtn" class="hidden" type="button" aria-hidden="true">Settings</button>
         <button id="exitGameBtn" class="danger-button" type="button">Exit to Lobby</button>
       </div>
       <p id="graceStatus" class="grace-status hidden">Control reconnecting: <b>3</b></p>

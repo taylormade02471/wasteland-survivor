@@ -10,6 +10,7 @@ import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
+import { createMenuNavigator } from "./menu-navigation.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -88,6 +89,8 @@ let mode = "solo";
 let phase = "combat";
 let timer = 60;
 let menuOpen = false;
+let lobbyNavigator = null;
+let menuOpenedFromPrep = false;
 let countdown = 15;
 let countdownDeadline = 0;
 let graceUntil = 0;
@@ -183,6 +186,83 @@ function setInputMode(nextMode) {
 
 function refreshInputMode() {
   setInputMode(resolveInputMode({ coarsePointer: coarsePointer.matches, mouseInputActive, controllerConnected }));
+}
+
+function lobbyCommandButtons() {
+  return [...document.querySelectorAll("#lobbyNavigation .floating-command")];
+}
+
+function renderLobbyNavigation(focus = false) {
+  const current = lobbyNavigator?.current();
+  lobbyCommandButtons().forEach(button => {
+    const selected = button.id === current?.id;
+    button.classList.toggle("is-selected", selected);
+    if (selected) button.setAttribute("aria-current", "true");
+    else button.removeAttribute("aria-current");
+  });
+  if (focus && current?.id) $(current.id)?.focus({ preventScroll: true });
+}
+
+function refreshLobbyNavigation(initialId) {
+  const previousId = initialId ?? lobbyNavigator?.current().id;
+  lobbyNavigator = createMenuNavigator(lobbyCommandButtons().map(button => ({
+    id: button.id,
+    disabled: button.disabled || button.classList.contains("hidden"),
+  })), previousId);
+  renderLobbyNavigation();
+}
+
+function moveLobbyFocus(direction, input) {
+  if (!lobbyNavigator) refreshLobbyNavigation();
+  const state = lobbyNavigator.move(direction, input);
+  renderLobbyNavigation(input !== "mouse" && input !== "touch");
+  return state;
+}
+
+function focusLobbyCommand(id, input) {
+  if (!lobbyNavigator) refreshLobbyNavigation(id);
+  const state = lobbyNavigator.focus(id, input);
+  renderLobbyNavigation(input !== "mouse" && input !== "touch");
+  return state;
+}
+
+function activateLobbyCommand() {
+  const command = lobbyNavigator?.activate();
+  if (command?.id) $(command.id)?.click();
+}
+
+function bindLobbyNavigation() {
+  lobbyCommandButtons().forEach(button => {
+    button.addEventListener("pointerenter", event => {
+      if (event.pointerType !== "mouse") return;
+      setInputMode("mouse");
+      focusLobbyCommand(button.id, "mouse");
+    });
+    button.addEventListener("pointerdown", event => {
+      if (event.pointerType !== "touch") return;
+      setInputMode("touch");
+      const alreadyFocused = lobbyNavigator?.current().id === button.id;
+      focusLobbyCommand(button.id, "touch");
+      event.preventDefault();
+      if (alreadyFocused) activateLobbyCommand();
+    });
+    button.addEventListener("focus", () => {
+      if (inputMode !== "mouse" && inputMode !== "touch") focusLobbyCommand(button.id, "keyboard");
+    });
+    button.addEventListener("click", event => {
+      if (event.isTrusted && event.detail === 0) {
+        setInputMode("keyboard");
+        focusLobbyCommand(button.id, "keyboard");
+      }
+    });
+  });
+}
+
+function handleLobbyController() {
+  const controller = pollController();
+  if (controller.dpadUp || controller.dpadLeft) moveLobbyFocus("previous", "controller");
+  if (controller.dpadDown || controller.dpadRight) moveLobbyFocus("next", "controller");
+  if (controller.interact) activateLobbyCommand();
 }
 
 function persistAimSettings() {
@@ -1046,6 +1126,7 @@ function renderHud() {
 
 function render() {
   const dt = Math.min(clock.getDelta(), .04);
+  if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
   update(dt);
   renderHud();
   player.cooldown = Math.max(0, player.cooldown - dt);
@@ -1234,7 +1315,7 @@ async function syncPublicPlayer() {
     if (deviceCredential) activeProfile.backendDeviceCredential = deviceCredential;
     activeProfile.backendSession = session;
     saveProfile();
-    lobbyPlayer.textContent = `Profile: ${activeProfile.name} · ${publicPlayer.playerTag}`;
+    lobbyPlayer.textContent = `${activeProfile.name} · ${publicPlayer.playerTag}`;
     return true;
   } catch {
     // Local play remains available when the optional backend is offline.
@@ -1329,8 +1410,9 @@ async function reportMatch(title) {
 
 function openLobby(contact) {
   welcomeScreen.classList.add("hidden");
-  lobbyPlayer.textContent = `Profile: ${contact}`;
+  lobbyPlayer.textContent = contact;
   lobbyScreen.classList.remove("hidden");
+  refreshLobbyNavigation();
   setNightfallScene("menu");
   updateNetworkStatus();
   refreshLobbyAvailability();
@@ -1350,6 +1432,7 @@ async function refreshLobbyAvailability() {
   if (offlineMode || !activeProfile) {
     onlineButton.classList.add("hidden");
     computerButton.classList.remove("hidden");
+    refreshLobbyNavigation();
     return;
   }
   try {
@@ -1358,9 +1441,11 @@ async function refreshLobbyAvailability() {
     const playersWaiting = Number(status.players) > 0;
     onlineButton.classList.toggle("hidden", !playersWaiting);
     computerButton.classList.toggle("hidden", playersWaiting);
+    refreshLobbyNavigation();
   } catch {
     onlineButton.classList.add("hidden");
     computerButton.classList.remove("hidden");
+    refreshLobbyNavigation();
   }
 }
 
@@ -1840,6 +1925,7 @@ function pauseGraceSeconds() {
 
 function openGameMenu() {
   if (phase === "menu" || phase === "countdown" || phase === "over") return;
+  menuOpenedFromPrep = phase === "prep";
   menuOpen = true;
   const liveMatch = mode === "teams" || mode === "ctf";
   phase = liveMatch ? "combat" : "paused";
@@ -1847,6 +1933,7 @@ function openGameMenu() {
   $("gameMenu").classList.remove("hidden");
   $("graceStatus").classList.add("hidden");
   $("menuMatchStatus").textContent = liveMatch ? "LIVE MATCH CONTINUES" : "MATCH PAUSED";
+  $("openShopBtn").disabled = !menuOpenedFromPrep;
 }
 
 function closeGameMenu() {
@@ -1986,6 +2073,12 @@ addEventListener("keydown", event => {
   }
   if (controllerLocked() || phase === "countdown") return;
   const key = event.key.toLowerCase();
+  if (!lobbyScreen.classList.contains("hidden")) {
+    if (["arrowup", "arrowleft", "arrowdown", "arrowright", "enter", " "].includes(key)) event.preventDefault();
+    if (["arrowup", "arrowleft"].includes(key)) { setInputMode("keyboard"); moveLobbyFocus("previous", "keyboard"); return; }
+    if (["arrowdown", "arrowright"].includes(key)) { setInputMode("keyboard"); moveLobbyFocus("next", "keyboard"); return; }
+    if (["enter", " "].includes(key)) { setInputMode("keyboard"); activateLobbyCommand(); return; }
+  }
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) event.preventDefault();
   if (key === "escape") { menuOpen ? closeGameMenu() : openGameMenu(); return; }
   if (key === "r") reloadWeapon(true);
@@ -2076,7 +2169,13 @@ document.querySelectorAll("[data-map]").forEach(button => {
     start();
   };
 });
-$("openShopBtn").onclick = () => { if (phase === "prep") interact(); };
+$("openShopBtn").onclick = () => {
+  if (menuOpenedFromPrep) {
+    phase = "prep";
+    closeGameMenu();
+    interact();
+  }
+};
 $("openChestBtn").onclick = interact;
 $("closeShopBtn").onclick = () => {
   ui.shop.classList.add("hidden");
@@ -2099,11 +2198,11 @@ $("upgradeShieldBtn").onclick = upgradeShield;
 $("restartBtn").onclick = () => { ui.over.classList.add("hidden"); start(); };
 $("settingsBtn").onclick = () => ui.settings.classList.remove("hidden");
 $("lobbySettingsBtn").onclick = () => ui.settings.classList.remove("hidden");
+$("menuSettingsBtn").onclick = () => ui.settings.classList.remove("hidden");
 $("closeSettingsBtn").onclick = () => ui.settings.classList.add("hidden");
 $("menuToggle").onclick = () => menuOpen ? closeGameMenu() : openGameMenu();
 $("resumeGameBtn").onclick = closeGameMenu;
 $("frontViewBtn").onclick = () => { frontView = !frontView; $("frontViewBtn").textContent = frontView ? "Arena View" : "First Person"; };
-$("menuSettingsBtn").onclick = () => { ui.settings.classList.remove("hidden"); };
 $("exitGameBtn").onclick = exitToLobby;
 $("mobileMenuSelect").onchange = event => {
   if (event.target.value === "resume") closeGameMenu();
@@ -2261,6 +2360,8 @@ $("ctf6LobbyBtn").onclick = () => {
   $("ctfMode").click();
   $("ctfPlayerControl").querySelector('[data-ctf-players="6"]').click();
 };
+
+bindLobbyNavigation();
 
 resize();
 updateControllerState([...navigator.getGamepads()].some(Boolean));
