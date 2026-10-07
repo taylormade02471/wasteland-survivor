@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const EMPTY_STATE = Object.freeze({ version: 1, players: {}, friendships: {}, invites: {}, matches: {}, audit: [] });
+const EMPTY_STATE = Object.freeze({ version: 2, players: {}, identities: {}, friendships: {}, invites: {}, matches: {}, audit: [] });
 const cleanText = (value, maximum = 40) => typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, maximum) : "";
 const PUBLIC_PLAYER_TAG_PATTERN = /^WS-[A-F0-9]{6,8}$/;
 const proposedPlayerTag = value => typeof value === "string" && PUBLIC_PLAYER_TAG_PATTERN.test(value.trim()) ? value.trim() : "";
@@ -35,7 +35,10 @@ class BackendStore {
     this.state = this.read();
   }
   read() {
-    try { return { ...EMPTY_STATE, ...JSON.parse(fs.readFileSync(this.filePath, "utf8")) }; }
+    try {
+      const stored = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
+      return { ...EMPTY_STATE, ...stored, identities: stored.identities && typeof stored.identities === "object" ? stored.identities : {} };
+    }
     catch { return JSON.parse(JSON.stringify(EMPTY_STATE)); }
   }
   persist() {
@@ -59,10 +62,12 @@ class BackendStore {
   upsertPlayer(input = {}) {
     const deviceProfileId = cleanText(input.deviceProfileId, 80);
     if (!deviceProfileId) throw new Error("deviceProfileId is required");
-    const existing = Object.values(this.state.players).find(player => player.deviceProfileId === deviceProfileId);
+    const existing = Object.values(this.state.players).find(player => player.deviceProfileId === deviceProfileId || player.deviceProfileIds?.includes(deviceProfileId));
     const id = existing?.id || crypto.randomUUID();
     const player = {
-      id, deviceProfileId, playerTag: existing?.playerTag || this.issuePlayerTag(input.playerTag),
+      id, deviceProfileId: existing?.deviceProfileId || deviceProfileId,
+      deviceProfileIds: [...new Set([...(existing?.deviceProfileIds || []), existing?.deviceProfileId, deviceProfileId].filter(Boolean))].slice(-10),
+      playerTag: existing?.playerTag || this.issuePlayerTag(input.playerTag),
       displayName: cleanText(input.displayName, 24) || existing?.displayName || "Survivor",
       avatarType: ["scout", "ranger", "heavy", "tech"].includes(input.avatarType) ? input.avatarType : existing?.avatarType || "scout",
       level: Math.max(1, Math.floor(Number(input.level) || existing?.level || 1)),
@@ -85,10 +90,38 @@ class BackendStore {
     if (!needle) return [];
     return Object.values(this.state.players)
       .filter(player => player.playerTag.toLowerCase() === needle || player.displayName.toLowerCase().includes(needle))
-      .map(({ deviceProfileId, deviceCredentialHash, deviceCredentialHashes, ...player }) => player).slice(0, 20);
+      .map(({ deviceProfileId, deviceProfileIds, deviceCredentialHash, deviceCredentialHashes, ...player }) => player).slice(0, 20);
   }
   playerById(id) { return this.state.players[id] || null; }
-  playerByDeviceProfileId(id) { return Object.values(this.state.players).find(player => player.deviceProfileId === id) || null; }
+  playerByDeviceProfileId(id) { return Object.values(this.state.players).find(player => player.deviceProfileId === id || player.deviceProfileIds?.includes(id)) || null; }
+  playerByProviderUid(providerUid) {
+    const identity = this.state.identities[cleanText(providerUid, 128)];
+    return identity ? this.state.players[identity.playerId] || null : null;
+  }
+  bindVerifiedIdentity({ providerUid, playerId, phoneHint }) {
+    const uid = cleanText(providerUid, 128);
+    const hint = cleanText(phoneHint, 40);
+    if (!uid || !this.state.players[playerId]) throw new Error("Verified identity requires a known player");
+    if (!/[\u2022*]/.test(hint) || hint.replace(/\D/g, "").length > 7) throw new Error("Only a masked phone hint may be stored");
+    const existing = this.state.identities[uid];
+    if (existing && existing.playerId !== playerId) throw new Error("Verified identity is already linked");
+    this.state.identities[uid] = { playerId, phoneHint: hint, linkedAt: existing?.linkedAt || new Date().toISOString() };
+    this.audit("identity.phone-linked", { playerId });
+    this.persist();
+    return this.state.identities[uid];
+  }
+  phoneHintForPlayer(playerId) {
+    return Object.values(this.state.identities).find(identity => identity.playerId === playerId)?.phoneHint || "";
+  }
+  addDeviceProfile(playerId, deviceProfileId) {
+    const player = this.state.players[playerId];
+    const profileId = cleanText(deviceProfileId, 80);
+    if (!player || !profileId) throw new Error("A known player and device profile are required");
+    player.deviceProfileIds = [...new Set([...(player.deviceProfileIds || []), player.deviceProfileId, profileId].filter(Boolean))].slice(-10);
+    this.audit("player.device-linked", { playerId });
+    this.persist();
+    return player;
+  }
   setDeviceCredential(playerId, credentialHash) {
     const player = this.state.players[playerId];
     if (!player) throw new Error("Unknown player");

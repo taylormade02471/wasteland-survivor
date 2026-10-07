@@ -4,7 +4,8 @@ const http = require("http");
 const path = require("path");
 const { WebSocket, WebSocketServer } = require("ws");
 const { createBackendStore } = require("./backend/firestore-store");
-const { DeviceLinkService, RateLimiter, RecoveryService, SessionService, hash } = require("./backend/security");
+const { RateLimiter, SessionService, hash } = require("./backend/security");
+const { PhoneAuthError, createPhoneAuthService } = require("./backend/phone-auth");
 const { ChestAccess } = require("./backend/chest-access");
 
 const port = Number(process.env.PORT || 8080);
@@ -21,8 +22,7 @@ const adminToken = process.env.ADMIN_TOKEN || "";
 const sessionSecret = process.env.SESSION_SECRET || "wasteland-local-session-secret-change-before-production";
 if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required in production");
 const sessions = new SessionService(sessionSecret);
-const recovery = new RecoveryService();
-const deviceLinks = new DeviceLinkService();
+const phoneAuth = createPhoneAuthService(process.env);
 const sensitiveLimiter = new RateLimiter({ limit: 8, windowMs: 60000, blockMs: 300000 });
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -119,14 +119,82 @@ function sessionPlayer(request) {
 
 function publicPlayer(player) {
   if (!player) return null;
-  const { deviceProfileId, deviceCredentialHash, deviceCredentialHashes, ...safe } = player;
+  const { deviceProfileId, deviceProfileIds, deviceCredentialHash, deviceCredentialHashes, ...safe } = player;
   return safe;
+}
+
+function phoneClientConfig() {
+  const enabled = phoneAuth.configured
+    && Boolean(process.env.FIREBASE_WEB_API_KEY)
+    && Boolean(process.env.FIREBASE_AUTH_DOMAIN)
+    && Boolean(process.env.FIREBASE_PROJECT_ID);
+  if (!enabled) return { enabled: false };
+  const result = {
+    enabled: true,
+    sdkVersion: process.env.FIREBASE_WEB_SDK_VERSION || "11.10.0",
+    firebaseConfig: {
+      apiKey: process.env.FIREBASE_WEB_API_KEY,
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      appId: process.env.FIREBASE_APP_ID || undefined,
+    },
+  };
+  if (process.env.NODE_ENV !== "production" && process.env.FIREBASE_AUTH_EMULATOR_URL) result.authEmulatorUrl = process.env.FIREBASE_AUTH_EMULATOR_URL;
+  return result;
 }
 
 function handleApi(request, response, requestUrl) {
   if (!requestUrl.pathname.startsWith("/api/")) return false;
   if (request.method === "GET" && requestUrl.pathname === "/api/status") {
     json(response, 200, { ok: true, rooms: activeRoomSummary(), uptimeSeconds: Math.floor(process.uptime()), persistence: true, storage: store.storageType });
+    return true;
+  }
+  if (request.method === "GET" && requestUrl.pathname === "/api/phone/config") {
+    json(response, 200, phoneClientConfig());
+    return true;
+  }
+  if (request.method === "POST" && requestUrl.pathname === "/api/account/phone") {
+    if (!enforceRateLimit(request, response, "phone-account")) return true;
+    readJson(request, response, async body => {
+      try {
+        const verified = await phoneAuth.verify(body.idToken);
+        let player = store.playerByProviderUid(verified.providerUid);
+        const restored = Boolean(player);
+        if (!player) {
+          const source = body.player && typeof body.player === "object" ? body.player : {};
+          if (typeof source.displayName !== "string" || !source.displayName.trim()) {
+            throw new PhoneAuthError("phone-account-not-found", "No player is linked to that verified phone", 404);
+          }
+          player = store.upsertPlayer({
+            deviceProfileId: body.deviceProfileId,
+            playerTag: source.playerTag,
+            displayName: source.displayName,
+            avatarType: source.avatarType,
+            level: source.level,
+            online: true,
+            stats: source.stats,
+            progress: source.progress,
+          });
+          store.bindVerifiedIdentity({ providerUid: verified.providerUid, playerId: player.id, phoneHint: verified.phoneHint });
+        } else {
+          store.addDeviceProfile(player.id, body.deviceProfileId);
+        }
+        const deviceCredential = crypto.randomBytes(32).toString("base64url");
+        store.setDeviceCredential(player.id, hash(deviceCredential));
+        store.audit(restored ? "identity.phone-restored" : "identity.phone-created", { playerId: player.id });
+        store.persist();
+        json(response, 200, {
+          restored,
+          player: publicPlayer(store.playerById(player.id)),
+          phoneHint: store.phoneHintForPlayer(player.id),
+          session: sessions.issue(player.id),
+          deviceCredential,
+        });
+      } catch (error) {
+        if (error instanceof PhoneAuthError) json(response, error.status, { error: error.message, code: error.code });
+        else json(response, /required|known player/i.test(error.message) ? 400 : 409, { error: error.message });
+      }
+    });
     return true;
   }
   if (request.method === "GET" && requestUrl.pathname === "/api/players/search") {
@@ -138,6 +206,9 @@ function handleApi(request, response, requestUrl) {
     readJson(request, response, body => {
       try {
         const existing = store.playerByDeviceProfileId(body.deviceProfileId);
+        if (!existing) {
+          json(response, 401, { error: "Verified phone account required" }); return;
+        }
         if (existing && !store.verifyDeviceCredential(existing.id, hash(body.deviceCredential || ""))) {
           json(response, 401, { error: "Device credential required" }); return;
         }
@@ -162,28 +233,6 @@ function handleApi(request, response, requestUrl) {
     });
     return true;
   }
-  if (request.method === "POST" && requestUrl.pathname === "/api/link/create") {
-    const actor = sessionPlayer(request);
-    if (!actor) { json(response, 401, { error: "Player session required" }); return true; }
-    const link = deviceLinks.create(actor.id);
-    store.audit("device-link.created", { playerId: actor.id }); store.persist();
-    json(response, 201, { playerTag: actor.playerTag, code: link.code, expiresAt: new Date(link.expiresAt).toISOString() });
-    return true;
-  }
-  if (request.method === "POST" && requestUrl.pathname === "/api/link/claim") {
-    if (!enforceRateLimit(request, response, "device-link")) return true;
-    readJson(request, response, body => {
-      const player = store.findPlayer(body.playerTag || "").find(candidate => candidate.playerTag.toLowerCase() === String(body.playerTag || "").trim().toLowerCase());
-      if (!player || !deviceLinks.claim(player.id, body.code)) {
-        json(response, 400, { error: "Invalid or expired link code" }); return;
-      }
-      const deviceCredential = crypto.randomBytes(32).toString("base64url");
-      store.setDeviceCredential(player.id, hash(deviceCredential));
-      store.audit("device-link.claimed", { playerId: player.id }); store.persist();
-      json(response, 200, { player: publicPlayer(store.playerById(player.id)), session: sessions.issue(player.id), deviceCredential });
-    });
-    return true;
-  }
   if (request.method === "POST" && requestUrl.pathname === "/api/invites") {
     const actor = sessionPlayer(request);
     if (!actor) { json(response, 401, { error: "Player session required" }); return true; }
@@ -199,29 +248,6 @@ function handleApi(request, response, requestUrl) {
     readJson(request, response, body => {
       try { json(response, 201, { match: store.recordMatch({ ...body, players: [...new Set([actor.id, ...(body.players || [])])] }) }); }
       catch (error) { json(response, 400, { error: error.message }); }
-    });
-    return true;
-  }
-  if (request.method === "POST" && requestUrl.pathname === "/api/recovery/request") {
-    if (!enforceRateLimit(request, response, "recovery-request")) return true;
-    readJson(request, response, body => {
-      const player = store.findPlayer(body.playerTag || "")[0];
-      const result = { accepted: true, delivery: "not-configured" };
-      if (player) {
-        const challenge = recovery.create(player.id);
-        store.audit("recovery.requested", { playerId: player.id }); store.persist();
-        if (process.env.NODE_ENV !== "production") result.developmentToken = challenge.token;
-      }
-      json(response, 202, result);
-    });
-    return true;
-  }
-  if (request.method === "POST" && requestUrl.pathname === "/api/recovery/verify") {
-    if (!enforceRateLimit(request, response, "recovery-verify")) return true;
-    readJson(request, response, body => {
-      const verified = recovery.consume(body.token);
-      if (!verified) { json(response, 400, { error: "Invalid or expired recovery token" }); return; }
-      json(response, 200, { session: sessions.issue(verified.playerId) });
     });
     return true;
   }

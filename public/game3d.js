@@ -24,6 +24,21 @@ import {
 import { reduceClientMatchLifecycle } from "./matchmaking-client.mjs";
 import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
 import {
+  beginLocalPinAttempts,
+  beginPhoneChallenge,
+  buildPhoneLinkRequest,
+  createRestoredLocalProfile,
+  failPhoneChallenge,
+  finishPhoneChallenge,
+  maskPhoneNumber,
+  mayResendPhoneChallenge,
+  mergeVerifiedLocalProfile,
+  normalizePhoneNumber,
+  recordLocalPinAttempt,
+  sanitizeLocalProfile,
+} from "./phone-account.mjs";
+import { loadPhoneAuthProvider } from "./phone-auth-provider.mjs";
+import {
   applyAuthoritativePlayerIdentity,
   backfillProfileIdentities,
   createLobbyProfileView,
@@ -63,18 +78,15 @@ const lobbyScreen = $("lobbyScreen");
 const profileStep = $("profileStep");
 const returnStep = $("returnStep");
 const linkProfileStep = $("linkProfileStep");
-const profileContact = $("profileContact");
+const phoneCodeStep = $("phoneCodeStep");
+const profilePhone = $("profilePhone");
 const profileAvatar = $("profileAvatar");
 const profileName = $("profileName");
 const profileBirthDate = $("profileBirthDate");
 const ageConfirm = $("ageConfirm");
 const parentSetup = $("parentSetup");
-const parentContact = $("parentContact");
-const mathStep = $("mathStep");
-const mathQuestion = $("mathQuestion");
-const mathAnswer = $("mathAnswer");
-const mathTimer = $("mathTimer");
-const mathMessage = $("mathMessage");
+const parentPhone = $("parentPhone");
+const parentPin = $("parentPin");
 const profilePin = $("profilePin");
 const returnPin = $("returnPin");
 const profileMessage = $("profileMessage");
@@ -163,11 +175,13 @@ let lobbyConnectivity = {
   lobbySocketOpen: false,
 };
 let youthAccount = false;
-let pendingProfile = null;
 let activeProfile = null;
 let editingProfile = false;
-let mathExpected = 0;
-let mathDeadline = 0;
+let phoneProviderPromise = null;
+let phoneConfirmation = null;
+let phoneChallenge = null;
+let pendingPhoneAction = null;
+const localPinAttempts = new Map();
 let audioContext = null;
 let musicTimer = null;
 let musicStep = 0;
@@ -1365,44 +1379,132 @@ function ageFromBirthDate(value) {
   return age >= 0 && age <= 120 ? age : null;
 }
 
-function beginMathCheck(profile) {
-  pendingProfile = profile;
-  mathExpected = Math.floor(Math.random() * 40) + 10 + Math.floor(Math.random() * 20);
-  const first = Math.floor(Math.random() * 20) + 10;
-  const second = mathExpected - first;
-  mathQuestion.textContent = `${first} + ${second} = ?`;
-  mathAnswer.value = "";
-  mathMessage.textContent = "";
-  mathDeadline = Date.now() + 120000;
-  profileStep.classList.add("hidden");
-  returnStep.classList.add("hidden");
-  mathStep.classList.remove("hidden");
-  mathAnswer.focus();
+function phoneEnvironment() {
+  return ["localhost", "127.0.0.1", "::1"].includes(location.hostname) ? "development" : "production";
 }
 
-function finishMathCheck() {
-  if (!pendingProfile) return;
-  if (Date.now() > mathDeadline) {
-    mathMessage.textContent = "Time expired. The setup has been restarted.";
-    pendingProfile = null;
-    mathStep.classList.add("hidden");
-    profileStep.classList.remove("hidden");
+function phoneProvider() {
+  if (!phoneProviderPromise) phoneProviderPromise = loadPhoneAuthProvider({ environment: phoneEnvironment() });
+  return phoneProviderPromise;
+}
+
+function hideProfileSteps() {
+  profileStep.classList.add("hidden");
+  returnStep.classList.add("hidden");
+  linkProfileStep.classList.add("hidden");
+  phoneCodeStep.classList.add("hidden");
+}
+
+async function sendPhoneCode({ kind, phoneNumber, profile, pinDigest: localPinDigest }) {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  const message = kind === "restore" ? $("linkProfileMessage") : profileMessage;
+  if (!normalized) {
+    message.textContent = "Enter a valid mobile number.";
+    return false;
+  }
+  message.textContent = "Requesting a secure verification code...";
+  try {
+    phoneConfirmation?.dispose?.();
+    const provider = await phoneProvider();
+    phoneConfirmation = await provider.sendCode({ phoneNumber: normalized, recaptchaContainer: "phoneRecaptcha" });
+    phoneChallenge = beginPhoneChallenge(normalized);
+    pendingPhoneAction = { kind, phoneNumber: normalized, profile, pinDigest: localPinDigest };
+    profilePhone.value = "";
+    $("linkPhone").value = "";
+    $("phoneCode").value = "";
+    $("phoneCodeMessage").textContent = "";
+    $("phoneCodeHeading").textContent = kind === "restore" ? "Restore Linked Player" : "Verify Mobile Number";
+    $("phoneCodeHint").textContent = `A code was sent to ${phoneChallenge.phoneHint}. The number is not shown to other players.`;
+    hideProfileSteps();
+    phoneCodeStep.classList.remove("hidden");
+    $("phoneCode").focus();
+    updatePhoneResendControl();
+    return true;
+  } catch (error) {
+    phoneProviderPromise = null;
+    message.textContent = error?.message || "Verified phone sign-in is unavailable. Offline play still works.";
+    return false;
+  }
+}
+
+function updatePhoneResendControl() {
+  const button = $("resendPhoneCodeBtn");
+  if (!phoneChallenge || !pendingPhoneAction) {
+    button.disabled = true;
+    button.textContent = "Resend code";
     return;
   }
-  if (Number(mathAnswer.value.trim()) !== mathExpected) {
-    mathMessage.textContent = "That answer is not correct.";
+  const remaining = Math.max(0, Math.ceil((phoneChallenge.resendAt - Date.now()) / 1000));
+  const allowed = mayResendPhoneChallenge(phoneChallenge);
+  button.disabled = !allowed;
+  button.textContent = allowed ? "Resend code" : `Resend code in ${remaining}s`;
+}
+
+async function confirmPhoneCode() {
+  const code = $("phoneCode").value.trim();
+  const message = $("phoneCodeMessage");
+  if (!/^\d{6}$/.test(code) || !pendingPhoneAction || !phoneConfirmation) {
+    message.textContent = "Enter the six-digit verification code.";
     return;
   }
-  const profile = pendingProfile;
-  pendingProfile = null;
-  saveProfile(profile);
-  activeProfile = profile;
-  if (profile.youthAccount) {
-    offlineMode = true;
-    localStorage.setItem("wastland-survivor-offline", "true");
+  message.textContent = "Confirming verified account...";
+  try {
+    const idToken = await phoneConfirmation.confirm(code);
+    phoneChallenge = finishPhoneChallenge(phoneChallenge);
+    const action = pendingPhoneAction;
+    const requestBody = action.kind === "create"
+      ? buildPhoneLinkRequest({ idToken, profile: action.profile })
+      : { idToken, deviceProfileId: action.profile.profileId };
+    const response = await fetch("/api/account/phone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "The verified account could not be linked");
+    const restored = createRestoredLocalProfile({
+      player: payload.player,
+      pinDigest: action.pinDigest,
+      phoneHint: payload.phoneHint,
+      session: payload.session,
+      deviceCredential: payload.deviceCredential,
+      profileId: action.profile.profileId,
+    });
+    const profile = mergeVerifiedLocalProfile({ draft: action.profile, restored, deviceId: deviceId() });
+    saveProfile(profile);
+    activeProfile = profile;
+    loadProgress(profile);
+    offlineMode = false;
+    localStorage.setItem("wastland-survivor-offline", "false");
+    updateLobbyConnectivity({ type: "player-service-success" });
+    phoneConfirmation.dispose?.();
+    phoneConfirmation = null;
+    pendingPhoneAction = null;
+    phoneChallenge = null;
+    $("phoneCode").value = "";
+    openLobby(profile.name);
+  } catch (error) {
+    if (phoneChallenge?.status === "code-sent") phoneChallenge = failPhoneChallenge(phoneChallenge);
+    message.textContent = phoneChallenge?.status === "locked"
+      ? "Too many attempts. Start a new phone verification."
+      : error?.message || "The verification code was not accepted.";
   }
-  mathStep.classList.add("hidden");
-  openLobby(profile.name);
+}
+
+async function resendPhoneCode() {
+  if (!pendingPhoneAction || !mayResendPhoneChallenge(phoneChallenge)) return;
+  const action = pendingPhoneAction;
+  await sendPhoneCode(action);
+}
+
+function cancelPhoneVerification() {
+  const previous = pendingPhoneAction?.kind;
+  phoneConfirmation?.dispose?.();
+  phoneConfirmation = null;
+  phoneChallenge = null;
+  pendingPhoneAction = null;
+  hideProfileSteps();
+  (previous === "restore" ? linkProfileStep : profileStep).classList.remove("hidden");
 }
 
 async function syncPublicPlayer() {
@@ -1453,82 +1555,21 @@ async function syncPublicPlayer() {
   }
 }
 
-async function createDeviceLink() {
-  const result = $("deviceLinkResult");
-  result.textContent = "Creating secure link code...";
-  if (!activeProfile || activeProfile.youthAccount || offlineMode) {
-    result.textContent = "Device linking requires an adult online profile.";
-    return;
-  }
-  try {
-    if (!activeProfile.backendSession && !(await syncPublicPlayer())) {
-      result.textContent = "The player service is unavailable. Try again when online.";
-      return;
-    }
-    let response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
-    if (!response.ok) updateLobbyConnectivity({ type: "player-service-failure" });
-    if (response.status === 401 && await syncPublicPlayer()) {
-      response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
-    }
-    if (!response.ok) {
-      updateLobbyConnectivity({ type: "player-service-failure" });
-      result.textContent = "A link code could not be created right now.";
-      return;
-    }
-    updateLobbyConnectivity({ type: "player-service-success" });
-    const link = await response.json();
-    result.textContent = `${link.playerTag}  ·  ${link.code}  ·  expires in 5 minutes`;
-  } catch {
-    updateLobbyConnectivity({ type: "player-service-failure" });
-    result.textContent = "The player service is unavailable. Try again when online.";
-  }
-}
-
 async function claimDeviceLink() {
   const message = $("linkProfileMessage");
-  const playerTag = $("linkPlayerTag").value.trim().toUpperCase();
-  const code = $("linkCode").value.trim();
+  const phoneNumber = $("linkPhone").value;
   const pin = $("linkLocalPin").value.trim();
-  if (!playerTag || !/^\d{6}$/.test(code) || !validPin(pin)) {
-    message.textContent = "Enter the Player Tag, six-digit code, and a new four-digit PIN.";
+  if (!normalizePhoneNumber(phoneNumber) || !validPin(pin)) {
+    message.textContent = "Enter the linked mobile number and a new four-digit PIN.";
     return;
   }
-  message.textContent = "Linking player...";
-  try {
-    const response = await fetch("/api/link/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerTag, code }) });
-    const payload = await response.json();
-    if (!response.ok) {
-      updateLobbyConnectivity({ type: "player-service-failure" });
-      message.textContent = payload.error || "The link code is invalid or expired.";
-      return;
-    }
-    updateLobbyConnectivity({ type: "player-service-success" });
-    const digest = await pinDigest(pin);
-    const profile = {
-      profileId: crypto.randomUUID(), name: payload.player.displayName, birthDate: "", age: null, contact: "",
-      avatarType: payload.player.avatarType || "scout", parentContact: "", youthAccount: false,
-      pinDigest: digest, deviceId: deviceId(), ageVerifiedAt: null, linkedAccount: true,
-      progress: payload.player.progress || null, backendPlayerId: payload.player.id, playerTag: payload.player.playerTag,
-      backendDeviceCredential: payload.deviceCredential, backendSession: payload.session,
-    };
-    saveProfile(profile);
-    activeProfile = profile;
-    loadProgress(profile);
-    offlineMode = false;
-    localStorage.setItem("wastland-survivor-offline", "false");
-    $("linkCode").value = "";
-    $("linkLocalPin").value = "";
-    openLobby(profile.name);
-  } catch {
-    updateLobbyConnectivity({ type: "player-service-failure" });
-    message.textContent = "The player service is unavailable. Your local profiles were not changed.";
-  }
+  const digest = await pinDigest(pin);
+  const profile = { profileId: crypto.randomUUID(), youthAccount: false };
+  if (await sendPhoneCode({ kind: "restore", phoneNumber, profile, pinDigest: digest })) $("linkLocalPin").value = "";
 }
 
 function showDeviceLinkStep() {
-  profileStep.classList.add("hidden");
-  returnStep.classList.add("hidden");
-  mathStep.classList.add("hidden");
+  hideProfileSteps();
   linkProfileStep.classList.remove("hidden");
   $("linkProfileMessage").textContent = "";
 }
@@ -1600,6 +1641,12 @@ function renderLobbyProfile(fallbackName = "Offline Guest") {
   $("lobbyAvatarImage").alt = view.avatar.name;
   $("lobbyAvatarButton").setAttribute("aria-label", `Open ${view.displayName} loadout`);
   $("lobbyProfileReadout").setAttribute("aria-label", `Open ${view.displayName} profile and loadout`);
+  $("verifiedPhoneStatus").textContent = activeProfile?.phoneHint
+    ? `Linked privately to ${activeProfile.phoneHint}. Use that number to restore this Player Tag on another device.`
+    : activeProfile?.youthAccount
+      ? "Parent controls are stored only on this device."
+      : "Verify a mobile number to restore this Player Tag on another device.";
+  $("openPhoneAccountBtn").disabled = Boolean(activeProfile?.youthAccount);
 }
 
 function openConnections() {
@@ -1641,14 +1688,20 @@ function editActiveProfile() {
   setMenuSection("survivor");
   profileStep.classList.remove("hidden");
   returnStep.classList.add("hidden");
-  mathStep.classList.add("hidden");
+  linkProfileStep.classList.add("hidden");
+  phoneCodeStep.classList.add("hidden");
   profileName.value = activeProfile.name || "";
   profileBirthDate.value = activeProfile.birthDate || "";
-  profileContact.value = activeProfile.contact || "";
+  profilePhone.value = "";
   profileAvatar.value = activeProfile.avatarType || "scout";
   updateAvatarCards();
   ageConfirm.checked = true;
-  profilePin.value = "0000";
+  profilePin.value = "";
+  profilePhone.closest("label").classList.add("hidden");
+  profilePin.closest("label").classList.add("hidden");
+  parentPhone.closest("label").classList.toggle("hidden", Boolean(activeProfile.youthAccount));
+  parentSetup.classList.toggle("hidden", !activeProfile.youthAccount);
+  parentPin.value = "";
   $("enterWastlandBtn").textContent = "Save Profile";
   $("guestOfflineBtn").classList.add("hidden");
   profileMessage.textContent = "Update your name or avatar, then save.";
@@ -1669,8 +1722,10 @@ function savedProfiles() {
     legacy = null;
   }
   const source = profiles.length ? profiles : legacy ? [legacy] : [];
-  const backfill = backfillProfileIdentities(source, () => crypto.randomUUID());
-  if (backfill.changed || (!profiles.length && backfill.profiles.length)) {
+  const sanitizedSource = source.map(sanitizeLocalProfile);
+  const privacyChanged = JSON.stringify(source) !== JSON.stringify(sanitizedSource);
+  const backfill = backfillProfileIdentities(sanitizedSource, () => crypto.randomUUID());
+  if (privacyChanged || backfill.changed || (!profiles.length && backfill.profiles.length)) {
     localStorage.setItem("wastland-survivor-profiles", JSON.stringify(backfill.profiles));
     const currentId = typeof legacy?.profileId === "string" ? legacy.profileId : "";
     const current = backfill.profiles.find(profile => profile.profileId === currentId) || backfill.profiles.at(-1);
@@ -1681,7 +1736,7 @@ function savedProfiles() {
 
 function saveProfile(profile = activeProfile) {
   if (!profile) return;
-  const stableProfile = ensureProfileIdentity(profile, () => crypto.randomUUID());
+  const stableProfile = ensureProfileIdentity(sanitizeLocalProfile(profile), () => crypto.randomUUID());
   Object.assign(profile, stableProfile);
   const profiles = savedProfiles().filter(item => item.profileId !== stableProfile.profileId);
   profiles.push(stableProfile);
@@ -1744,13 +1799,14 @@ function openDashboard() {
   $("dashboardModal").classList.remove("hidden");
 }
 
-function enterProfile() {
+async function enterProfile() {
   const name = profileName.value.trim();
   const birthDate = profileBirthDate.value;
   const age = ageFromBirthDate(birthDate);
-  const contact = profileContact.value.trim();
+  const phoneNumber = profilePhone.value;
   const pin = profilePin.value.trim();
-  const parent = parentContact.value.trim();
+  const parentPhoneNumber = parentPhone.value;
+  const parentLocalPin = parentPin.value.trim();
   if (!name) {
     profileMessage.textContent = "Enter a player name.";
     return;
@@ -1758,10 +1814,6 @@ function enterProfile() {
   if (age === null) {
     profileMessage.textContent = "This birth date could not be verified. Parent controls will stay available until it is verified.";
     parentSetup.classList.remove("hidden");
-    return;
-  }
-  if (!contact) {
-    profileMessage.textContent = "Enter an email or phone number.";
     return;
   }
   if (!editingProfile && !validPin(pin)) {
@@ -1773,12 +1825,14 @@ function enterProfile() {
     return;
   }
   youthAccount = age < 14;
-  if (youthAccount && !parent) {
-    profileMessage.textContent = "A parent email or phone is required for players under 14.";
-    parentSetup.classList.remove("hidden");
-    return;
-  }
   if (editingProfile && activeProfile) {
+    if (activeProfile.youthAccount) {
+      if (!validPin(parentLocalPin) || await pinDigest(parentLocalPin) !== activeProfile.parentPinDigest) {
+        profileMessage.textContent = "Enter the parent PIN to edit this youth profile.";
+        parentSetup.classList.remove("hidden");
+        return;
+      }
+    }
     activeProfile.name = name;
     activeProfile.avatarType = profileAvatar.value;
     saveProfile();
@@ -1786,24 +1840,52 @@ function enterProfile() {
     $("enterWastlandBtn").textContent = "Enter Wasteland";
     $("guestOfflineBtn").classList.remove("hidden");
     profilePin.value = "";
+    profilePhone.closest("label").classList.remove("hidden");
+    profilePin.closest("label").classList.remove("hidden");
+    parentPhone.closest("label").classList.remove("hidden");
+    parentPin.value = "";
+    parentSetup.classList.add("hidden");
     profileMessage.textContent = "Profile saved.";
     openLobby(name);
     return;
   }
-  pinDigest(pin).then(digest => {
-    const profile = { profileId: crypto.randomUUID(), name, birthDate, age, contact, avatarType: profileAvatar.value, parentContact: youthAccount ? parent : "", youthAccount, pinDigest: digest, deviceId: deviceId(), ageVerifiedAt: new Date().toISOString(), progress: null };
-    profilePin.value = "";
-    if (age >= 18) beginMathCheck(profile);
-    else {
-      saveProfile(profile);
-      activeProfile = profile;
-      if (youthAccount) {
-        offlineMode = true;
-        localStorage.setItem("wastland-survivor-offline", "true");
-      }
-      openLobby(name);
-    }
+  if (youthAccount && (!normalizePhoneNumber(parentPhoneNumber) || !validPin(parentLocalPin))) {
+    profileMessage.textContent = "A parent mobile number and separate four-digit parent PIN are required for players under 14.";
+    parentSetup.classList.remove("hidden");
+    return;
+  }
+  if (!youthAccount && !normalizePhoneNumber(phoneNumber)) {
+    profileMessage.textContent = "Enter a valid mobile number for secure account recovery.";
+    return;
+  }
+  const digest = await pinDigest(pin);
+  const parentPinDigest = youthAccount ? await pinDigest(parentLocalPin) : "";
+  const profile = sanitizeLocalProfile({
+    profileId: crypto.randomUUID(),
+    name,
+    birthDate,
+    age,
+    avatarType: profileAvatar.value,
+    parentPhoneHint: youthAccount ? maskPhoneNumber(parentPhoneNumber) : "",
+    parentPinDigest,
+    youthAccount,
+    pinDigest: digest,
+    deviceId: deviceId(),
+    ageVerifiedAt: new Date().toISOString(),
+    progress: null,
   });
+  profilePin.value = "";
+  parentPin.value = "";
+  parentPhone.value = "";
+  if (youthAccount) {
+    saveProfile(profile);
+    activeProfile = profile;
+    offlineMode = true;
+    localStorage.setItem("wastland-survivor-offline", "true");
+    openLobby(name);
+    return;
+  }
+  await sendPhoneCode({ kind: "create", phoneNumber, profile, pinDigest: digest });
 }
 
 function returnProfile() {
@@ -1814,9 +1896,17 @@ function returnProfile() {
     returnMessage.textContent = "Enter the four-digit PIN for this profile.";
     return;
   }
+  const previousAttempts = localPinAttempts.get(saved.profileId) || beginLocalPinAttempts(saved.profileId);
+  if (previousAttempts.lockedUntil > Date.now()) {
+    returnMessage.textContent = `Too many attempts. Try again in ${Math.ceil((previousAttempts.lockedUntil - Date.now()) / 1000)} seconds.`;
+    return;
+  }
   pinDigest(pin).then(digest => {
-    if (digest !== saved.pinDigest) {
-      returnMessage.textContent = "That PIN did not match this profile.";
+    const matched = digest === saved.pinDigest;
+    const nextAttempts = recordLocalPinAttempt(previousAttempts, matched);
+    localPinAttempts.set(saved.profileId, nextAttempts);
+    if (!matched) {
+      returnMessage.textContent = nextAttempts.lockedUntil ? "Too many attempts. This local profile is locked for 30 seconds." : "That PIN did not match this profile.";
       return;
     }
     returnPin.value = "";
@@ -1827,18 +1917,17 @@ function returnProfile() {
       offlineMode = true;
       localStorage.setItem("wastland-survivor-offline", "true");
     }
-    openLobby(saved.name || saved.contact);
+    openLobby(saved.name || "Survivor");
   });
 }
 
 function showProfileChoice() {
   const profiles = savedProfiles();
-  const saved = profiles[0];
   profileMessage.textContent = "";
   returnMessage.textContent = "";
-  profileSelector.replaceChildren(...profiles.map(profile => new Option(`${profile.name} · ${profile.birthDate}`, profile.profileId || profile.contact)));
+  profileSelector.replaceChildren(...profiles.map(profile => new Option(`${profile.name} · ${profile.birthDate || profile.phoneHint || "local profile"}`, profile.profileId)));
   linkProfileStep.classList.add("hidden");
-  mathStep.classList.add("hidden");
+  phoneCodeStep.classList.add("hidden");
   if (profiles.length) {
     profileStep.classList.add("hidden");
     returnStep.classList.remove("hidden");
@@ -1851,6 +1940,10 @@ function showProfileChoice() {
 
 function initializeProfileScreen() {
   editingProfile = false;
+  profilePhone.closest("label").classList.remove("hidden");
+  profilePin.closest("label").classList.remove("hidden");
+  parentPhone.closest("label").classList.remove("hidden");
+  parentSetup.classList.add("hidden");
   $("enterWastlandBtn").textContent = "Enter Wasteland";
   $("guestOfflineBtn").classList.remove("hidden");
   showProfileChoice();
@@ -2708,7 +2801,14 @@ $("showLinkProfileBtn").onclick = showDeviceLinkStep;
 $("showLinkProfileNewBtn").onclick = showDeviceLinkStep;
 $("linkProfileBackBtn").onclick = initializeProfileScreen;
 $("claimLinkBtn").onclick = claimDeviceLink;
-$("createDeviceLinkBtn").onclick = createDeviceLink;
+$("phoneCodeBackBtn").onclick = cancelPhoneVerification;
+$("confirmPhoneCodeBtn").onclick = confirmPhoneCode;
+$("resendPhoneCodeBtn").onclick = resendPhoneCode;
+$("openPhoneAccountBtn").onclick = () => {
+  $("verifiedPhoneStatus").textContent = activeProfile?.phoneHint
+    ? `Linked privately to ${activeProfile.phoneHint}. On another device, choose Restore Linked Player.`
+    : "Return to the profile screen and choose Restore Linked Player after verification.";
+};
 document.querySelectorAll(".avatar-choice").forEach(card => card.onclick = () => {
   profileAvatar.value = card.dataset.avatar;
   updateAvatarCards(card.dataset.avatar);
@@ -2718,16 +2818,17 @@ profileBirthDate.addEventListener("input", () => {
   const age = ageFromBirthDate(profileBirthDate.value);
   parentSetup.classList.toggle("hidden", !(age > 0 && age < 14));
 });
-$("verifyMathBtn").onclick = finishMathCheck;
-[profilePin, returnPin, mathAnswer].forEach(input => {
+[profilePin, returnPin, parentPin, $("linkLocalPin")].forEach(input => {
   ["copy", "cut", "paste", "contextmenu"].forEach(eventName => input.addEventListener(eventName, event => event.preventDefault()));
 });
 setInterval(() => {
-  if (!pendingProfile) return;
-  const remaining = Math.max(0, mathDeadline - Date.now());
-  mathTimer.textContent = `${String(Math.ceil(remaining / 60000)).padStart(2, "0")}:${String(Math.ceil(remaining / 1000) % 60).padStart(2, "0")}`;
-  if (!remaining) finishMathCheck();
-}, 250);
+  if (!phoneChallenge) return;
+  updatePhoneResendControl();
+  if (phoneChallenge.status === "code-sent" && Date.now() > phoneChallenge.expiresAt) {
+    phoneChallenge = failPhoneChallenge(phoneChallenge, phoneChallenge.expiresAt + 1);
+    $("phoneCodeMessage").textContent = "This code expired. Go back and request a new one.";
+  }
+}, 1000);
 $("returnWastlandBtn").onclick = returnProfile;
 $("storyGuestBtn").onclick = () => { offlineMode = true; localStorage.setItem("wastland-survivor-offline", "true"); openLobby(activeProfile?.name || "Offline Story Player"); };
 $("newProfileBtn").onclick = () => {

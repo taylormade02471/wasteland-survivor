@@ -30,6 +30,21 @@ test("players persist and can be found by tag or display name", () => {
   const reopened = new BackendStore(backend.filePath);
   assert.equal(reopened.findPlayer(player.playerTag)[0].id, player.id); assert.equal(reopened.findPlayer("kyl")[0].displayName, "Kyle"); assert.equal(reopened.findPlayer("kyl")[0].deviceProfileId, undefined);
 });
+test("verified provider identity restores one permanent player across device profiles without storing a raw phone", () => {
+  const backend = store();
+  const player = backend.upsertPlayer({ deviceProfileId: "device-one", displayName: "Kyle", playerTag: "WS-A1B2C3D4" });
+  backend.bindVerifiedIdentity({ providerUid: "firebase-user-1", playerId: player.id, phoneHint: "+1 ••• ••• 0123" });
+  backend.addDeviceProfile(player.id, "device-two");
+
+  assert.equal(backend.playerByProviderUid("firebase-user-1").playerTag, "WS-A1B2C3D4");
+  assert.equal(backend.playerByDeviceProfileId("device-two").id, player.id);
+  assert.throws(() => backend.bindVerifiedIdentity({ providerUid: "firebase-user-2", playerId: player.id, phoneHint: "+16155550123" }), /masked/i);
+
+  const persisted = fs.readFileSync(backend.filePath, "utf8");
+  assert.equal(persisted.includes("+16155550123"), false);
+  assert.equal(JSON.stringify(backend.findPlayer("Kyle")).includes("firebase-user-1"), false);
+  assert.equal(JSON.stringify(backend.dashboard([])).includes("firebase-user-1"), false);
+});
 test("friends, invitations, matches, and dashboard totals work", () => {
   const backend = store(); const one = backend.upsertPlayer({ deviceProfileId: "one", displayName: "One" }); const two = backend.upsertPlayer({ deviceProfileId: "two", displayName: "Two" });
   assert.equal(backend.addFriend(one.id, two.id).status, "accepted"); assert.equal(backend.createInvite({ fromPlayerId: one.id, toPlayerId: two.id, room: "ABC123", mode: "2v2" }).status, "pending");

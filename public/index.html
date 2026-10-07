@@ -34,7 +34,7 @@
           <p class="nightfall-crown">Nightfall</p>
           <div class="survivor-title-plate"><h1>Wasteland Survivor</h1></div>
           <p class="hero-tagline">No one is coming. Hold the line.</p>
-          <p class="welcome-copy">Build your survivor profile, return with your four-digit PIN, and choose a lobby.</p>
+          <p class="welcome-copy">Build your survivor profile, verify your mobile number for private recovery, and choose a lobby.</p>
         </div>
         <div class="title-survivor" aria-hidden="true">
           <span class="title-survivor-glow"></span>
@@ -45,7 +45,7 @@
       <div id="profileStep" class="profile-step">
         <label for="profileName">Player name <input id="profileName" type="text" maxlength="24" autocomplete="nickname" placeholder="Survivor name" /></label>
         <label for="profileBirthDate">Date of birth <input id="profileBirthDate" type="date" autocomplete="bday" /></label>
-        <label for="profileContact">Email or phone <input id="profileContact" type="text" autocomplete="username" placeholder="you@example.com or phone" /></label>
+        <label for="profilePhone">Mobile number <input id="profilePhone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(615) 555-0123" /></label>
         <fieldset class="avatar-picker">
           <legend>Choose your survivor</legend>
           <div class="avatar-selection-grid">
@@ -63,21 +63,13 @@
         <div id="parentSetup" class="parent-setup hidden">
           <b>Parent controls required</b>
           <small>Players under 14 start with voice and online-network features restricted.</small>
-          <label for="parentContact">Parent email or phone <input id="parentContact" type="text" placeholder="Parent contact" /></label>
+          <label for="parentPhone">Parent mobile number <input id="parentPhone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(615) 555-0123" /></label>
+          <label for="parentPin">Parent 4-digit PIN <input id="parentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" /></label>
         </div>
         <button id="enterWastlandBtn" class="full-button" type="button">Enter Wasteland</button>
         <button id="guestOfflineBtn" class="text-button" type="button">Play offline as guest</button>
         <button id="showLinkProfileNewBtn" class="text-button" type="button">Link a player from another device</button>
         <p id="profileMessage" class="form-message" role="status"></p>
-      </div>
-      <div id="mathStep" class="profile-step hidden">
-        <p class="eyebrow">Age verification check</p>
-        <p class="math-prompt">For players 18 and older, solve this check without copy and paste:</p>
-        <b id="mathQuestion" class="math-question"></b>
-        <label for="mathAnswer">Answer <input id="mathAnswer" type="text" inputmode="numeric" autocomplete="off" /></label>
-        <p id="mathTimer" class="math-timer">02:00</p>
-        <button id="verifyMathBtn" class="full-button" type="button">Verify And Continue</button>
-        <p id="mathMessage" class="form-message" role="status"></p>
       </div>
       <div id="returnStep" class="profile-step hidden">
         <p id="returningPlayer" class="returning-player"></p>
@@ -91,13 +83,22 @@
       </div>
       <div id="linkProfileStep" class="profile-step hidden">
         <button id="linkProfileBackBtn" class="screen-back-button" type="button">&#8592; Back</button>
-        <p class="eyebrow">Link Existing Player</p>
-        <p class="welcome-copy">On the original device, open Settings and choose Link Another Device. Enter its Player Tag and temporary code here.</p>
-        <label for="linkPlayerTag">Player Tag <input id="linkPlayerTag" type="text" maxlength="18" autocomplete="off" placeholder="KYLE-7F2Q" /></label>
-        <label for="linkCode">6-digit link code <input id="linkCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" /></label>
+        <p class="eyebrow">Restore Linked Player</p>
+        <p class="welcome-copy">Verify the mobile number already linked to your survivor. Your new four-digit PIN will lock this profile only on this device.</p>
+        <label for="linkPhone">Verified mobile number <input id="linkPhone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(615) 555-0123" /></label>
         <label for="linkLocalPin">New 4-digit PIN for this device <input id="linkLocalPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" /></label>
-        <button id="claimLinkBtn" class="full-button" type="button">Link This Device</button>
+        <button id="claimLinkBtn" class="full-button" type="button">Send Verification Code</button>
         <p id="linkProfileMessage" class="form-message" role="status"></p>
+      </div>
+      <div id="phoneCodeStep" class="profile-step hidden">
+        <button id="phoneCodeBackBtn" class="screen-back-button" type="button">&#8592; Back</button>
+        <p id="phoneCodeHeading" class="eyebrow">Verify Mobile Number</p>
+        <p id="phoneCodeHint" class="welcome-copy"></p>
+        <label for="phoneCode">6-digit verification code <input id="phoneCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" /></label>
+        <button id="confirmPhoneCodeBtn" class="full-button" type="button">Verify And Continue</button>
+        <button id="resendPhoneCodeBtn" class="text-button" type="button" disabled>Resend code in 30s</button>
+        <div id="phoneRecaptcha" aria-hidden="true"></div>
+        <p id="phoneCodeMessage" class="form-message" role="status"></p>
       </div>
     </div>
   </section>
@@ -336,9 +337,8 @@
         <label class="switch-control"><input id="offlineToggle" type="checkbox" /><span>Offline mode</span></label>
       </div>
       <div class="device-link-card">
-        <div><b>Play On Another Device</b><small>Your temporary code expires in five minutes and works once.</small></div>
-        <button id="createDeviceLinkBtn" type="button">Link Another Device</button>
-        <output id="deviceLinkResult" class="device-link-result" aria-live="polite"></output>
+        <div><b>Verified Account</b><small id="verifiedPhoneStatus">Verify a mobile number to restore this Player Tag on another device.</small></div>
+        <button id="openPhoneAccountBtn" type="button">Phone Account</button>
       </div>
       <p class="permission-status network-note">Offline mode blocks lobby and voice connections. A parent can also lock this setting with the device or browser parental controls.</p>
       <div class="permission-status"><span>Microphone: when joining voice</span><span>Storage: game settings only</span><span>Location: off</span></div>

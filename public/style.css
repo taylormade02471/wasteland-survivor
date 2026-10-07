@@ -284,9 +284,7 @@ button:disabled {
 .parent-setup small { color: #e7b9c1; line-height: 1.4; }
 .parent-setup label { margin-top: 4px; }
 .form-message { min-height: 18px; color: #ff6c84; font-size: 12px; }
-.math-prompt { color: #c7c5b7; line-height: 1.45; }
-.math-question { display: block; color: #66fcf1; font-size: 28px; letter-spacing: .08em; }
-.math-timer { color: #ffdf52; font-weight: 900; letter-spacing: .08em; }
+#phoneRecaptcha { width: 1px; height: 1px; overflow: hidden; }
 .returning-player { color: #66fcf1; font-weight: 800; }
 .text-button { margin: 12px auto 0; border: 0; background: transparent; color: #9debe7; font-size: 12px; text-decoration: underline; }
 .text-button:hover { background: transparent; color: #fff; }
