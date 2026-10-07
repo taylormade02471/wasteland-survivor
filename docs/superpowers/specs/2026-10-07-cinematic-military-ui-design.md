@@ -99,6 +99,22 @@ Armory, profile, avatar selection, settings, and loadout details may use localiz
 
 No panel may obscure the full battlefield during live multiplayer. Pause and menu overlays leave the player character stationary while the server simulation continues under the existing grace-period rules.
 
+## Private Account Identity
+
+The adult math challenge and email sign-in are removed. A verified mobile phone number is the private cross-device account link. The phone number is normalized before verification, is never included in public player or friend records, and is never shown in the operator dashboard beyond a masked form needed for support.
+
+Phone verification uses a six-digit, time-limited SMS code with attempt limits and resend cooldowns. In production, Google Identity Platform/Firebase Authentication owns SMS delivery, abuse protection, and the verified phone credential. Local development uses registered fictional test numbers or an explicitly marked development adapter; it must never send a real SMS or expose a development code in production.
+
+The four-digit PIN remains a device-local quick lock. It is never treated as the online account password and is never stored or transmitted in plaintext. A verified phone session may restore the player account on a new device or authorize choosing a new local PIN. The permanent Player Tag remains stable across devices.
+
+Players under 14 retain the separate parental-control path. A parent or guardian phone record and parent PIN are private and distinct from the child's player PIN.
+
+## First-Run Controls Tour
+
+Every player completes a short controls tour once before their first playable match. The tour detects the active input family and shows only relevant steps for keyboard and mouse, touch, or Xbox-style controller. Each step requires a simple demonstrated action, keeps the underlying game safe, and ends with a clear readiness confirmation.
+
+Tour completion is saved to the linked player profile with a local fallback, so it does not repeat on another linked device. Settings exposes a `Controls Tour` command for voluntary replay. If the player changes to a previously unseen input family, the game may offer the matching mini-tour without blocking play.
+
 ## Visual System
 
 ### Palette
@@ -124,6 +140,7 @@ The Nightfall and Wasteland Survivor wordmarks use condensed military display ty
 
 Motion supports depth and state:
 
+- A muted, seamless home-screen loop shows the survivor endlessly wading through shallow apocalyptic water. Recent locally saved match replays may temporarily replace it, and the animated Nightfall scene remains the low-power or load-failure fallback.
 - Slow environmental camera drift.
 - Subtle floating menu depth with toxic-surface buoyancy, localized ripples, vapor, and particle disturbance.
 - Focus illumination and forward movement.

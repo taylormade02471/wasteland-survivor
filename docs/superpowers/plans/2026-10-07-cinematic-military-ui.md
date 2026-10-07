@@ -206,6 +206,9 @@ git commit -m "feat: add online rooms with automatic bot fill"
 **Files:**
 - Create: `public/menu-presentation.mjs`
 - Create: `test/menu-presentation.test.js`
+- Add: `public/assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4`
+- Add: `public/assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.webm`
+- Modify: `public/index.html`
 - Modify: `public/nightfall-background.mjs`
 - Modify: `public/style.css`
 - Modify: `public/game3d.js`
@@ -231,6 +234,8 @@ Return data only. Use existing graphics tiers to limit particles, reflections, a
 
 Add named menu regions and interpolate existing camera/background layers between them. Do not create a second rendering loop.
 
+Set the bundled eight-second, muted water-walking cinemagraph as the default home video. Preserve locally saved recent-match replay rotation as the higher-priority source when a replay exists. If autoplay, decoding, data-saver, or graphics tier prevents video, reveal the existing animated Nightfall water scene without a blank frame.
+
 - [ ] **Step 5: Add floating-control visual layers**
 
 Implement restrained breathing light, forward focus movement, warning-amber/cyan selected states, and a toxic-surface treatment that makes each control appear buoyant over radioactive water or slime. Add localized ripple/glow layers, thin vapor, and small particle disturbances around the selected control. Keep transforms and effects on child visual layers so hit targets remain stable.
@@ -241,7 +246,7 @@ Run: `node --test test/menu-presentation.test.js test/nightfall-background.test.
 Expected: all pass.
 
 ```powershell
-git add public/menu-presentation.mjs public/nightfall-background.mjs public/style.css public/game3d.js test/menu-presentation.test.js
+git add public/menu-presentation.mjs public/assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4 public/assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.webm public/index.html public/nightfall-background.mjs public/style.css public/game3d.js test/menu-presentation.test.js
 git commit -m "feat: add cinematic nightfall menu motion"
 ```
 
@@ -288,6 +293,104 @@ git add public/index.html public/style.css public/game3d.js test/ui-flow.test.js
 git commit -m "feat: integrate tactical plates and cinematic transitions"
 ```
 
+### Task 5A: Verified Phone Account Linking And Local PIN
+
+**Files:**
+- Create: `public/phone-account.mjs`
+- Create: `public/phone-auth-provider.mjs`
+- Create: `test/phone-account.test.js`
+- Modify: `public/index.html`
+- Modify: `public/style.css`
+- Modify: `public/game3d.js`
+- Modify: `backend/store.js`
+- Modify: `backend/security.js`
+- Create: `backend/phone-auth.js`
+- Modify: `server.js`
+- Modify: `package.json`
+- Modify: `test/backend-security.test.js`
+- Modify: `test/backend-store.test.js`
+
+**Interfaces:**
+- Consumes: verified phone credential, permanent player identity, device profile ID, and local PIN digest
+- Produces: private phone-to-player link, cross-device restore, and one-device quick unlock without email or adult math challenges
+
+- [ ] **Step 1: Write failing identity and privacy tests**
+
+Cover phone normalization and masking, private lookup, unique ownership, no phone field in public records, expiring/replay-safe SMS challenges for development, attempt limits, resend cooldowns, and production refusal when a real verifier is not configured.
+
+- [ ] **Step 2: Verify the tests fail**
+
+Run: `node --test test/phone-account.test.js test/backend-security.test.js test/backend-store.test.js`
+Expected: FAIL on missing phone-account contracts.
+
+- [ ] **Step 3: Replace the setup flow**
+
+Remove the adult math view and all email wording. Require a mobile number, send a six-digit verification code, confirm it, then create the permanent player profile and a four-digit local PIN. Keep under-14 parental phone and parent PIN separate.
+
+- [ ] **Step 4: Add private account linking**
+
+Verify the Firebase/Identity Platform ID token on the server and map its stable provider UID to one private player account. Google owns the verified phone credential; the game backend does not need to persist a raw phone number. A verified phone session may restore the stable Player Tag and progress on a new device and authorize a new local PIN. Never return phone claims or private identity keys from player search, friends, rooms, public profile, or operator responses.
+
+- [ ] **Step 5: Keep production delivery gated**
+
+Use Google Identity Platform/Firebase Authentication as the production verifier: browser phone sign-in with reCAPTCHA, then server-side Firebase Admin ID-token verification. Support registered fictional test numbers, the Auth emulator, or a clearly labeled local-development adapter. Fail closed in production when verification is not configured; never expose a development code in production.
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `node --check public/game3d.js; node --check server.js; node --test test/phone-account.test.js test/backend-security.test.js test/backend-store.test.js test/*.test.js`
+Expected: all pass.
+
+```powershell
+git add public/phone-account.mjs public/phone-auth-provider.mjs public/index.html public/style.css public/game3d.js backend/store.js backend/security.js backend/phone-auth.js server.js package.json package-lock.json test/phone-account.test.js test/backend-security.test.js test/backend-store.test.js
+git commit -m "feat: link private accounts with verified phones"
+```
+
+### Task 5B: One-Time Device-Aware Controls Tour
+
+**Files:**
+- Create: `public/controls-tour.mjs`
+- Create: `test/controls-tour.test.js`
+- Modify: `public/index.html`
+- Modify: `public/style.css`
+- Modify: `public/game3d.js`
+- Modify: `backend/store.js`
+- Modify: `test/backend-store.test.js`
+
+**Interfaces:**
+- Consumes: active input family, demonstrated control actions, linked player progress, and local fallback state
+- Produces: required first-run checklist, completion state, and voluntary replay from Settings
+
+- [ ] **Step 1: Write failing controls-tour tests**
+
+Cover keyboard and mouse, touch, and controller step sets; ordered demonstrated actions; one-time completion; linked-device persistence; local offline fallback; and voluntary replay.
+
+- [ ] **Step 2: Verify the tests fail**
+
+Run: `node --test test/controls-tour.test.js test/backend-store.test.js`
+Expected: FAIL because the controls-tour module does not exist.
+
+- [ ] **Step 3: Implement the pure tour state machine**
+
+Return the current device-relevant step, progress, completion, and replay state without owning DOM or gameplay state.
+
+- [ ] **Step 4: Present a short mandatory first-run tour**
+
+Before the first playable match, show a compact notification checklist and require the relevant move, aim, fire, pause/menu, and ability actions. Keep combat damage disabled while the checklist is active. Do not show irrelevant input methods.
+
+- [ ] **Step 5: Persist once and add Settings replay**
+
+Save completion to the linked profile and local fallback. Do not automatically repeat it on linked devices. Add `Controls Tour` to Settings, and offer but do not force a mini-tour for a newly detected input family.
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `node --check public/game3d.js; node --test test/controls-tour.test.js test/backend-store.test.js test/game-rules.test.js test/*.test.js`
+Expected: all pass.
+
+```powershell
+git add public/controls-tour.mjs public/index.html public/style.css public/game3d.js backend/store.js test/controls-tour.test.js test/backend-store.test.js
+git commit -m "feat: add one-time controls tour"
+```
+
 ### Task 6: Phone-First Responsive Combat And Menu Layout
 
 **Files:**
@@ -329,6 +432,94 @@ Expected: all pass.
 ```powershell
 git add public/style.css public/game3d.js test/responsive-ui.test.js docs/verification/cinematic-ui-baseline.md
 git commit -m "feat: finish phone-first cinematic interface"
+```
+
+### Task 6A: Desktop Pointer Capture And Renderer Recovery
+
+**Files:**
+- Create: `public/input-recovery.mjs`
+- Create: `test/input-recovery.test.js`
+- Modify: `public/game3d.js`
+- Modify: `public/index.html`
+- Modify: `public/style.css`
+
+**Interfaces:**
+- Consumes: gameplay phase, input mode, pointer-lock state, viewport dimensions, device pixel ratio, and graphics tier
+- Produces: pure pointer-capture eligibility, transient-input reset state, and bounded renderer metrics
+
+- [ ] **Step 1: Write failing recovery tests**
+
+Cover pointer-lock eligibility, menu and non-combat exclusions, blur/visibility reset of firing and movement, pointer-lock loss, cross-monitor device-pixel-ratio changes, and bounded renderer dimensions.
+
+- [ ] **Step 2: Verify the tests fail**
+
+Run: `node --test test/input-recovery.test.js`
+Expected: FAIL because `input-recovery.mjs` does not exist.
+
+- [ ] **Step 3: Implement pure recovery decisions**
+
+Keep DOM, Three.js, and browser event ownership out of the module. Return normalized values only.
+
+- [ ] **Step 4: Bind pointer lock and focus recovery**
+
+Request pointer lock only from a deliberate gameplay-canvas action with a fine pointer. On window blur, hidden visibility, pointer-lock loss, or canvas exit, clear firing, ADS, keyboard direction, and touch deltas. Re-entry requires one deliberate click and never reloads the match.
+
+- [ ] **Step 5: Handle cross-monitor rendering changes**
+
+On resize or device-pixel-ratio change, update camera aspect, renderer size, and the graphics-tier-bounded pixel ratio without replacing the scene or renderer. Handle `webglcontextlost` with a visible paused recovery state and resume after `webglcontextrestored`.
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `node --check public/game3d.js; node --test test/input-recovery.test.js test/game-rules.test.js`
+Expected: all pass.
+
+```powershell
+git add public/input-recovery.mjs public/game3d.js public/index.html public/style.css test/input-recovery.test.js
+git commit -m "fix: harden desktop mouse and renderer recovery"
+```
+
+### Task 6B: Death Camera And Rules-Based Respawn
+
+**Files:**
+- Create: `public/death-rules.mjs`
+- Create: `test/death-rules.test.js`
+- Modify: `public/index.html`
+- Modify: `public/style.css`
+- Modify: `public/game3d.js`
+
+**Interfaces:**
+- Consumes: mode, round state, live teammates, death time, and respawn delay
+- Produces: `resolveDeathPresentation(input)` returning spectator behavior, respawn eligibility, countdown, action label, and round-wait state
+
+- [ ] **Step 1: Write failing death-rule tests**
+
+Cover CTF delayed respawn, elimination and last-man-standing no-respawn states, solo run restart wording, surviving teammates keeping an elimination round active, and malformed input fallbacks.
+
+- [ ] **Step 2: Verify the tests fail**
+
+Run: `node --test test/death-rules.test.js`
+Expected: FAIL because `death-rules.mjs` does not exist.
+
+- [ ] **Step 3: Implement the pure death presentation rule**
+
+The rule decides whether a Respawn control exists. It does not mutate combat, scoring, or actors.
+
+- [ ] **Step 4: Preserve a body and continue the match view**
+
+At player death, leave a round-scoped body at the exact death position, stop player input, and move to a stable death/spectator camera that frames the body and nearby live actors. Keep simulation, scoring, and other players moving. Remove or recycle the body only on allowed respawn or round reset.
+
+- [ ] **Step 5: Gate the Respawn control**
+
+In CTF, reveal Respawn only after the existing delay and respawn at a safe team position after activation. In elimination or last-man-standing, render no Respawn button while teammates and opponents finish the round. Solo game-over may offer Restart Run, but must not mislabel it as a same-match respawn.
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `node --check public/game3d.js; node --test test/death-rules.test.js test/game-rules.test.js test/reward-rules.test.js`
+Expected: all pass.
+
+```powershell
+git add public/death-rules.mjs public/index.html public/style.css public/game3d.js test/death-rules.test.js
+git commit -m "feat: add death camera and rules-based respawn"
 ```
 
 ### Task 7: End-To-End Visual And Interaction Verification
