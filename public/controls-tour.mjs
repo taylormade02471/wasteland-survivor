@@ -5,6 +5,9 @@ const FAMILY_ALIASES = Object.freeze({
   touch: "touch",
   controller: "controller",
 });
+const PLAYER_TAG_PATTERN = /^WS-[A-F0-9]{6,8}$/;
+const LIVE_GAME_PHASES = new Set(["countdown", "combat", "prep"]);
+const CONTROLS_TOUR_STORAGE_PREFIX = "wastland-survivor-controls-tour-seen";
 
 const FAMILY_STEPS = Object.freeze({
   "keyboard-mouse": Object.freeze([
@@ -32,6 +35,18 @@ const FAMILY_STEPS = Object.freeze({
 
 export function normalizeControlsFamily(value) {
   return FAMILY_ALIASES[String(value || "").toLowerCase()] || "keyboard-mouse";
+}
+
+export function controlsTourStorageIdentity({ profile = null, guest = false } = {}) {
+  if (guest) return "guest:offline";
+  const playerTag = String(profile?.playerTag || "").trim().toUpperCase();
+  if (PLAYER_TAG_PATTERN.test(playerTag)) return `tag:${playerTag}`;
+  const profileId = String(profile?.profileId || "").trim();
+  return profileId ? `profile:${profileId}` : "profile:unassigned";
+}
+
+export function controlsTourStorageKey(input = {}) {
+  return `${CONTROLS_TOUR_STORAGE_PREFIX}:${encodeURIComponent(controlsTourStorageIdentity(input))}`;
 }
 
 export function mergeSeenControlsFamilies(...sources) {
@@ -69,7 +84,65 @@ export function createControlsTour({ family, seenFamilies = [], mode = "required
     stepIndex: 0,
     steps: controlsForFamily(normalizedFamily),
     seenFamilies: mergeSeenControlsFamilies(seenFamilies),
+    controllerArmed: normalizedFamily === "controller",
   });
+}
+
+export function createPendingMatchGate() {
+  return Object.freeze({ nextId: 1, pending: null });
+}
+
+export function queuePendingMatchSelection(gate = createPendingMatchGate(), selection) {
+  if (gate.pending || typeof selection !== "function") return gate;
+  return Object.freeze({
+    nextId: gate.nextId + 1,
+    pending: Object.freeze({ id: gate.nextId, selection }),
+  });
+}
+
+export function cancelPendingMatchSelection(gate = createPendingMatchGate()) {
+  if (!gate.pending) return gate;
+  return Object.freeze({ nextId: gate.nextId, pending: null });
+}
+
+export function resolvePendingMatchSelection(gate = createPendingMatchGate(), { family, seenFamilies = [] } = {}) {
+  if (!gate.pending) return { action: "idle", gate, family: null, selection: null };
+  const normalizedFamily = normalizeControlsFamily(family);
+  if (isControlsTourRequired({ family: normalizedFamily, seenFamilies })) {
+    return { action: "tour", gate, family: normalizedFamily, selection: null };
+  }
+  return {
+    action: "start",
+    gate: cancelPendingMatchSelection(gate),
+    family: normalizedFamily,
+    selection: gate.pending.selection,
+  };
+}
+
+export function isLiveControlsTourPhase(phase) {
+  return LIVE_GAME_PHASES.has(String(phase || ""));
+}
+
+export function planOptionalControlsTour({ family, mode = "mini", phase } = {}) {
+  const queued = Object.freeze({
+    family: normalizeControlsFamily(family),
+    mode: mode === "replay" ? "replay" : "mini",
+  });
+  return isLiveControlsTourPhase(phase) ? { action: "queue", queued } : { action: "start", queued };
+}
+
+export function releaseQueuedControlsTour({ queued = null, phase, tourActive = false } = {}) {
+  if (!queued) return { action: "idle", family: null, mode: null };
+  if (tourActive || isLiveControlsTourPhase(phase)) return { action: "wait", family: queued.family, mode: queued.mode };
+  return { action: "start", family: queued.family, mode: queued.mode };
+}
+
+export function cancelQueuedControlsTour() {
+  return null;
+}
+
+export function shouldBlockControlsTourSimulation({ tour = null, phase } = {}) {
+  return Boolean(tour?.status === "active" && !isLiveControlsTourPhase(phase));
 }
 
 export function recognizeControlsTourAction(family, signal = {}) {
@@ -111,4 +184,33 @@ export function recordControlsTourSignal(state, signal) {
     stepIndex,
     seenFamilies: complete ? mergeSeenControlsFamilies(state.seenFamilies, [state.family]) : state.seenFamilies,
   });
+}
+
+function controllerSnapshotNeutral(snapshot = {}) {
+  return Number(snapshot.leftStick || 0) < 0.2
+    && Number(snapshot.rightStick || 0) < 0.2
+    && Number(snapshot.rightTrigger || 0) < 0.2
+    && !snapshot.menu
+    && !snapshot.b;
+}
+
+function controllerSignalForStep(stepId, snapshot = {}) {
+  if (stepId === "move") return { source: "controller", control: "left-stick", magnitude: Number(snapshot.leftStick) || 0 };
+  if (stepId === "aim") return { source: "controller", control: "right-stick", magnitude: Number(snapshot.rightStick) || 0 };
+  if (stepId === "fire") return { source: "controller", control: "right-trigger", value: Number(snapshot.rightTrigger) || 0 };
+  if (stepId === "pause") return { source: "controller", control: "menu", pressed: Boolean(snapshot.menu) };
+  if (stepId === "ability") return { source: "controller", control: "b", pressed: Boolean(snapshot.b) };
+  return null;
+}
+
+export function recordControlsTourControllerSnapshot(state, snapshot = {}) {
+  if (!state || state.status !== "active" || state.family !== "controller") return state;
+  const neutral = controllerSnapshotNeutral(snapshot);
+  if (!state.controllerArmed) {
+    return neutral ? Object.freeze({ ...state, controllerArmed: true }) : state;
+  }
+  if (neutral) return state;
+  const signal = controllerSignalForStep(state.steps[state.stepIndex]?.id, snapshot);
+  const advanced = signal ? recordControlsTourSignal(state, signal) : state;
+  return advanced === state ? state : Object.freeze({ ...advanced, controllerArmed: false });
 }

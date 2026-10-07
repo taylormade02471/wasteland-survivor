@@ -119,6 +119,105 @@ test("normalizes stored seen families without accepting arbitrary private data",
   );
 });
 
+test("local completion keys isolate profiles and reserve a separate guest identity", async () => {
+  const { controlsTourStorageIdentity, controlsTourStorageKey } = await controlsTour();
+  const playerA = { playerTag: "WS-A1B2C3D4", profileId: "profile-a" };
+  const playerB = { playerTag: "WS-B1C2D3E4", profileId: "profile-b" };
+  const localOnlyA = { profileId: "local-a" };
+  const localOnlyB = { profileId: "local-b" };
+
+  assert.equal(controlsTourStorageIdentity({ profile: playerA }), "tag:WS-A1B2C3D4");
+  assert.equal(controlsTourStorageIdentity({ profile: { ...playerA, profileId: "another-device" } }), "tag:WS-A1B2C3D4");
+  assert.notEqual(controlsTourStorageKey({ profile: playerA }), controlsTourStorageKey({ profile: playerB }));
+  assert.notEqual(controlsTourStorageKey({ profile: localOnlyA }), controlsTourStorageKey({ profile: localOnlyB }));
+  assert.notEqual(controlsTourStorageKey({ guest: true }), controlsTourStorageKey({ profile: playerA }));
+
+  const storage = new Map([[controlsTourStorageKey({ profile: playerA }), JSON.stringify(["keyboard-mouse"])]]);
+  assert.equal(storage.has(controlsTourStorageKey({ profile: playerB })), false);
+  assert.equal(storage.has(controlsTourStorageKey({ guest: true })), false);
+});
+
+test("pending match gate rechecks a switched family and consumes one protected selection once", async () => {
+  const {
+    createPendingMatchGate,
+    queuePendingMatchSelection,
+    resolvePendingMatchSelection,
+  } = await controlsTour();
+  const calls = [];
+  const firstSelection = () => calls.push("first");
+  const replacementSelection = () => calls.push("replacement");
+  let gate = queuePendingMatchSelection(createPendingMatchGate(), firstSelection);
+
+  let result = resolvePendingMatchSelection(gate, { family: "keyboard", seenFamilies: [] });
+  assert.equal(result.action, "tour");
+  assert.equal(result.family, "keyboard-mouse");
+
+  const protectedGate = queuePendingMatchSelection(gate, replacementSelection);
+  assert.equal(protectedGate, gate);
+
+  result = resolvePendingMatchSelection(gate, { family: "controller", seenFamilies: ["keyboard-mouse"] });
+  assert.equal(result.action, "tour");
+  assert.equal(result.family, "controller");
+
+  result = resolvePendingMatchSelection(gate, { family: "controller", seenFamilies: ["keyboard-mouse", "controller"] });
+  assert.equal(result.action, "start");
+  gate = result.gate;
+  result.selection();
+  assert.deepEqual(calls, ["first"]);
+
+  const staleResolution = resolvePendingMatchSelection(gate, { family: "controller", seenFamilies: ["keyboard-mouse", "controller"] });
+  assert.equal(staleResolution.action, "idle");
+  assert.deepEqual(calls, ["first"]);
+});
+
+test("optional practice queues through live phases without blocking simulation and starts when safe", async () => {
+  const {
+    cancelQueuedControlsTour,
+    createControlsTour,
+    planOptionalControlsTour,
+    releaseQueuedControlsTour,
+    shouldBlockControlsTourSimulation,
+  } = await controlsTour();
+
+  const decision = planOptionalControlsTour({ family: "touch", mode: "mini", phase: "combat" });
+  assert.deepEqual(decision, { action: "queue", queued: { family: "touch", mode: "mini" } });
+  assert.equal(shouldBlockControlsTourSimulation({ tour: null, phase: "combat" }), false);
+  assert.equal(shouldBlockControlsTourSimulation({ tour: createControlsTour({ family: "touch", mode: "mini" }), phase: "combat" }), false);
+  assert.equal(releaseQueuedControlsTour({ queued: decision.queued, phase: "countdown" }).action, "wait");
+  assert.equal(releaseQueuedControlsTour({ queued: decision.queued, phase: "prep" }).action, "wait");
+
+  const released = releaseQueuedControlsTour({ queued: decision.queued, phase: "over" });
+  assert.equal(released.action, "start");
+  assert.equal(released.family, "touch");
+  assert.equal(released.mode, "mini");
+  assert.equal(shouldBlockControlsTourSimulation({ tour: createControlsTour({ family: "touch", mode: "mini" }), phase: "over" }), true);
+
+  const cancelled = cancelQueuedControlsTour(decision.queued);
+  assert.equal(cancelled, null);
+  assert.equal(releaseQueuedControlsTour({ queued: cancelled, phase: "over" }).action, "idle");
+});
+
+test("controller tour accepts one expected action per snapshot and requires neutral rearm", async () => {
+  const { createControlsTour, recordControlsTourControllerSnapshot } = await controlsTour();
+  let state = createControlsTour({ family: "controller" });
+  const simultaneous = { leftStick: 1, rightStick: 1, rightTrigger: 1, menu: true, b: true };
+
+  state = recordControlsTourControllerSnapshot(state, simultaneous);
+  assert.equal(state.stepIndex, 1);
+  assert.equal(state.controllerArmed, false);
+
+  const blocked = recordControlsTourControllerSnapshot(state, simultaneous);
+  assert.equal(blocked, state);
+  assert.equal(blocked.stepIndex, 1);
+
+  state = recordControlsTourControllerSnapshot(state, { leftStick: 0, rightStick: 0, rightTrigger: 0, menu: false, b: false });
+  assert.equal(state.stepIndex, 1);
+  assert.equal(state.controllerArmed, true);
+
+  state = recordControlsTourControllerSnapshot(state, simultaneous);
+  assert.equal(state.stepIndex, 2);
+});
+
 test("the accessible coach UI exposes replay and family-specific progress without a permanent popup", () => {
   const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
   const css = fs.readFileSync(path.join(root, "public", "style.css"), "utf8");
@@ -132,19 +231,19 @@ test("the accessible coach UI exposes replay and family-specific progress withou
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[^{]*\{[^}]*\.controls-tour/s);
 });
 
-test("game integration gates the selected match, keeps the tour safe, and resumes it automatically", () => {
+test("game integration wires the executable controls-tour policies into every input path", () => {
   const game = fs.readFileSync(path.join(root, "public", "game3d.js"), "utf8");
 
   assert.match(game, /from "\.\/controls-tour\.mjs"/);
   assert.match(game, /async function requestMatchStart/);
-  assert.match(game, /if \(isControlsTourRequired\(/);
-  assert.match(game, /pendingMatchStart/);
-  assert.match(game, /phase !== "loadout"/);
+  assert.match(game, /resolvePendingMatchSelection\(/);
+  assert.match(game, /queuePendingMatchSelection\(/);
+  assert.match(game, /shouldBlockControlsTourSimulation\(/);
   assert.match(game, /\$\("soloMode"\)\.onclick = \(\) => requestMatchStart/);
   assert.match(game, /recordControlsTourSignal\(/);
+  assert.match(game, /recordControlsTourControllerSnapshot\(/);
   assert.match(game, /persistControlsTourCompletion/);
   assert.match(game, /\$\("controlsTourReplayBtn"\)\.onclick/);
-  assert.match(game, /function handleControlsTourController\(\)[\s\S]*control: "left-stick"[\s\S]*control: "b"/);
   assert.match(game, /function handleSettingsController\(\)[\s\S]*controlsTourReplayBtn/);
   assert.match(game, /function handleLobbyController\(\)[\s\S]*activateLobbyCommand/);
 });

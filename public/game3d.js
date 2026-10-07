@@ -5,12 +5,21 @@ import { createNightfallBackground, setNightfallPresentation, setNightfallScene,
 import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
 import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
 import {
+  cancelPendingMatchSelection,
+  cancelQueuedControlsTour,
+  controlsTourStorageKey,
   createControlsTour,
-  isControlsTourRequired,
+  createPendingMatchGate,
   mergeSeenControlsFamilies,
   normalizeControlsFamily,
+  planOptionalControlsTour,
+  queuePendingMatchSelection,
+  recordControlsTourControllerSnapshot,
   recordControlsTourSignal,
+  releaseQueuedControlsTour,
+  resolvePendingMatchSelection,
   shouldOfferControlsMiniTour,
+  shouldBlockControlsTourSimulation,
 } from "./controls-tour.mjs";
 import { activateAbility, createClassProgress, getClassDefinition, getClassStats, normalizeClassProgress } from "./class-rules.mjs";
 import { composeWave, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
@@ -190,9 +199,11 @@ let phoneConfirmation = null;
 let phoneChallenge = null;
 let pendingPhoneAction = null;
 let controlsTourState = null;
-let pendingMatchStart = null;
+let pendingMatchGate = createPendingMatchGate();
 let controlsPreferencesPromise = Promise.resolve();
 let miniTourFamily = null;
+let queuedControlsTour = null;
+let guestControlsIdentityActive = false;
 const offeredMiniTourFamilies = new Set();
 let loadoutControllerIndex = 1;
 const localPinAttempts = new Map();
@@ -895,7 +906,7 @@ function pollController() {
   const debug = new URLSearchParams(location.search).has("debug");
   if (!pad) {
     if (debug) { controllerDebug.classList.remove("hidden"); $("debugPadName").textContent = "No controller detected"; }
-    return { mx: 0, mz: 0, ax: 0, az: 0, fire: false, ads: false };
+    return { mx: 0, mz: 0, ax: 0, az: 0, fire: false, ads: false, menuHeld: false, bHeld: false };
   }
   const pressed = pad.buttons.map(button => button.pressed);
   const justPressed = index => pressed[index] && !lastButtons[index];
@@ -903,6 +914,7 @@ function pollController() {
   const result = {
     mx: deadzone(pad.axes[0] || 0), mz: deadzone(pad.axes[1] || 0), ax: deadzone(pad.axes[2] || 0), az: deadzone(pad.axes[3] || 0),
     fire: (pad.buttons[7]?.value || 0) > .2, ads: (pad.buttons[6]?.value || 0) > .2,
+    menuHeld: Boolean(pad.buttons[9]?.pressed), bHeld: Boolean(pad.buttons[1]?.pressed),
     interact: justPressed(0), ability: justPressed(1), reload: justPressed(2), weapon: justPressed(3), pause: justPressed(9), switchTarget: justPressed(11),
     dpadUp: justPressed(12), dpadDown: justPressed(13), dpadLeft: justPressed(14), dpadRight: justPressed(15),
   };
@@ -919,14 +931,17 @@ function pollController() {
 
 function handleControlsTourController() {
   const controller = pollController();
-  const signals = [
-    { source: "controller", control: "left-stick", magnitude: Math.hypot(controller.mx, controller.mz) },
-    { source: "controller", control: "right-stick", magnitude: Math.hypot(controller.ax, controller.az) },
-    { source: "controller", control: "right-trigger", value: controller.fire ? 1 : 0 },
-    { source: "controller", control: "menu", pressed: controller.pause },
-    { source: "controller", control: "b", pressed: controller.ability },
-  ];
-  for (const signal of signals) handleControlsTourSignal(signal);
+  const next = recordControlsTourControllerSnapshot(controlsTourState, {
+    leftStick: Math.hypot(controller.mx, controller.mz),
+    rightStick: Math.hypot(controller.ax, controller.az),
+    rightTrigger: controller.fire ? 1 : 0,
+    menu: controller.menuHeld,
+    b: controller.bHeld,
+  });
+  if (next === controlsTourState) return;
+  controlsTourState = next;
+  renderControlsTour();
+  if (controlsTourState.status === "complete") completeControlsTour();
 }
 
 function handleSettingsController() {
@@ -1078,7 +1093,7 @@ function finishCtf() {
 
 function update(dt) {
   if (phase === "over" || phase === "menu") return;
-  if (controlsTourState?.status === "active") return;
+  if (shouldBlockControlsTourSimulation({ tour: controlsTourState, phase })) return;
   if (phase === "countdown") {
     timer = Math.max(0, (countdownDeadline - Date.now()) / 1000);
     const next = Math.max(0, Math.ceil(timer));
@@ -1304,6 +1319,7 @@ function renderHud() {
 
 function render() {
   const dt = Math.min(clock.getDelta(), .04);
+  startQueuedControlsTourWhenSafe();
   if (controlsTourState?.status === "active") handleControlsTourController();
   else if (!ui.settings.classList.contains("hidden") && controllerConnected) handleSettingsController();
   else if (phase === "loadout" && !$("loadoutRoomModal").classList.contains("hidden") && controllerConnected) handleLoadoutController();
@@ -1523,6 +1539,7 @@ async function confirmPhoneCode() {
     });
     const profile = mergeVerifiedLocalProfile({ draft: action.profile, restored, deviceId: deviceId() });
     saveProfile(profile);
+    guestControlsIdentityActive = false;
     activeProfile = profile;
     loadProgress(profile);
     offlineMode = false;
@@ -1606,22 +1623,26 @@ async function syncPublicPlayer() {
   }
 }
 
+function controlsTourIdentityInput() {
+  return { profile: guestControlsIdentityActive ? null : activeProfile, guest: guestControlsIdentityActive };
+}
+
 function localControlsTourFamilies() {
   try {
-    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(task4StorageKey("controls-tour-seen")) || "[]"));
+    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(controlsTourStorageKey(controlsTourIdentityInput())) || "[]"));
   } catch {
     return [];
   }
 }
 
 function controlsTourSeenFamilies() {
-  return mergeSeenControlsFamilies(localControlsTourFamilies(), activeProfile?.controlsTourSeenFamilies);
+  return mergeSeenControlsFamilies(localControlsTourFamilies(), guestControlsIdentityActive ? [] : activeProfile?.controlsTourSeenFamilies);
 }
 
 function saveControlsTourFamilies(families) {
   const seenFamilies = mergeSeenControlsFamilies(families);
-  localStorage.setItem(task4StorageKey("controls-tour-seen"), JSON.stringify(seenFamilies));
-  if (activeProfile) {
+  localStorage.setItem(controlsTourStorageKey(controlsTourIdentityInput()), JSON.stringify(seenFamilies));
+  if (activeProfile && !guestControlsIdentityActive) {
     activeProfile.controlsTourSeenFamilies = seenFamilies;
     saveProfile(activeProfile);
   }
@@ -1630,7 +1651,7 @@ function saveControlsTourFamilies(families) {
 
 async function syncControlsTourPreferences() {
   const localFamilies = controlsTourSeenFamilies();
-  if (!activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return localFamilies;
+  if (guestControlsIdentityActive || !activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return localFamilies;
   try {
     const response = await fetch("/api/account/preferences", {
       headers: { Authorization: `Bearer ${activeProfile.backendSession}` },
@@ -1645,7 +1666,7 @@ async function syncControlsTourPreferences() {
 
 function persistControlsTourCompletion(families) {
   const seenFamilies = saveControlsTourFamilies(families);
-  if (!activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return Promise.resolve(seenFamilies);
+  if (guestControlsIdentityActive || !activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return Promise.resolve(seenFamilies);
   return fetch("/api/account/preferences", {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeProfile.backendSession}` },
@@ -1680,14 +1701,57 @@ function renderControlsTour() {
   $("closeControlsTourBtn").classList.toggle("hidden", controlsTourState.mode === "required");
 }
 
+function setRequiredControlsTourLock(locked) {
+  document.body.classList.toggle("controls-tour-required", locked);
+  lobbyScreen.inert = locked;
+  $("gameMenu").inert = locked;
+}
+
+function resetMiniTourOfferControls() {
+  $("startControlsMiniTourBtn").disabled = false;
+  $("startControlsMiniTourBtn").textContent = "Practice";
+  $("dismissControlsMiniTourBtn").setAttribute("aria-label", "Dismiss controls practice");
+}
+
+function queueControlsTourPractice(queued) {
+  queuedControlsTour = queued;
+  miniTourFamily = null;
+  $("controlsMiniTourText").textContent = `${controlsFamilyLabel(queued.family)} practice queued for the next safe break. Live play continues.`;
+  $("startControlsMiniTourBtn").disabled = true;
+  $("startControlsMiniTourBtn").textContent = "Queued";
+  $("dismissControlsMiniTourBtn").setAttribute("aria-label", "Cancel queued controls practice");
+  $("controlsMiniTourOffer").classList.remove("hidden");
+}
+
+function requestOptionalControlsTour({ family = inputMode, mode: tourMode = "mini" } = {}) {
+  const decision = planOptionalControlsTour({ family, mode: tourMode, phase });
+  if (decision.action === "queue") {
+    queueControlsTourPractice(decision.queued);
+    return;
+  }
+  startControlsTour({ family: decision.queued.family, mode: decision.queued.mode });
+}
+
+function startQueuedControlsTourWhenSafe() {
+  const decision = releaseQueuedControlsTour({ queued: queuedControlsTour, phase, tourActive: Boolean(controlsTourState) });
+  if (decision.action !== "start") return;
+  queuedControlsTour = null;
+  resetMiniTourOfferControls();
+  $("controlsMiniTourOffer").classList.add("hidden");
+  startControlsTour({ family: decision.family, mode: decision.mode });
+}
+
 function startControlsTour({ family = inputMode, mode: tourMode = "required" } = {}) {
   controlsTourState = createControlsTour({ family, seenFamilies: controlsTourSeenFamilies(), mode: tourMode });
   miniTourFamily = null;
+  queuedControlsTour = null;
+  resetMiniTourOfferControls();
   $("controlsMiniTourOffer").classList.add("hidden");
   ui.settings.classList.add("hidden");
   $("controlsTourModal").classList.remove("hidden");
   document.body.classList.remove("menu-active");
   document.body.classList.add("controls-tour-active");
+  setRequiredControlsTourLock(tourMode === "required");
   firing = false;
   touch.fire = false;
   clearKeyboardInput();
@@ -1699,6 +1763,7 @@ function closeControlsTour() {
   controlsTourState = null;
   $("controlsTourModal").classList.add("hidden");
   document.body.classList.remove("controls-tour-active");
+  setRequiredControlsTourLock(false);
   restoreVisibleMenuSection();
 }
 
@@ -1708,10 +1773,9 @@ function completeControlsTour() {
   controlsTourState = null;
   $("controlsTourModal").classList.add("hidden");
   document.body.classList.remove("controls-tour-active");
+  setRequiredControlsTourLock(false);
   persistControlsTourCompletion(completed.seenFamilies);
-  const startMatch = pendingMatchStart;
-  pendingMatchStart = null;
-  if (startMatch) queueMicrotask(startMatch);
+  if (completed.mode === "required") continuePendingMatchStart();
   else restoreVisibleMenuSection();
 }
 
@@ -1727,7 +1791,7 @@ function handleControlsTourSignal(signal) {
 }
 
 function offerControlsMiniTour(family) {
-  const matchActive = phase === "combat" || phase === "prep";
+  const matchActive = phase === "countdown" || phase === "combat" || phase === "prep";
   if (offeredMiniTourFamilies.has(family) || !shouldOfferControlsMiniTour({
     family,
     seenFamilies: controlsTourSeenFamilies(),
@@ -1736,22 +1800,34 @@ function offerControlsMiniTour(family) {
   })) return;
   offeredMiniTourFamilies.add(family);
   miniTourFamily = family;
+  resetMiniTourOfferControls();
   $("controlsMiniTourText").textContent = `${controlsFamilyLabel(family)} detected. Practice now or keep playing.`;
   $("controlsMiniTourOffer").classList.remove("hidden");
 }
 
+function continuePendingMatchStart() {
+  const resolution = resolvePendingMatchSelection(pendingMatchGate, {
+    family: inputMode,
+    seenFamilies: controlsTourSeenFamilies(),
+  });
+  pendingMatchGate = resolution.gate;
+  if (resolution.action === "tour") {
+    startControlsTour({ family: resolution.family, mode: "required" });
+    return;
+  }
+  if (resolution.action === "start") queueMicrotask(resolution.selection);
+  else restoreVisibleMenuSection();
+}
+
 async function requestMatchStart(startMatch) {
   await controlsPreferencesPromise.catch(() => []);
+  if (controlsTourState?.mode === "required" || pendingMatchGate.pending) return;
   if (phase !== "menu" && phase !== "loadout") {
     startMatch();
     return;
   }
-  if (isControlsTourRequired({ family: inputMode, seenFamilies: controlsTourSeenFamilies() })) {
-    pendingMatchStart = startMatch;
-    startControlsTour({ family: inputMode, mode: "required" });
-    return;
-  }
-  startMatch();
+  pendingMatchGate = queuePendingMatchSelection(pendingMatchGate, startMatch);
+  continuePendingMatchStart();
 }
 
 async function claimDeviceLink() {
@@ -2080,6 +2156,7 @@ async function enterProfile() {
   parentPhone.value = "";
   if (youthAccount) {
     saveProfile(profile);
+    guestControlsIdentityActive = false;
     activeProfile = profile;
     offlineMode = true;
     localStorage.setItem("wastland-survivor-offline", "true");
@@ -2111,6 +2188,7 @@ function returnProfile() {
       return;
     }
     returnPin.value = "";
+    guestControlsIdentityActive = false;
     activeProfile = saved;
     loadProgress(saved);
     youthAccount = Boolean(saved.youthAccount);
@@ -2157,6 +2235,7 @@ function updateRiskPreview() {
 }
 
 function leaveLobby() {
+  pendingMatchGate = cancelPendingMatchSelection(pendingMatchGate);
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
   setMenuSection("home");
@@ -2166,6 +2245,7 @@ function leaveLobby() {
 function enterGuestOffline() {
   offlineMode = true;
   youthAccount = false;
+  guestControlsIdentityActive = true;
   localStorage.setItem("wastland-survivor-offline", "true");
   const guestName = "Offline Guest";
   openLobby(guestName);
@@ -2467,6 +2547,7 @@ function closeGameMenu() {
 function exitToLobby() {
   saveProgress();
   closeLobbyRoom();
+  pendingMatchGate = cancelPendingMatchSelection(pendingMatchGate);
   menuOpen = false;
   phase = "menu";
   firing = false;
@@ -2931,10 +3012,15 @@ $("lobbySettingsBtn").onclick = openSettings;
 $("lobbyConnectionsBtn").onclick = openConnections;
 $("menuSettingsBtn").onclick = openSettings;
 $("closeSettingsBtn").onclick = closeSettings;
-$("controlsTourReplayBtn").onclick = () => startControlsTour({ family: inputMode, mode: "replay" });
+$("controlsTourReplayBtn").onclick = () => requestOptionalControlsTour({ family: inputMode, mode: "replay" });
 $("closeControlsTourBtn").onclick = closeControlsTour;
-$("startControlsMiniTourBtn").onclick = () => startControlsTour({ family: miniTourFamily || inputMode, mode: "mini" });
-$("dismissControlsMiniTourBtn").onclick = () => { miniTourFamily = null; $("controlsMiniTourOffer").classList.add("hidden"); };
+$("startControlsMiniTourBtn").onclick = () => requestOptionalControlsTour({ family: miniTourFamily || inputMode, mode: "mini" });
+$("dismissControlsMiniTourBtn").onclick = () => {
+  miniTourFamily = null;
+  queuedControlsTour = cancelQueuedControlsTour(queuedControlsTour);
+  resetMiniTourOfferControls();
+  $("controlsMiniTourOffer").classList.add("hidden");
+};
 $("menuToggle").onclick = () => menuOpen ? closeGameMenu() : openGameMenu();
 $("resumeGameBtn").onclick = closeGameMenu;
 $("frontViewBtn").onclick = () => { frontView = !frontView; $("frontViewBtn").textContent = frontView ? "Arena View" : "First Person"; };
@@ -3056,7 +3142,12 @@ setInterval(() => {
   }
 }, 1000);
 $("returnWastlandBtn").onclick = returnProfile;
-$("storyGuestBtn").onclick = () => { offlineMode = true; localStorage.setItem("wastland-survivor-offline", "true"); openLobby(activeProfile?.name || "Offline Story Player"); };
+$("storyGuestBtn").onclick = () => {
+  offlineMode = true;
+  guestControlsIdentityActive = !activeProfile;
+  localStorage.setItem("wastland-survivor-offline", "true");
+  openLobby(activeProfile?.name || "Offline Story Player");
+};
 $("newProfileBtn").onclick = () => {
   localStorage.removeItem("wastland-survivor-profile");
   showProfileChoice();
