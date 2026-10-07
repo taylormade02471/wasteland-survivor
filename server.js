@@ -22,7 +22,7 @@ const adminToken = process.env.ADMIN_TOKEN || "";
 const sessionSecret = process.env.SESSION_SECRET || "wasteland-local-session-secret-change-before-production";
 if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required in production");
 const sessions = new SessionService(sessionSecret);
-const phoneAuth = createPhoneAuthService(process.env);
+const phoneAuth = createPhoneAuthService(process.env, { consumeTokenUse: claim => store.consumePhoneAuthToken(claim) });
 const sensitiveLimiter = new RateLimiter({ limit: 8, windowMs: 60000, blockMs: 300000 });
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -123,10 +123,23 @@ function publicPlayer(player) {
   return safe;
 }
 
+function configuredFirebaseAuthDomain() {
+  const raw = String(process.env.FIREBASE_AUTH_DOMAIN || "").trim();
+  if (!/^[a-z0-9.-]+(?::\d+)?$/i.test(raw)) return null;
+  try {
+    const parsed = new URL(`https://${raw}`);
+    if (!parsed.hostname || parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.username || parsed.password) return null;
+    return { domain: parsed.host, origin: parsed.origin };
+  } catch {
+    return null;
+  }
+}
+
 function phoneClientConfig() {
+  const authDomain = configuredFirebaseAuthDomain();
   const enabled = phoneAuth.configured
     && Boolean(process.env.FIREBASE_WEB_API_KEY)
-    && Boolean(process.env.FIREBASE_AUTH_DOMAIN)
+    && Boolean(authDomain)
     && Boolean(process.env.FIREBASE_PROJECT_ID);
   if (!enabled) return { enabled: false };
   const result = {
@@ -134,13 +147,45 @@ function phoneClientConfig() {
     sdkVersion: process.env.FIREBASE_WEB_SDK_VERSION || "11.10.0",
     firebaseConfig: {
       apiKey: process.env.FIREBASE_WEB_API_KEY,
-      authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+      authDomain: authDomain.domain,
       projectId: process.env.FIREBASE_PROJECT_ID,
       appId: process.env.FIREBASE_APP_ID || undefined,
     },
   };
   if (process.env.NODE_ENV !== "production" && process.env.FIREBASE_AUTH_EMULATOR_URL) result.authEmulatorUrl = process.env.FIREBASE_AUTH_EMULATOR_URL;
   return result;
+}
+
+function contentSecurityPolicy() {
+  const config = phoneClientConfig();
+  const scripts = ["'self'", "https://cdn.jsdelivr.net"];
+  const connections = ["'self'", "ws:", "wss:"];
+  const directives = ["default-src 'self'"];
+  if (config.enabled) {
+    const authOrigin = `https://${config.firebaseConfig.authDomain}`;
+    scripts.push("https://www.gstatic.com", "https://www.google.com");
+    connections.push(
+      authOrigin,
+      "https://identitytoolkit.googleapis.com",
+      "https://securetoken.googleapis.com",
+      "https://www.googleapis.com",
+      "https://www.google.com",
+      "https://recaptcha.google.com",
+    );
+    directives.push(`script-src ${scripts.join(" ")}`);
+    directives.push("style-src 'self'");
+    directives.push(`connect-src ${connections.join(" ")}`);
+    directives.push("img-src 'self' data:");
+    directives.push("media-src 'self' blob:");
+    directives.push(`frame-src 'self' ${authOrigin} https://www.google.com https://recaptcha.google.com`);
+    return directives.join("; ");
+  }
+  directives.push(`script-src ${scripts.join(" ")}`);
+  directives.push("style-src 'self'");
+  directives.push(`connect-src ${connections.join(" ")}`);
+  directives.push("img-src 'self' data:");
+  directives.push("media-src 'self' blob:");
+  return directives.join("; ");
 }
 
 function handleApi(request, response, requestUrl) {
@@ -165,6 +210,25 @@ function handleApi(request, response, requestUrl) {
           if (typeof source.displayName !== "string" || !source.displayName.trim()) {
             throw new PhoneAuthError("phone-account-not-found", "No player is linked to that verified phone", 404);
           }
+          const profileOwner = store.playerByDeviceProfileId(body.deviceProfileId);
+          const sessionOwner = sessionPlayer(request);
+          if (profileOwner && sessionOwner && profileOwner.id !== sessionOwner.id) {
+            throw new PhoneAuthError("phone-device-conflict", "Device profile belongs to a different player", 409);
+          }
+          if (profileOwner) {
+            const ownsDevice = sessionOwner?.id === profileOwner.id
+              || store.verifyDeviceCredential(profileOwner.id, hash(body.deviceCredential || ""));
+            if (!ownsDevice) throw new PhoneAuthError("phone-device-ownership-required", "Existing device ownership is required", 401);
+            player = profileOwner;
+          } else if (sessionOwner) {
+            player = sessionOwner;
+          }
+          if (player) {
+            if (store.playerHasVerifiedIdentity(player.id)) {
+              throw new PhoneAuthError("phone-player-already-linked", "Player is already linked to a verified phone", 409);
+            }
+            store.addDeviceProfile(player.id, body.deviceProfileId);
+          }
           player = store.upsertPlayer({
             deviceProfileId: body.deviceProfileId,
             playerTag: source.playerTag,
@@ -177,6 +241,10 @@ function handleApi(request, response, requestUrl) {
           });
           store.bindVerifiedIdentity({ providerUid: verified.providerUid, playerId: player.id, phoneHint: verified.phoneHint });
         } else {
+          const profileOwner = store.playerByDeviceProfileId(body.deviceProfileId);
+          if (profileOwner && profileOwner.id !== player.id) {
+            throw new PhoneAuthError("phone-device-conflict", "Device profile belongs to a different player", 409);
+          }
           store.addDeviceProfile(player.id, body.deviceProfileId);
         }
         const deviceCredential = crypto.randomBytes(32).toString("base64url");
@@ -420,7 +488,7 @@ function serveStatic(request, response) {
     response.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; media-src 'self' blob:",
+      "Content-Security-Policy": contentSecurityPolicy(),
       "Permissions-Policy": "microphone=(self), geolocation=(), camera=()",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin"

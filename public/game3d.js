@@ -1457,7 +1457,10 @@ async function confirmPhoneCode() {
       : { idToken, deviceProfileId: action.profile.profileId };
     const response = await fetch("/api/account/phone", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(action.profile.backendSession ? { Authorization: `Bearer ${action.profile.backendSession}` } : {}),
+      },
       body: JSON.stringify(requestBody),
     });
     const payload = await response.json();

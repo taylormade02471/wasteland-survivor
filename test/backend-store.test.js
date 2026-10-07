@@ -45,6 +45,25 @@ test("verified provider identity restores one permanent player across device pro
   assert.equal(JSON.stringify(backend.findPlayer("Kyle")).includes("firebase-user-1"), false);
   assert.equal(JSON.stringify(backend.dashboard([])).includes("firebase-user-1"), false);
 });
+test("a player accepts only one verified phone identity", () => {
+  const backend = store();
+  const player = backend.upsertPlayer({ deviceProfileId: "device-one", displayName: "Kyle" });
+  backend.bindVerifiedIdentity({ providerUid: "firebase-user-1", playerId: player.id, phoneHint: "+1 ••• ••• 0123" });
+
+  assert.throws(
+    () => backend.bindVerifiedIdentity({ providerUid: "firebase-user-2", playerId: player.id, phoneHint: "+1 ••• ••• 0124" }),
+    /player is already linked/i,
+  );
+  assert.equal(backend.playerByProviderUid("firebase-user-2"), null);
+});
+test("a device profile alias cannot move between players", () => {
+  const backend = store();
+  const first = backend.upsertPlayer({ deviceProfileId: "device-one", displayName: "One" });
+  const second = backend.upsertPlayer({ deviceProfileId: "device-two", displayName: "Two" });
+
+  assert.throws(() => backend.addDeviceProfile(first.id, "device-two"), /different player/i);
+  assert.equal(backend.playerByDeviceProfileId("device-two").id, second.id);
+});
 test("friends, invitations, matches, and dashboard totals work", () => {
   const backend = store(); const one = backend.upsertPlayer({ deviceProfileId: "one", displayName: "One" }); const two = backend.upsertPlayer({ deviceProfileId: "two", displayName: "Two" });
   assert.equal(backend.addFriend(one.id, two.id).status, "accepted"); assert.equal(backend.createInvite({ fromPlayerId: one.id, toPlayerId: two.id, room: "ABC123", mode: "2v2" }).status, "pending");

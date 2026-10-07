@@ -19,16 +19,18 @@ class PhoneAuthError extends Error {
 }
 
 class PhoneAuthService {
-  constructor({ configured = false, verifyIdToken, now = Date.now, maximumAuthAgeSeconds = 600 } = {}) {
+  constructor({ configured = false, verifyIdToken, consumeTokenUse, now = Date.now, maximumAuthAgeSeconds = 600 } = {}) {
     this.configured = Boolean(configured);
     this.verifyIdToken = verifyIdToken;
+    this.consumeTokenUse = consumeTokenUse;
     this.now = now;
     this.maximumAuthAgeSeconds = maximumAuthAgeSeconds;
     this.consumed = new Map();
+    this.inFlight = new Map();
   }
 
   async verify(idToken) {
-    if (!this.configured || typeof this.verifyIdToken !== "function") {
+    if (!this.configured || typeof this.verifyIdToken !== "function" || typeof this.consumeTokenUse !== "function") {
       throw new PhoneAuthError("phone-auth-unavailable", "Verified phone sign-in is not configured", 503);
     }
     const token = String(idToken || "");
@@ -38,6 +40,24 @@ class PhoneAuthService {
     for (const [hash, expiresAt] of this.consumed) if (expiresAt < currentSeconds) this.consumed.delete(hash);
     if (this.consumed.has(key)) throw new PhoneAuthError("phone-token-used", "This verified phone credential was already used");
 
+    const activeVerification = this.inFlight.get(key);
+    if (activeVerification) {
+      await activeVerification;
+      throw new PhoneAuthError("phone-token-used", "This verified phone credential was already used");
+    }
+
+    const verification = this.verifyAndConsume(token, key, currentSeconds);
+    this.inFlight.set(key, verification);
+    try {
+      const result = await verification;
+      this.consumed.set(key, result.expiresAt);
+      return { providerUid: result.providerUid, phoneHint: result.phoneHint };
+    } finally {
+      if (this.inFlight.get(key) === verification) this.inFlight.delete(key);
+    }
+  }
+
+  async verifyAndConsume(token, key, currentSeconds) {
     let decoded;
     try { decoded = await this.verifyIdToken(token); }
     catch { throw new PhoneAuthError("phone-token-invalid", "The phone verification could not be confirmed"); }
@@ -53,8 +73,15 @@ class PhoneAuthService {
     if (decoded.firebase?.sign_in_provider !== "phone") {
       throw new PhoneAuthError("phone-provider-required", "A fresh phone sign-in is required");
     }
-    this.consumed.set(key, expiresAt);
-    return { providerUid, phoneHint };
+    let consumed;
+    try {
+      consumed = await this.consumeTokenUse({ fingerprint: key, expiresAt, now: currentSeconds });
+    } catch (error) {
+      if (error instanceof PhoneAuthError) throw error;
+      throw new PhoneAuthError("phone-token-store-unavailable", "Verified phone sign-in is temporarily unavailable", 503);
+    }
+    if (!consumed) throw new PhoneAuthError("phone-token-used", "This verified phone credential was already used");
+    return { providerUid, phoneHint, expiresAt };
   }
 }
 
@@ -70,18 +97,18 @@ function testVerifier(env, now = Date.now) {
   };
 }
 
-function createPhoneAuthService(env = process.env) {
+function createPhoneAuthService(env = process.env, { consumeTokenUse } = {}) {
   const production = env.NODE_ENV === "production";
   const testMode = env.PHONE_AUTH_TEST_MODE === "true";
   if (production && testMode) throw new Error("Phone auth test mode cannot run in production");
-  if (testMode) return new PhoneAuthService({ configured: true, verifyIdToken: testVerifier(env) });
+  if (testMode) return new PhoneAuthService({ configured: true, verifyIdToken: testVerifier(env), consumeTokenUse });
   if (env.FIREBASE_PHONE_AUTH_ENABLED !== "true" || !env.FIREBASE_PROJECT_ID) return new PhoneAuthService({ configured: false });
 
   const { applicationDefault, getApp, getApps, initializeApp } = require("firebase-admin/app");
   const { getAuth } = require("firebase-admin/auth");
   const app = getApps().find(candidate => candidate.name === "wasteland-phone-auth")
     || initializeApp({ credential: applicationDefault(), projectId: env.FIREBASE_PROJECT_ID }, "wasteland-phone-auth");
-  return new PhoneAuthService({ configured: true, verifyIdToken: token => getAuth(app).verifyIdToken(token, true) });
+  return new PhoneAuthService({ configured: true, verifyIdToken: token => getAuth(app).verifyIdToken(token, true), consumeTokenUse });
 }
 
 module.exports = { PhoneAuthError, PhoneAuthService, createPhoneAuthService, maskPhoneNumber };

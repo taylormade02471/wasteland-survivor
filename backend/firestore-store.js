@@ -1,6 +1,19 @@
 const path = require("path");
 const { BackendStore } = require("./store");
 
+async function consumeFirestorePhoneTokenUse(document, { fingerprint, expiresAt } = {}) {
+  const key = typeof fingerprint === "string" ? fingerprint.trim().toLowerCase() : "";
+  const expiry = Number(expiresAt);
+  if (!/^[a-f0-9]{64}$/.test(key) || !Number.isFinite(expiry)) throw new Error("A valid private phone token claim is required");
+  try {
+    await document.collection("privatePhoneTokenUses").doc(key).create({ expiresAt: expiry });
+    return true;
+  } catch (error) {
+    if (error?.code === 6 || error?.code === "6" || error?.code === "already-exists") return false;
+    throw error;
+  }
+}
+
 class FirestoreBackendStore extends BackendStore {
   constructor({ projectId, databaseId, collection = "wastelandBackend", document = "production", cacheFile }) {
     super(cacheFile);
@@ -11,7 +24,7 @@ class FirestoreBackendStore extends BackendStore {
     this.writeQueue = Promise.resolve();
     this.ready = this.document.get().then(snapshot => {
       if (snapshot.exists && snapshot.data()?.state) {
-        this.state = snapshot.data().state;
+        this.state = { ...this.state, ...snapshot.data().state, phoneTokenUses: {} };
         super.persist();
       }
       return this;
@@ -24,6 +37,9 @@ class FirestoreBackendStore extends BackendStore {
     this.writeQueue = this.writeQueue
       .catch(() => undefined)
       .then(() => this.document.set({ state: snapshot, updatedAt: new Date().toISOString() }, { merge: false }));
+  }
+  consumePhoneAuthToken(claim) {
+    return consumeFirestorePhoneTokenUse(this.document, claim);
   }
   async close() {
     await this.writeQueue;
@@ -48,4 +64,4 @@ function createBackendStore({ rootDirectory, env = process.env } = {}) {
   });
 }
 
-module.exports = { FirestoreBackendStore, createBackendStore };
+module.exports = { consumeFirestorePhoneTokenUse, FirestoreBackendStore, createBackendStore };

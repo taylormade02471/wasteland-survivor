@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const EMPTY_STATE = Object.freeze({ version: 2, players: {}, identities: {}, friendships: {}, invites: {}, matches: {}, audit: [] });
+const EMPTY_STATE = Object.freeze({ version: 3, players: {}, identities: {}, phoneTokenUses: {}, friendships: {}, invites: {}, matches: {}, audit: [] });
 const cleanText = (value, maximum = 40) => typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, maximum) : "";
 const PUBLIC_PLAYER_TAG_PATTERN = /^WS-[A-F0-9]{6,8}$/;
 const proposedPlayerTag = value => typeof value === "string" && PUBLIC_PLAYER_TAG_PATTERN.test(value.trim()) ? value.trim() : "";
@@ -37,7 +37,12 @@ class BackendStore {
   read() {
     try {
       const stored = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
-      return { ...EMPTY_STATE, ...stored, identities: stored.identities && typeof stored.identities === "object" ? stored.identities : {} };
+      return {
+        ...EMPTY_STATE,
+        ...stored,
+        identities: stored.identities && typeof stored.identities === "object" ? stored.identities : {},
+        phoneTokenUses: stored.phoneTokenUses && typeof stored.phoneTokenUses === "object" ? stored.phoneTokenUses : {},
+      };
     }
     catch { return JSON.parse(JSON.stringify(EMPTY_STATE)); }
   }
@@ -105,6 +110,8 @@ class BackendStore {
     if (!/[\u2022*]/.test(hint) || hint.replace(/\D/g, "").length > 7) throw new Error("Only a masked phone hint may be stored");
     const existing = this.state.identities[uid];
     if (existing && existing.playerId !== playerId) throw new Error("Verified identity is already linked");
+    const playerIdentity = Object.entries(this.state.identities).find(([knownUid, identity]) => knownUid !== uid && identity.playerId === playerId);
+    if (playerIdentity) throw new Error("Player is already linked to a verified phone");
     this.state.identities[uid] = { playerId, phoneHint: hint, linkedAt: existing?.linkedAt || new Date().toISOString() };
     this.audit("identity.phone-linked", { playerId });
     this.persist();
@@ -113,10 +120,15 @@ class BackendStore {
   phoneHintForPlayer(playerId) {
     return Object.values(this.state.identities).find(identity => identity.playerId === playerId)?.phoneHint || "";
   }
+  playerHasVerifiedIdentity(playerId) {
+    return Object.values(this.state.identities).some(identity => identity.playerId === playerId);
+  }
   addDeviceProfile(playerId, deviceProfileId) {
     const player = this.state.players[playerId];
     const profileId = cleanText(deviceProfileId, 80);
     if (!player || !profileId) throw new Error("A known player and device profile are required");
+    const owner = this.playerByDeviceProfileId(profileId);
+    if (owner && owner.id !== playerId) throw new Error("Device profile belongs to a different player");
     player.deviceProfileIds = [...new Set([...(player.deviceProfileIds || []), player.deviceProfileId, profileId].filter(Boolean))].slice(-10);
     this.audit("player.device-linked", { playerId });
     this.persist();
@@ -135,6 +147,21 @@ class BackendStore {
     const player = this.state.players[playerId];
     const credentials = player?.deviceCredentialHashes || (player?.deviceCredentialHash ? [player.deviceCredentialHash] : []);
     return credentials.includes(credentialHash);
+  }
+  consumePhoneAuthToken({ fingerprint, expiresAt, now = Math.floor(Date.now() / 1000) } = {}) {
+    const key = typeof fingerprint === "string" ? fingerprint.trim().toLowerCase() : "";
+    const expiry = Number(expiresAt);
+    const current = Math.floor(Number(now));
+    if (!/^[a-f0-9]{64}$/.test(key) || !Number.isFinite(expiry) || !Number.isFinite(current) || expiry <= current) {
+      throw new Error("A valid private phone token claim is required");
+    }
+    for (const [known, knownExpiry] of Object.entries(this.state.phoneTokenUses)) {
+      if (!Number.isFinite(Number(knownExpiry)) || Number(knownExpiry) <= current) delete this.state.phoneTokenUses[known];
+    }
+    if (this.state.phoneTokenUses[key]) return false;
+    this.state.phoneTokenUses[key] = expiry;
+    this.persist();
+    return true;
   }
   addFriend(playerId, friendId) {
     if (!this.state.players[playerId] || !this.state.players[friendId] || playerId === friendId) throw new Error("Invalid friendship");

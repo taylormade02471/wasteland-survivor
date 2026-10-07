@@ -64,6 +64,7 @@ export function buildPhoneLinkRequest({ idToken, profile = {} } = {}) {
   return {
     idToken: String(idToken || ""),
     deviceProfileId: String(profile.profileId || ""),
+    deviceCredential: String(profile.backendDeviceCredential || ""),
     player: {
       playerTag: String(profile.playerTag || ""),
       displayName: String(profile.name || "Survivor"),

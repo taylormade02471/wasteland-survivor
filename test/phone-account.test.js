@@ -49,12 +49,14 @@ test("phone-link request and restored local profile exclude PINs, raw phone numb
     phone: "+16155550123",
     email: "private@example.com",
     providerUid: "private-provider-uid",
+    backendDeviceCredential: "existing-device-credential",
   };
 
   const request = buildPhoneLinkRequest({ idToken: "firebase-id-token", profile: localProfile });
   assert.deepEqual(request, {
     idToken: "firebase-id-token",
     deviceProfileId: "device-profile-2",
+    deviceCredential: "existing-device-credential",
     player: {
       playerTag: "WS-A1B2C3D4",
       displayName: "Night Ranger",
@@ -81,6 +83,7 @@ test("phone-link request and restored local profile exclude PINs, raw phone numb
   assert.equal(JSON.stringify(restored).includes("firebase-id-token"), false);
   assert.equal(JSON.stringify(restored).includes("private-provider-uid"), false);
   assert.equal(JSON.stringify(restored).includes("6155550123"), false);
+  assert.equal(JSON.stringify(request).includes("local-digest"), false);
   assert.equal(restored.pin, undefined);
 });
 
