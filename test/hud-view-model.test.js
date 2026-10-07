@@ -9,6 +9,8 @@ import { createHudViewModel } from "../public/hud-view-model.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "public", "style.css"), "utf8");
+const game = fs.readFileSync(path.join(root, "public", "game3d.js"), "utf8");
+const mobileCss = css.slice(css.indexOf("@media (max-width: 680px)"));
 
 test("clamps and formats combat rail values", () => {
   const hud = createHudViewModel({
@@ -80,4 +82,26 @@ test("preserves long player names and objectives for bounded HUD regions", () =>
   assert.match(html, /id="teamName"[^>]*class="hud-text-ellipsis"/);
   assert.match(html, /id="objectiveText"[^>]*class="hud-text-ellipsis"/);
   assert.match(css, /\.hud-text-ellipsis\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis/s);
+});
+
+test("uses ally maximum health in the squad-health denominator", () => {
+  const hud = createHudViewModel({
+    mode: "teams",
+    health: 100,
+    maxHealth: 100,
+    teamHealth: 250,
+    teamHealthMax: 300,
+  });
+
+  assert.equal(hud.team.healthPercentage, 83);
+  assert.match(game, /return \{ g: group, hp: 100, maxHp: 100, shield: 0,/);
+});
+
+test("reserves separate mobile rows for the objective rail and menu", () => {
+  assert.match(mobileCss, /#objectiveRail\s*\{[^}]*top:\s*max\(8px, env\(safe-area-inset-top\)\)/s);
+  assert.match(mobileCss, /#topRightMenu\s*\{[^}]*top:\s*max\(112px, calc\(env\(safe-area-inset-top\) \+ 104px\)\)/s);
+});
+
+test("keeps mobile menu controls at least 44 CSS pixels tall", () => {
+  assert.match(mobileCss, /\.mode-control button,\s*\.map-control button,\s*#topRightMenu button\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s);
 });

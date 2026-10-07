@@ -568,7 +568,7 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   #objectiveText { padding: 4px 6px; font-size: 10px; }
 
   #topRightMenu {
-    top: 8px;
+    top: max(112px, calc(env(safe-area-inset-top) + 104px));
     right: 8px;
     max-width: 206px;
     gap: 4px;
@@ -591,7 +591,8 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   .mode-control button,
   .map-control button,
   #topRightMenu button {
-    min-height: 32px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0 8px;
     font-size: 10px;
   }

@@ -263,7 +263,7 @@ function unit(color, x, z, avatarType = "scout") {
   }
   group.position.set(x, 0, z);
   world.add(group);
-  return { g: group, hp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
+  return { g: group, hp: 100, maxHp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
 }
 
 function prop(x, z, scale = 1) {
