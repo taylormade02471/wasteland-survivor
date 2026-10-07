@@ -140,7 +140,7 @@ The module returns state and commands but never reads the DOM or starts animatio
 
 - [ ] **Step 4: Replace the centered menu card with semantic floating commands**
 
-Use real buttons in a stable absolute-positioned navigation region. Preserve existing command IDs and accessible names. Keep account/profile forms in a localized plate until authenticated; move post-login lobby actions into the floating command system.
+Use real buttons in a stable absolute-positioned navigation region. Preserve existing command IDs and accessible names. Keep account/profile forms in a localized plate until authenticated; move post-login lobby actions into the floating command system. Back is its own safe-area control at the top-left, the top-right contains only Menu, and the lobby does not retain a persistent `Profile:` header label.
 
 - [ ] **Step 5: Bind mouse, keyboard, touch, and controller focus**
 
@@ -154,6 +154,51 @@ Expected: all pass.
 ```powershell
 git add public/index.html public/style.css public/game3d.js public/menu-navigation.mjs test/menu-navigation.test.js
 git commit -m "feat: add unified floating menu navigation"
+```
+
+### Task 3A: Online Rooms And Automatic Bot Fill
+
+**Files:**
+- Create: `public/matchmaking-rules.mjs`
+- Create: `test/matchmaking-rules.test.js`
+- Modify: `public/index.html`
+- Modify: `public/style.css`
+- Modify: `public/game3d.js`
+- Modify: `server.js`
+
+**Interfaces:**
+- Consumes: selected team size, room peers, and a match-start command
+- Produces: a room plan with `{ teamSize, capacity, humanPlayers, botPlayers, slots }` and team-size-specific room capacity
+
+- [ ] **Step 1: Write failing room-plan tests**
+
+Cover 1v1, 2v2, and 3v3 capacities; full-human rooms; underfilled rooms; zero-peer fallback; stable team balance; and invalid input normalization.
+
+- [ ] **Step 2: Verify the tests fail**
+
+Run: `node --test test/matchmaking-rules.test.js`
+Expected: FAIL because `matchmaking-rules.mjs` does not exist.
+
+- [ ] **Step 3: Implement the pure roster rule**
+
+Return deterministic slot assignments and the exact bot count needed to reach the selected capacity. Do not let UI code invent roster totals.
+
+- [ ] **Step 4: Replace the visible computer-team option**
+
+Repurpose the preserved lobby command as Online Multiplayer. Activating it reveals separate 1v1, 2v2, and 3v3 controls. Remove visible `Computer Team Match` text and the persistent lobby `Profile:` prefix.
+
+- [ ] **Step 5: Add team-size-specific rooms and match start fill**
+
+Encode the selected team size in the room ID, make the server enforce 2, 4, or 6 total human seats, and include human and bot counts in the match-ready payload. Starting an underfilled match fills every open slot with a bot; starting a full room adds none.
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `node --check server.js; node --check public/game3d.js; node --test test/matchmaking-rules.test.js test/game-rules.test.js test/branding.test.js`
+Expected: all pass.
+
+```powershell
+git add public/matchmaking-rules.mjs public/index.html public/style.css public/game3d.js server.js test/matchmaking-rules.test.js
+git commit -m "feat: add online rooms with automatic bot fill"
 ```
 
 ### Task 4: Cinematic Menu Presentation And Motion Preferences

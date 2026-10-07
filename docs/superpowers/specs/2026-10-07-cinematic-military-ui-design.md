@@ -72,9 +72,14 @@ Primary commands include:
 
 - Enter Wasteland or Continue.
 - Choose Fight.
+- Online Multiplayer.
 - Survivor and Loadout.
 - Friends and Rooms.
 - Settings.
+
+Back is a standalone safe-area control at the top-left, outside title and profile plates. The top-right contains only the Menu command. Player identity may appear in the dashboard or player-selection view, but a persistent `Profile:` label does not occupy the lobby header. Each primary lobby choice is its own floating command rather than a cell inside one large card.
+
+Online Multiplayer opens a focused room-size choice for 1v1, 2v2, or 3v3. There is no visible Computer Team Match command. When a match starts before every slot is occupied by a human player, the roster service fills the remaining slots with bots while preserving the selected team size.
 
 Each command has a stable interaction area while its visual layer may move subtly. Idle controls breathe through restrained light, depth, and particle response. They must not move far enough to make clicking, tapping, or controller focus unpredictable.
 
