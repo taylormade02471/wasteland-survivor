@@ -5,6 +5,11 @@ import { createNightfallBackground, setNightfallPresentation, setNightfallScene,
 import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
 import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
 import {
+  applyRequiredControlsTourLock,
+  captureControlsTourPreferenceIdentity,
+  syncControlsTourPreferencesForIdentity,
+} from "./controls-tour-adapter.mjs";
+import {
   cancelPendingMatchSelection,
   cancelQueuedControlsTour,
   controlsTourStorageKey,
@@ -1627,38 +1632,56 @@ function controlsTourIdentityInput() {
   return { profile: guestControlsIdentityActive ? null : activeProfile, guest: guestControlsIdentityActive };
 }
 
-function localControlsTourFamilies() {
+function localControlsTourFamilies(identityInput = controlsTourIdentityInput()) {
   try {
-    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(controlsTourStorageKey(controlsTourIdentityInput())) || "[]"));
+    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(controlsTourStorageKey(identityInput)) || "[]"));
   } catch {
     return [];
   }
 }
 
-function controlsTourSeenFamilies() {
-  return mergeSeenControlsFamilies(localControlsTourFamilies(), guestControlsIdentityActive ? [] : activeProfile?.controlsTourSeenFamilies);
+function controlsTourSeenFamilies(identityInput = controlsTourIdentityInput()) {
+  return mergeSeenControlsFamilies(
+    localControlsTourFamilies(identityInput),
+    identityInput.guest ? [] : identityInput.profile?.controlsTourSeenFamilies,
+  );
 }
 
-function saveControlsTourFamilies(families) {
+function saveControlsTourFamiliesForIdentity(capture, families) {
   const seenFamilies = mergeSeenControlsFamilies(families);
-  localStorage.setItem(controlsTourStorageKey(controlsTourIdentityInput()), JSON.stringify(seenFamilies));
-  if (activeProfile && !guestControlsIdentityActive) {
-    activeProfile.controlsTourSeenFamilies = seenFamilies;
-    saveProfile(activeProfile);
+  localStorage.setItem(capture.storageKey, JSON.stringify(seenFamilies));
+  if (capture.profileRef && !capture.guest) {
+    capture.profileRef.controlsTourSeenFamilies = seenFamilies;
+    saveProfile(capture.profileRef);
   }
   return seenFamilies;
 }
 
+function saveControlsTourFamilies(families) {
+  const capture = captureControlsTourPreferenceIdentity(controlsTourIdentityInput());
+  return saveControlsTourFamiliesForIdentity(capture, families);
+}
+
 async function syncControlsTourPreferences() {
-  const localFamilies = controlsTourSeenFamilies();
-  if (guestControlsIdentityActive || !activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return localFamilies;
+  const identityInput = controlsTourIdentityInput();
+  const localFamilies = controlsTourSeenFamilies(identityInput);
+  if (identityInput.guest || !identityInput.profile?.backendSession || offlineMode || identityInput.profile.youthAccount) return localFamilies;
   try {
-    const response = await fetch("/api/account/preferences", {
-      headers: { Authorization: `Bearer ${activeProfile.backendSession}` },
+    const result = await syncControlsTourPreferencesForIdentity({
+      identityInput,
+      getCurrentIdentityInput: controlsTourIdentityInput,
+      localFamilies,
+      requestFamilies: async capture => {
+        const response = await fetch("/api/account/preferences", {
+          headers: { Authorization: `Bearer ${capture.backendSession}` },
+        });
+        if (!response.ok) throw new Error("Private controls preferences were unavailable");
+        const payload = await response.json();
+        return payload.preferences?.controlsTourSeenFamilies;
+      },
+      applyFamilies: ({ capture, families }) => saveControlsTourFamiliesForIdentity(capture, families),
     });
-    if (!response.ok) return localFamilies;
-    const payload = await response.json();
-    return saveControlsTourFamilies(mergeSeenControlsFamilies(localFamilies, payload.preferences?.controlsTourSeenFamilies));
+    return result.families;
   } catch {
     return localFamilies;
   }
@@ -1702,9 +1725,11 @@ function renderControlsTour() {
 }
 
 function setRequiredControlsTourLock(locked) {
-  document.body.classList.toggle("controls-tour-required", locked);
-  lobbyScreen.inert = locked;
-  $("gameMenu").inert = locked;
+  applyRequiredControlsTourLock({
+    required: locked,
+    bodyClassList: document.body.classList,
+    backgroundTargets: [lobbyScreen, $("gameMenu")],
+  });
 }
 
 function resetMiniTourOfferControls() {

@@ -137,7 +137,7 @@ test("local completion keys isolate profiles and reserve a separate guest identi
   assert.equal(storage.has(controlsTourStorageKey({ guest: true })), false);
 });
 
-test("pending match gate rechecks a switched family and consumes one protected selection once", async () => {
+test("executable pending match policy rechecks a switched family and consumes one protected selection once", async () => {
   const {
     createPendingMatchGate,
     queuePendingMatchSelection,
@@ -231,10 +231,13 @@ test("the accessible coach UI exposes replay and family-specific progress withou
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[^{]*\{[^}]*\.controls-tour/s);
 });
 
-test("game integration wires the executable controls-tour policies into every input path", () => {
+test("static game wiring sanity references the controls-tour policy entry points", () => {
   const game = fs.readFileSync(path.join(root, "public", "game3d.js"), "utf8");
 
   assert.match(game, /from "\.\/controls-tour\.mjs"/);
+  assert.match(game, /from "\.\/controls-tour-adapter\.mjs"/);
+  assert.match(game, /syncControlsTourPreferencesForIdentity\(/);
+  assert.match(game, /applyRequiredControlsTourLock\(/);
   assert.match(game, /async function requestMatchStart/);
   assert.match(game, /resolvePendingMatchSelection\(/);
   assert.match(game, /queuePendingMatchSelection\(/);
