@@ -201,6 +201,50 @@ git add public/matchmaking-rules.mjs public/index.html public/style.css public/g
 git commit -m "feat: add online rooms with automatic bot fill"
 ```
 
+### Task 3B: Hero Lobby Composition And Survivor Readouts
+
+**Files:**
+- Create: `public/lobby-profile-view.mjs`
+- Create: `test/lobby-profile-view.test.js`
+- Modify: `public/index.html`
+- Modify: `public/style.css`
+- Modify: `public/game3d.js`
+
+**Interfaces:**
+- Consumes: active profile, class definition, player progress, equipped weapon, shield level, and network state
+- Produces: a display-safe survivor summary and the final three-choice hero lobby composition
+
+- [ ] **Step 1: Write failing survivor-summary and structure tests**
+
+Cover sanitized display name and tag, level and XP percentage, class and known skill, weapon, shield, online state, missing profile fallback, exactly three primary fight commands, and secondary edge actions.
+
+- [ ] **Step 2: Verify the tests fail**
+
+Run: `node --test test/lobby-profile-view.test.js`
+Expected: FAIL because the lobby-profile view model does not exist and the current lobby exposes too many equal-weight commands.
+
+- [ ] **Step 3: Implement the pure survivor summary**
+
+Return text and progress values only. Reuse the existing class, weapon, and progression rules instead of duplicating formulas.
+
+- [ ] **Step 4: Reduce the hero menu to three fight commands**
+
+Keep only `Survival Mode`, `Multiplayer`, and `Capture the Flag` in the primary floating group. Move Settings, Friends/Connections, Loadout/Profile, and Switch Profile into smaller safe-area edge actions. Preserve legacy IDs and every existing route.
+
+- [ ] **Step 5: Fill the scene with the active survivor**
+
+Render the selected avatar as a strong environmental figure and mount name, Player Tag, level, XP, class, known skill, weapon, shield, and online state as compact readouts in the open hero space. Selecting the avatar/readout opens the existing dashboard. Phone uses a compact survivor strip that cannot cover the three fight choices.
+
+- [ ] **Step 6: Verify and commit**
+
+Run: `node --check public/game3d.js; node --test test/lobby-profile-view.test.js test/menu-navigation.test.js test/class-rules.test.js test/progression-rules.test.js test/combat-rules.test.js test/*.test.js`
+Expected: all pass.
+
+```powershell
+git add public/lobby-profile-view.mjs public/index.html public/style.css public/game3d.js test/lobby-profile-view.test.js
+git commit -m "feat: compose the survivor hero lobby"
+```
+
 ### Task 4: Cinematic Menu Presentation And Motion Preferences
 
 **Files:**

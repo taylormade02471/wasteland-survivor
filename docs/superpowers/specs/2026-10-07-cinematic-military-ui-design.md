@@ -68,20 +68,21 @@ Safe-area insets are honored on notched devices. Text and controls must remain r
 
 The main menu removes the large central form-card composition. Menu commands become floating tactical controls positioned over the cinematic Nightfall environment. Their visual layers should feel buoyed by radioactive water or slime: slow uneven rise and fall, soft ripples or glow beneath each command, thin vapor, and tiny disturbed particles. The underlying button geometry stays fixed so the animation never makes a command difficult to click or tap.
 
-Primary commands include:
+The lobby presents exactly three primary fight commands:
 
-- Enter Wasteland or Continue.
-- Choose Fight.
-- Online Multiplayer.
-- Survivor and Loadout.
-- Friends and Rooms.
-- Settings.
+- Survival Mode.
+- Multiplayer.
+- Capture the Flag.
+
+Settings, friends/connections, survivor/loadout, and profile switching remain available as smaller edge commands, not equal-weight fight choices.
 
 Back is a standalone safe-area control at the top-left, outside title and profile plates. The top-right contains only the Menu command. Player identity may appear in the dashboard or player-selection view, but a persistent `Profile:` label does not occupy the lobby header. Each primary lobby choice is its own floating command rather than a cell inside one large card.
 
 Online Multiplayer opens a focused room-size choice for 1v1, 2v2, or 3v3. There is no visible Computer Team Match command. When a match starts before every slot is occupied by a human player, the roster service fills the remaining slots with bots while preserving the selected team size.
 
 Each command has a stable interaction area while its visual layer may move subtly. Idle controls breathe through restrained light, depth, and particle response. They must not move far enough to make clicking, tapping, or controller focus unpredictable.
+
+The remaining hero space belongs to the selected survivor. The avatar is a strong environmental figure rather than a card thumbnail. Scene-mounted readouts show display name, permanent Player Tag, level, XP progress, class, known skill, equipped weapon, shield, and online state. Selecting the avatar or its loadout readout opens the detailed dashboard. On phone, this composition collapses into a compact survivor strip without covering the three fight choices.
 
 ### Selection Behavior
 
