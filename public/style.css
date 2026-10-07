@@ -94,6 +94,14 @@ body.menu-active .home-backdrop.is-ready { opacity: .52; }
 .aim-reticle i { left: -7px; top: -7px; }.aim-reticle b { right: -7px; bottom: -7px; }
 body.menu-active .aim-reticle, .aim-reticle.hidden { opacity: 0; }
 .controller-debug { position: fixed; left: 12px; bottom: 12px; z-index: 60; display: grid; gap: 4px; min-width: 250px; padding: 10px 12px; border: 1px solid #66fcf1; background: rgba(5,10,15,.9); color: #d9f8f5; font: 11px ui-monospace, monospace; pointer-events: none; }.controller-debug b { color: #ffdf52; letter-spacing: .12em; }.controller-debug span { color: #b7cbd0; }.controller-debug.hidden { display: none !important; }
+.input-recovery-notice { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); background: rgba(2,6,8,.42); pointer-events: none; }
+.input-recovery-panel { width: min(360px, calc(100vw - 36px)); padding: 16px 18px; border: 1px solid rgba(255,196,72,.78); border-left: 4px solid #ffc448; border-radius: 4px; background: rgba(8,14,17,.94); box-shadow: 0 16px 42px rgba(0,0,0,.48); color: #f8f3df; text-align: left; }
+.input-recovery-panel span { display: block; margin-bottom: 5px; color: #ffc448; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.input-recovery-panel strong { display: block; font: 900 20px "Bahnschrift Condensed", "Arial Narrow", sans-serif; }
+.input-recovery-panel p { margin: 6px 0 0; color: #c8d3d2; font-size: 13px; line-height: 1.4; }
+.input-recovery-notice[data-recovery-kind="graphics"] .input-recovery-panel { border-color: rgba(102,252,241,.72); border-left-color: #66fcf1; }
+.input-recovery-notice[data-recovery-kind="graphics"] .input-recovery-panel span { color: #66fcf1; }
+body.input-recovery-active .aim-reticle { opacity: 0; }
 .welcome-screen, .modal, #topRightMenu, #hud, #touchControls, .chest-prompt { z-index: 40; }
 body.menu-active #hud, body.menu-active #topRightMenu, body.menu-active #touchControls, body.menu-active .chest-prompt { visibility: hidden; pointer-events: none; }
 .match-countdown { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; align-content: center; gap: 6px; background: rgba(4,7,10,.48); color: #f8f3df; text-align: center; pointer-events: none; }

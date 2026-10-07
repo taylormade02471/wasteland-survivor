@@ -1,6 +1,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
+import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
 import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
 import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
 import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
@@ -73,8 +74,8 @@ const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
 const canvas = $("game");
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
+const inputRecoveryNotice = $("inputRecoveryNotice");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 3));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.autoUpdate = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -234,11 +235,17 @@ const voicePeers = new Map();
 const touch = { mx: 0, mz: 0, ax: 0, az: 0, fire: false };
 const keys = {};
 const coarsePointer = matchMedia("(pointer: coarse)");
+const finePointer = matchMedia("(pointer: fine)");
 let mouseInputActive = false;
 let inputMode = "mouse";
 let viewYaw = 0;
 let lockedTarget = null;
 let graphicsTierOverride = localStorage.getItem(task4StorageKey("graphics-tier")) || "auto";
+let pointerResumeRequired = false;
+let rendererContextLost = false;
+let canvasPointerLocked = false;
+let devicePixelRatioQuery = null;
+let observedDevicePixelRatio = null;
 let aimSettings = normalizeAimSettings({
   sensitivity: localStorage.getItem(task4StorageKey("aim-sensitivity")) || 1,
   adsSensitivity: localStorage.getItem(task4StorageKey("ads-sensitivity")) || 0.75,
@@ -254,6 +261,11 @@ function setInputMode(nextMode) {
   const previousFamily = normalizeControlsFamily(inputMode);
   inputMode = nextMode;
   mouseInputActive = nextMode === "mouse";
+  if (nextMode !== "mouse" && pointerResumeRequired) {
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+  }
+  if (nextMode !== "mouse" && document.pointerLockElement === canvas) document.exitPointerLock?.();
   document.body.dataset.inputMode = nextMode;
   $("landscapeHint").classList.toggle("hidden", nextMode !== "touch" || matchMedia("(orientation: landscape)").matches);
   const nextFamily = normalizeControlsFamily(nextMode);
@@ -378,10 +390,36 @@ scene.add(sun);
 const world = new THREE.Group();
 scene.add(world);
 
+function handleDevicePixelRatioChange() {
+  observedDevicePixelRatio = null;
+  resize();
+}
+
+function observeDevicePixelRatio(pixelRatio) {
+  if (observedDevicePixelRatio === pixelRatio) return;
+  if (devicePixelRatioQuery?.removeEventListener) devicePixelRatioQuery.removeEventListener("change", handleDevicePixelRatioChange);
+  else devicePixelRatioQuery?.removeListener?.(handleDevicePixelRatioChange);
+  observedDevicePixelRatio = pixelRatio;
+  devicePixelRatioQuery = matchMedia(`(resolution: ${pixelRatio}dppx)`);
+  if (devicePixelRatioQuery.addEventListener) devicePixelRatioQuery.addEventListener("change", handleDevicePixelRatioChange);
+  else devicePixelRatioQuery.addListener?.(handleDevicePixelRatioChange);
+}
+
 function resize() {
-  renderer.setSize(innerWidth, innerHeight, false);
-  camera.aspect = innerWidth / innerHeight;
+  const pixelRatio = window.devicePixelRatio || 1;
+  const metrics = resolveRendererMetrics({
+    width: innerWidth,
+    height: innerHeight,
+    devicePixelRatio: pixelRatio,
+    graphicsTier: effectiveGraphicsTier(),
+  });
+  if (!rendererContextLost) {
+    renderer.setPixelRatio(metrics.pixelRatio);
+    renderer.setSize(metrics.width, metrics.height, false);
+  }
+  camera.aspect = metrics.aspect;
   camera.updateProjectionMatrix();
+  observeDevicePixelRatio(pixelRatio);
 }
 
 function updateAimReticle() {
@@ -934,6 +972,16 @@ function pollController() {
   return result;
 }
 
+function neutralControllerInput() {
+  return {
+    mx: 0, mz: 0, ax: 0, az: 0,
+    fire: false, ads: false, menuHeld: false, bHeld: false,
+    interact: false, ability: false, reload: false, weapon: false,
+    pause: false, switchTarget: false,
+    dpadUp: false, dpadDown: false, dpadLeft: false, dpadRight: false,
+  };
+}
+
 function handleControlsTourController() {
   const controller = pollController();
   const next = recordControlsTourControllerSnapshot(controlsTourState, {
@@ -1110,7 +1158,9 @@ function update(dt) {
     return;
   }
   if (phase === "loadout") return;
-  const controller = pollController();
+  const sampledController = pollController();
+  const inputPaused = localGameplayInputPaused();
+  const controller = inputPaused ? neutralControllerInput() : sampledController;
   if (controller.pause) menuOpen ? closeGameMenu() : openGameMenu();
   if (phase === "paused" && mode === "solo") return;
   if (controller.interact) interact();
@@ -1153,10 +1203,10 @@ function update(dt) {
       spawnTimer = schedule[1] || Math.max(.75, 4 - wave * .1);
     }
   }
-  let mx = controllerLocked() || menuOpen ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
-  let mz = controllerLocked() || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
-  if (touch.mx || touch.mz) { mx = touch.mx; mz = touch.mz; }
-  if (controller.mx || controller.mz) { mx = controller.mx; mz = controller.mz; }
+  let mx = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+  let mz = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+  if (!inputPaused && (touch.mx || touch.mz)) { mx = touch.mx; mz = touch.mz; }
+  if (!inputPaused && (controller.mx || controller.mz)) { mx = controller.mx; mz = controller.mz; }
   const length = Math.hypot(mx, mz) || 1;
   if (frontView) {
     const forward = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
@@ -1169,8 +1219,8 @@ function update(dt) {
     player.g.position.x += mx / length * 10 * classSpeed * dt;
     player.g.position.z += mz / length * 10 * classSpeed * dt;
   }
-  const manualTouchAim = Math.hypot(touch.ax, touch.az) > .08;
-  const manualControllerAim = Math.hypot(controller.ax, controller.az) > .08;
+  const manualTouchAim = !inputPaused && Math.hypot(touch.ax, touch.az) > .08;
+  const manualControllerAim = !inputPaused && Math.hypot(controller.ax, controller.az) > .08;
   if (manualTouchAim) {
     setInputMode("touch");
     aim.copy(player.g.position).add(new THREE.Vector3(touch.ax, 0, touch.az).multiplyScalar(20));
@@ -1180,7 +1230,7 @@ function update(dt) {
     aim.copy(player.g.position).add(new THREE.Vector3(controller.ax, 0, controller.az).multiplyScalar(20));
     viewYaw = Math.atan2(controller.ax, controller.az);
   }
-  const wantsFire = ((!controllerLocked() && firing) || touch.fire || controller.fire);
+  const wantsFire = !inputPaused && ((!controllerLocked() && firing) || touch.fire || controller.fire);
   if (shouldAutoLock({ coarsePointer: coarsePointer.matches, difficultyRatio, preset: aimSettings.preset, manualAim: manualTouchAim || manualControllerAim, mouseInputActive, controllerInputActive: inputMode === "controller" && manualControllerAim }) && wantsFire) {
     const target = lockedTarget?.alive ? lockedTarget : nearest(player, enemies);
     if (target) {
@@ -1324,6 +1374,7 @@ function renderHud() {
 
 function render() {
   const dt = Math.min(clock.getDelta(), .04);
+  syncPointerCaptureEligibility();
   startQueuedControlsTourWhenSafe();
   if (controlsTourState?.status === "active") handleControlsTourController();
   else if (!ui.settings.classList.contains("hidden") && controllerConnected) handleSettingsController();
@@ -1333,7 +1384,7 @@ function render() {
   renderHud();
   player.cooldown = Math.max(0, player.cooldown - dt);
   allies.forEach(bot => { bot.cooldown = Math.max(0, bot.cooldown - dt); });
-  renderer.render(scene, camera);
+  if (!rendererContextLost) renderer.render(scene, camera);
   updateAimReticle();
   requestAnimationFrame(render);
 }
@@ -1419,6 +1470,127 @@ function stopMusic() {
 function clearKeyboardInput() {
   Object.keys(keys).forEach(key => delete keys[key]);
   firing = false;
+}
+
+function currentControllerButtons() {
+  const pad = Array.from(navigator.getGamepads?.() || []).find(Boolean);
+  return pad ? Array.from(pad.buttons || [], button => Boolean(button.pressed)) : [];
+}
+
+function clearTransientGameplayInput(reason) {
+  const recovery = resolveTransientInputReset({
+    reason,
+    pointerResumeEligible: pointerRecoveryApplies(),
+    keys,
+    touch,
+    controllerButtons: currentControllerButtons(),
+  });
+  if (!recovery.shouldReset) return recovery;
+  const cleared = recovery.state;
+  Object.keys(keys).forEach(key => delete keys[key]);
+  Object.assign(keys, cleared.keys);
+  Object.assign(touch, cleared.touch);
+  firing = cleared.firing;
+  adsActive = cleared.ads;
+  lastButtons = cleared.controllerButtonLatch;
+  if (recovery.requiresPointerClick) pointerResumeRequired = true;
+  document.querySelectorAll("#touchControls .active").forEach(control => control.classList.remove("active"));
+  ["moveStick", "aimStick"].forEach(id => {
+    const knob = $(id)?.querySelector("i");
+    if (knob) knob.style.transform = "translate(0,0)";
+  });
+  return recovery;
+}
+
+function pointerCaptureDecision({
+  pointerType = "mouse",
+  deliberateCanvasAction = true,
+  pointerLocked = false,
+  documentVisible = document.visibilityState === "visible",
+  rendererReady = !rendererContextLost,
+} = {}) {
+  return canCaptureGameplayPointer({
+    phase,
+    inputMode,
+    pointerType,
+    deliberateCanvasAction,
+    finePointer: finePointer.matches,
+    firstPerson: frontView,
+    playerAlive: Boolean(player?.alive),
+    menuOpen,
+    controlsTourActive: controlsTourState?.status === "active",
+    controllerOnly,
+    pointerLocked,
+    documentVisible,
+    rendererReady,
+  });
+}
+
+function pointerRecoveryApplies() {
+  return pointerCaptureDecision({
+    pointerLocked: false,
+    documentVisible: true,
+    rendererReady: true,
+  });
+}
+
+function localGameplayInputPaused() {
+  return rendererContextLost || (pointerResumeRequired && inputMode === "mouse");
+}
+
+function updateInputRecoveryNotice() {
+  const active = rendererContextLost || pointerResumeRequired;
+  document.body.classList.toggle("input-recovery-active", active);
+  canvas.setAttribute("aria-busy", String(rendererContextLost));
+  if (!inputRecoveryNotice) return;
+  inputRecoveryNotice.classList.toggle("hidden", !active);
+  if (!active) {
+    inputRecoveryNotice.removeAttribute("data-recovery-kind");
+    return;
+  }
+  const graphicsRecovery = rendererContextLost;
+  inputRecoveryNotice.dataset.recoveryKind = graphicsRecovery ? "graphics" : "pointer";
+  $("inputRecoveryTitle").textContent = graphicsRecovery ? "GRAPHICS RECOVERING" : "AIMING PAUSED";
+  $("inputRecoveryText").textContent = graphicsRecovery
+    ? "Restoring the battlefield view. Local controls are safely released."
+    : "Click the battlefield to resume mouse aim.";
+}
+
+function interruptLocalInput(reason) {
+  const recovery = clearTransientGameplayInput(reason);
+  if (!recovery.shouldReset) return;
+  if (reason !== "pointer-lock-lost" && document.pointerLockElement === canvas) document.exitPointerLock?.();
+  updateInputRecoveryNotice();
+}
+
+function syncPointerCaptureEligibility() {
+  if (pointerResumeRequired && !pointerRecoveryApplies()) {
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+  }
+  if (document.pointerLockElement !== canvas) return;
+  const valid = pointerCaptureDecision({
+    pointerLocked: false,
+    deliberateCanvasAction: true,
+  });
+  if (!valid) document.exitPointerLock?.();
+}
+
+function requestGameplayPointerLock(event) {
+  const eligible = pointerCaptureDecision({
+    pointerType: event.pointerType,
+    deliberateCanvasAction: event.isTrusted && event.button === 0 && event.isPrimary !== false,
+    pointerLocked: document.pointerLockElement === canvas,
+  });
+  if (!eligible || typeof canvas.requestPointerLock !== "function") return false;
+  try {
+    const request = canvas.requestPointerLock();
+    request?.catch?.(() => interruptLocalInput("pointer-lock-lost"));
+    return true;
+  } catch {
+    interruptLocalInput("pointer-lock-lost");
+    return false;
+  }
 }
 
 function deviceId() {
@@ -2800,7 +2972,10 @@ function applyGraphicsTier() {
   applyMenuPresentation(menuSection, lobbyNavigator?.current().id || null);
   if (document.body.classList.contains("menu-active")) initializeMenuBackdrop({ force: true });
   else pauseMenuBackdrop();
-  renderer.setPixelRatio(Math.min(devicePixelRatio, tier === "low" ? 1 : tier === "medium" ? 1.75 : 3));
+  applyRendererTier(tier);
+}
+
+function applyRendererTier(tier = effectiveGraphicsTier()) {
   renderer.shadowMap.enabled = tier !== "low";
   renderer.shadowMap.autoUpdate = tier === "high";
   resize();
@@ -2865,6 +3040,39 @@ function equip(gunName) {
 }
 
 addEventListener("resize", resize);
+addEventListener("blur", () => interruptLocalInput("window-blur"));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") interruptLocalInput("document-hidden");
+});
+document.addEventListener("pointerlockchange", () => {
+  const locked = document.pointerLockElement === canvas;
+  if (locked) {
+    canvasPointerLocked = true;
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+    return;
+  }
+  if (!canvasPointerLocked) return;
+  canvasPointerLocked = false;
+  interruptLocalInput("pointer-lock-lost");
+});
+document.addEventListener("pointerlockerror", () => interruptLocalInput("pointer-lock-lost"));
+canvas.addEventListener("pointerleave", () => {
+  if (document.pointerLockElement !== canvas) interruptLocalInput("canvas-exit");
+});
+canvas.addEventListener("lostpointercapture", () => interruptLocalInput("pointer-capture-lost"));
+canvas.addEventListener("pointercancel", () => interruptLocalInput("pointer-capture-lost"));
+canvas.addEventListener("webglcontextlost", event => {
+  event.preventDefault();
+  rendererContextLost = true;
+  interruptLocalInput("webgl-context-lost");
+});
+canvas.addEventListener("webglcontextrestored", () => {
+  rendererContextLost = false;
+  clearTransientGameplayInput("webgl-context-lost");
+  applyRendererTier();
+  updateInputRecoveryNotice();
+});
 addEventListener("gamepadconnected", () => updateControllerState(true));
 addEventListener("gamepaddisconnected", () => updateControllerState(false));
 addEventListener("keydown", event => {
@@ -2905,6 +3113,7 @@ addEventListener("keydown", event => {
   }
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) event.preventDefault();
   if (key === "escape") { menuOpen ? closeGameMenu() : openGameMenu(); return; }
+  if (localGameplayInputPaused()) return;
   if (key === "r") reloadWeapon(true);
   if (key === "q") cycleWeapon(1);
   if (key === "e") interact();
@@ -2935,7 +3144,9 @@ canvas.addEventListener("pointermove", event => {
   }
   if (event.pointerType === "mouse") {
     setInputMode("mouse");
+    if (localGameplayInputPaused()) return;
     if (frontView && phase === "combat" && !menuOpen) {
+      if (document.pointerLockElement !== canvas) return;
       viewYaw -= event.movementX * .0032 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
       return;
@@ -2953,9 +3164,13 @@ canvas.addEventListener("pointerdown", event => {
     handleControlsTourSignal({ source: "pointer", kind: "down", button: event.button });
     return;
   }
-  firing = true;
+  if (event.pointerType === "mouse") setInputMode("mouse");
+  const resumingPointer = pointerResumeRequired;
+  if (event.pointerType === "mouse" && frontView && document.pointerLockElement !== canvas) requestGameplayPointerLock(event);
   wakeAudio();
-  if (frontView && document.pointerLockElement !== canvas && matchMedia("(pointer: fine)").matches) canvas.requestPointerLock?.();
+  if (resumingPointer || localGameplayInputPaused()) return;
+  if (phase !== "combat" || menuOpen || event.button !== 0 || event.isPrimary === false) return;
+  firing = true;
 });
 addEventListener("pointerup", () => { firing = false; });
 

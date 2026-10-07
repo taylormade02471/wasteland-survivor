@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <canvas id="game" aria-label="Wasteland Survivor battlefield"></canvas>
   <div id="aimReticle" class="aim-reticle" aria-hidden="true"><i></i><b></b></div>
   <aside id="controllerDebug" class="controller-debug hidden" aria-live="polite"><b>CONTROLLER DEBUG</b><span id="debugPadName">No controller detected</span><span id="debugAxes">LX 0.00 · LY 0.00 · RX 0.00 · RY 0.00</span><span id="debugButtons">Buttons: none</span><span id="debugAction">Action: waiting</span></aside>
   <div id="nightfallBackground" aria-hidden="true"></div>
@@ -25,6 +25,13 @@
     <source src="./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4" type="video/mp4" />
   </video>
   <div id="matchCountdown" class="match-countdown hidden"><span id="countdownLabel">ENTERING NIGHTFALL</span><b id="countdownNumber">15</b></div>
+  <aside id="inputRecoveryNotice" class="input-recovery-notice hidden" role="status" aria-live="assertive" aria-atomic="true">
+    <div class="input-recovery-panel">
+      <span>LOCAL INPUT SAFETY</span>
+      <strong id="inputRecoveryTitle">AIMING PAUSED</strong>
+      <p id="inputRecoveryText">Click the battlefield to resume mouse aim.</p>
+    </div>
+  </aside>
 
   <section id="controlsTourModal" class="controls-tour-modal hidden" role="dialog" aria-labelledby="controlsTourTitle" aria-describedby="controlsTourInstruction">
     <div class="controls-tour-card">
