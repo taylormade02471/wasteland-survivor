@@ -31,6 +31,7 @@ export async function syncControlsTourPreferencesForIdentity({
   getCurrentIdentityInput = () => identityInput,
   localFamilies = [],
   requestFamilies,
+  readCurrentFamilies = () => [],
   applyFamilies,
 } = {}) {
   const capture = captureControlsTourPreferenceIdentity(identityInput);
@@ -39,7 +40,7 @@ export async function syncControlsTourPreferencesForIdentity({
   if (!isControlsTourPreferenceIdentityCurrent(capture, getCurrentIdentityInput())) {
     return Object.freeze({ status: "stale", families: baseline });
   }
-  const merged = mergeSeenControlsFamilies(baseline, remoteFamilies);
+  const merged = mergeSeenControlsFamilies(baseline, readCurrentFamilies(capture), remoteFamilies);
   const saved = applyFamilies({ capture, families: merged });
   return Object.freeze({ status: "applied", families: mergeSeenControlsFamilies(saved) });
 }

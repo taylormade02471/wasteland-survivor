@@ -1632,18 +1632,29 @@ function controlsTourIdentityInput() {
   return { profile: guestControlsIdentityActive ? null : activeProfile, guest: guestControlsIdentityActive };
 }
 
-function localControlsTourFamilies(identityInput = controlsTourIdentityInput()) {
+function storedControlsTourFamilies(storageKey) {
   try {
-    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(controlsTourStorageKey(identityInput)) || "[]"));
+    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(storageKey) || "[]"));
   } catch {
     return [];
   }
+}
+
+function localControlsTourFamilies(identityInput = controlsTourIdentityInput()) {
+  return storedControlsTourFamilies(controlsTourStorageKey(identityInput));
 }
 
 function controlsTourSeenFamilies(identityInput = controlsTourIdentityInput()) {
   return mergeSeenControlsFamilies(
     localControlsTourFamilies(identityInput),
     identityInput.guest ? [] : identityInput.profile?.controlsTourSeenFamilies,
+  );
+}
+
+function controlsTourFamiliesForCapturedIdentity(capture) {
+  return mergeSeenControlsFamilies(
+    storedControlsTourFamilies(capture.storageKey),
+    capture.guest ? [] : capture.profileRef?.controlsTourSeenFamilies,
   );
 }
 
@@ -1679,6 +1690,7 @@ async function syncControlsTourPreferences() {
         const payload = await response.json();
         return payload.preferences?.controlsTourSeenFamilies;
       },
+      readCurrentFamilies: controlsTourFamiliesForCapturedIdentity,
       applyFamilies: ({ capture, families }) => saveControlsTourFamiliesForIdentity(capture, families),
     });
     return result.families;

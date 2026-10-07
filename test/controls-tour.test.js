@@ -237,6 +237,7 @@ test("static game wiring sanity references the controls-tour policy entry points
   assert.match(game, /from "\.\/controls-tour\.mjs"/);
   assert.match(game, /from "\.\/controls-tour-adapter\.mjs"/);
   assert.match(game, /syncControlsTourPreferencesForIdentity\(/);
+  assert.match(game, /readCurrentFamilies:\s*controlsTourFamiliesForCapturedIdentity/);
   assert.match(game, /applyRequiredControlsTourLock\(/);
   assert.match(game, /async function requestMatchStart/);
   assert.match(game, /resolvePendingMatchSelection\(/);

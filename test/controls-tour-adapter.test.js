@@ -19,6 +19,12 @@ function createPreferenceWriter() {
   const storage = new Map();
   return {
     storage,
+    read(capture) {
+      return [
+        ...(storage.get(capture.storageKey) || []),
+        ...(capture.profileRef?.controlsTourSeenFamilies || []),
+      ];
+    },
     apply({ capture, families }) {
       const saved = [...families];
       storage.set(capture.storageKey, saved);
@@ -49,6 +55,63 @@ test("a delayed preference response saves to the unchanged initiating player", a
   assert.deepEqual(result.families, ["keyboard-mouse", "touch"]);
   assert.deepEqual(playerA.controlsTourSeenFamilies, ["keyboard-mouse", "touch"]);
   assert.equal(writer.storage.size, 1);
+});
+
+test("a delayed same-player response preserves a newly completed linked-profile family", async () => {
+  const { syncControlsTourPreferencesForIdentity } = await controlsTourAdapter();
+  const playerA = profile("WS-A1B2C3D4", "profile-a");
+  const currentIdentity = { profile: playerA, guest: false };
+  const remote = deferred();
+  const writer = createPreferenceWriter();
+  let capture;
+
+  const sync = syncControlsTourPreferencesForIdentity({
+    identityInput: currentIdentity,
+    getCurrentIdentityInput: () => currentIdentity,
+    localFamilies: ["keyboard-mouse"],
+    requestFamilies: captured => {
+      capture = captured;
+      return remote.promise;
+    },
+    readCurrentFamilies: captured => writer.read(captured),
+    applyFamilies: value => writer.apply(value),
+  });
+  writer.apply({ capture, families: ["keyboard-mouse", "touch"] });
+  remote.resolve(["keyboard-mouse"]);
+
+  const result = await sync;
+  assert.equal(result.status, "applied");
+  assert.deepEqual(result.families, ["keyboard-mouse", "touch"]);
+  assert.deepEqual(playerA.controlsTourSeenFamilies, ["keyboard-mouse", "touch"]);
+  assert.deepEqual(writer.storage.get(capture.storageKey), ["keyboard-mouse", "touch"]);
+});
+
+test("a delayed same-guest response preserves a newly completed local-key family", async () => {
+  const { syncControlsTourPreferencesForIdentity } = await controlsTourAdapter();
+  const currentIdentity = { profile: null, guest: true };
+  const remote = deferred();
+  const writer = createPreferenceWriter();
+  let capture;
+
+  const sync = syncControlsTourPreferencesForIdentity({
+    identityInput: currentIdentity,
+    getCurrentIdentityInput: () => currentIdentity,
+    localFamilies: ["keyboard-mouse"],
+    requestFamilies: captured => {
+      capture = captured;
+      return remote.promise;
+    },
+    readCurrentFamilies: captured => writer.read(captured),
+    applyFamilies: value => writer.apply(value),
+  });
+  writer.apply({ capture, families: ["keyboard-mouse", "touch"] });
+  remote.resolve(["keyboard-mouse"]);
+
+  const result = await sync;
+  assert.equal(result.status, "applied");
+  assert.deepEqual(result.families, ["keyboard-mouse", "touch"]);
+  assert.equal(capture.profileRef, null);
+  assert.deepEqual(writer.storage.get(capture.storageKey), ["keyboard-mouse", "touch"]);
 });
 
 test("a delayed Player A response is discarded after switching to Player B", async () => {
