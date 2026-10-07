@@ -15,6 +15,20 @@ export function backgroundEffectsForTier(tier, reducedMotion = false) {
   return { ...effects, searchlight: false, particles: 0, parallax: false, pulsingLights: false };
 }
 
+export function nightfallPresentationStyles(presentation = {}) {
+  return {
+    "--menu-camera-x": `${Number(presentation.camera?.xPercent) || 0}%`,
+    "--menu-camera-y": `${Number(presentation.camera?.yPercent) || 0}%`,
+    "--menu-camera-scale": String(Number(presentation.camera?.scale) || 1),
+    "--menu-camera-duration": `${Math.max(0, Number(presentation.camera?.transitionMs) || 0)}ms`,
+    "--menu-camera-drift": `${Math.max(0, Number(presentation.camera?.driftPercent) || 0)}%`,
+    "--menu-amber-light": String(Math.max(0, Number(presentation.lighting?.amber) || 0)),
+    "--menu-cyan-light": String(Math.max(0, Number(presentation.lighting?.cyan) || 0)),
+    "--menu-reflection-opacity": String(Math.max(0, Number(presentation.surface?.reflectionOpacity) || 0)),
+    "--menu-disturbance": String(Math.max(0, Number(presentation.particles?.disturbance) || 0)),
+  };
+}
+
 function addLayer(root, className, tagName = "div") {
   const layer = root.ownerDocument.createElement(tagName);
   layer.className = className;
@@ -27,14 +41,25 @@ function applyState() {
   if (!state) return;
   const { root, tier, reducedMotion } = state;
   const effects = backgroundEffectsForTier(tier, reducedMotion);
+  const presentation = state.presentation;
   root.dataset.tier = tier;
   root.dataset.scene = state.scene;
+  root.dataset.menuSection = presentation?.section || "home";
+  root.dataset.menuEmphasis = presentation?.emphasis || "entry";
   root.classList.toggle("nightfall-reduced-motion", reducedMotion);
+  root.classList.toggle("nightfall-menu-disturbed", Boolean(presentation?.particles?.disturbance));
   for (const [effect, enabled] of Object.entries(effects)) {
     root.classList.toggle(`nightfall-${effect}`, Boolean(enabled));
   }
+  for (const [property, value] of Object.entries(nightfallPresentationStyles(presentation))) {
+    root.style.setProperty(property, value);
+  }
   state.particles.replaceChildren();
-  for (let index = 0; index < effects.particles; index += 1) {
+  const presentationBudget = Number(presentation?.particles?.budget);
+  const particleCount = state.scene === "menu" && Number.isFinite(presentationBudget)
+    ? Math.min(effects.particles, Math.max(0, presentationBudget))
+    : effects.particles;
+  for (let index = 0; index < particleCount; index += 1) {
     const particle = root.ownerDocument.createElement("i");
     particle.style.setProperty("--particle-index", String(index));
     particle.style.setProperty("--particle-x", `${(index * 37) % 101}%`);
@@ -49,6 +74,7 @@ export function createNightfallBackground(root, options = {}) {
     state.reducedMotion = options.reducedMotion ?? state.reducedMotion;
     state.tier = VALID_TIERS.has(options.tier) ? options.tier : state.tier;
     state.scene = options.scene || state.scene;
+    state.presentation = options.presentation ?? state.presentation;
     applyState();
     return state.root;
   }
@@ -82,6 +108,7 @@ export function createNightfallBackground(root, options = {}) {
   addLayer(root, "nightfall-vignette");
 
   state = { root, tier, reducedMotion, particles, scene: options.scene || "menu" };
+  state.presentation = options.presentation || null;
   applyState();
   return root;
 }
@@ -98,11 +125,22 @@ export function setNightfallScene(scene) {
   applyState();
 }
 
+export function setNightfallPresentation(presentation) {
+  if (!state) return;
+  state.presentation = presentation || null;
+  if (presentation?.tier && VALID_TIERS.has(presentation.tier)) state.tier = presentation.tier;
+  state.reducedMotion = Boolean(presentation?.reducedMotion);
+  applyState();
+}
+
 export function destroyNightfallBackground() {
   if (!state) return;
   state.root.replaceChildren();
-  state.root.classList.remove("nightfall-background", "nightfall-fallback", "nightfall-reduced-motion");
+  state.root.classList.remove("nightfall-background", "nightfall-fallback", "nightfall-reduced-motion", "nightfall-menu-disturbed");
   delete state.root.dataset.tier;
   delete state.root.dataset.scene;
+  delete state.root.dataset.menuSection;
+  delete state.root.dataset.menuEmphasis;
+  for (const property of Object.keys(nightfallPresentationStyles())) state.root.style.removeProperty(property);
   state = null;
 }

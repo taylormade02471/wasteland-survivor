@@ -57,6 +57,37 @@ test("unknown tiers use the restrained medium rules", async () => {
   assert.deepEqual(backgroundEffectsForTier("ultra", false), backgroundEffectsForTier("medium", false));
 });
 
+test("maps declarative menu presentation onto the existing Nightfall visual layers", async () => {
+  const { nightfallPresentationStyles } = await import(modulePath);
+  const presentationModule = new URL("../public/menu-presentation.mjs", `file://${__filename.replace(/\\/g, "/")}`);
+  const { resolveMenuPresentation } = await import(presentationModule);
+  const presentation = resolveMenuPresentation({
+    section: "armory",
+    focusedCommand: "dashboardStoreBtn",
+    tier: "high",
+    reducedMotion: false,
+  });
+
+  assert.deepEqual(nightfallPresentationStyles(presentation), {
+    "--menu-camera-x": "-2.7%",
+    "--menu-camera-y": "0.8%",
+    "--menu-camera-scale": "1.065",
+    "--menu-camera-duration": "520ms",
+    "--menu-camera-drift": "0.9%",
+    "--menu-amber-light": "0.66",
+    "--menu-cyan-light": "0.28",
+    "--menu-reflection-opacity": "0.42",
+    "--menu-disturbance": "0.34",
+  });
+});
+
+test("menu and low-tier CSS consume declarative camera and lighting variables", () => {
+  const css = fs.readFileSync(path.resolve(__dirname, "../public/style.css"), "utf8");
+
+  assert.match(css, /\[data-scene="menu"\] \.nightfall-color-wash\s*\{[^}]*var\(--menu-cyan-light\)[^}]*var\(--menu-amber-light\)/s);
+  assert.match(css, /\[data-tier="low"\] \.nightfall-image\s*\{[^}]*translate3d\(var\(--menu-camera-x\),var\(--menu-camera-y\),0\)[^}]*scale\(var\(--menu-camera-scale\)\)/s);
+});
+
 test("match opening uses exactly fifteen seconds without changing round timers", async () => {
   const game = fs.readFileSync(path.resolve(__dirname, "../public/game3d.js"), "utf8");
   const rules = await import(new URL("../public/matchmaking-rules.mjs", `file://${__filename.replace(/\\/g, "/")}`));

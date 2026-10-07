@@ -1,7 +1,8 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
-import { createNightfallBackground, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
+import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
+import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
 import { activateAbility, createClassProgress, getClassDefinition, getClassStats, normalizeClassProgress } from "./class-rules.mjs";
 import { composeWave, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
 import { getWeaponProfile } from "./combat-rules.mjs";
@@ -107,6 +108,8 @@ let phase = "combat";
 let timer = 60;
 let menuOpen = false;
 let lobbyNavigator = null;
+let menuSection = "home";
+let menuMediaAttempt = 0;
 let menuOpenedFromPrep = false;
 let countdown = 15;
 let countdownDeadline = 0;
@@ -234,6 +237,7 @@ function renderLobbyNavigation(focus = false) {
     if (selected) control.setAttribute("aria-current", "true");
     else control.removeAttribute("aria-current");
   });
+  applyMenuPresentation("lobby", current?.input === "programmatic" ? null : current?.id);
   if (focus && current?.id) $(current.id)?.focus({ preventScroll: true });
 }
 
@@ -521,6 +525,7 @@ function spawnMatchBots(plan = activeMatchPlan) {
 }
 
 function start() {
+  pauseMenuBackdrop();
   blue = red = score = kills = scrap = shieldLevel = 0;
   wave = 1;
   activeGun = "scout";
@@ -540,6 +545,7 @@ function start() {
 }
 
 function beginCountdown(startsAt = Date.now() + 15000) {
+  pauseMenuBackdrop();
   const countdownState = resolveMatchCountdown(startsAt);
   phase = "countdown";
   countdown = countdownState.secondsRemaining;
@@ -598,6 +604,7 @@ function applyMatchLifecycleMessage(message = {}) {
 }
 
 function nextCombat() {
+  pauseMenuBackdrop();
   phase = "combat";
   setNightfallScene("game");
   timer = mode === "ctf" ? 300 : 60;
@@ -1551,16 +1558,18 @@ function openLobby(contact) {
   $("lobbyGameOptions").open = false;
   renderLobbyProfile(contact);
   refreshLobbyNavigation();
-  setNightfallScene("menu");
+  setMenuSection("lobby");
   updateNetworkStatus();
   refreshLobbyAvailability();
   $("riskLevel").value = riskLevel;
   updateRiskPreview();
   syncPublicPlayer();
-  playRandomReplay(homeBackdrop).then(playing => {
-    $("replayStatus").textContent = playing
+  initializeMenuBackdrop().then(kind => {
+    $("replayStatus").textContent = kind === "replay"
       ? "Playing a recent match clip saved on this device."
-      : "Cinematic backdrop active. Your recent match clips will rotate here automatically.";
+      : kind === "bundled"
+        ? "Cinematic water-walk loop active. Recent match clips take priority when available."
+        : "Nightfall fallback active for this device or motion preference.";
   });
 }
 
@@ -1596,9 +1605,25 @@ function renderLobbyProfile(fallbackName = "Offline Guest") {
 }
 
 function openConnections() {
+  setMenuSection("friends");
   ui.settings.classList.remove("hidden");
   $("networkStatus").scrollIntoView?.({ block: "center" });
   $("offlineToggle").focus({ preventScroll: true });
+}
+
+function restoreVisibleMenuSection() {
+  if (!lobbyScreen.classList.contains("hidden")) setMenuSection("lobby");
+  else if (!welcomeScreen.classList.contains("hidden")) setMenuSection(editingProfile ? "survivor" : "home");
+}
+
+function openSettings() {
+  setMenuSection("settings");
+  ui.settings.classList.remove("hidden");
+}
+
+function closeSettings() {
+  ui.settings.classList.add("hidden");
+  restoreVisibleMenuSection();
 }
 
 async function refreshLobbyAvailability() {
@@ -1615,7 +1640,7 @@ function editActiveProfile() {
   editingProfile = true;
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
-  setNightfallScene("menu");
+  setMenuSection("survivor");
   profileStep.classList.remove("hidden");
   returnStep.classList.add("hidden");
   mathStep.classList.add("hidden");
@@ -1717,6 +1742,7 @@ function openDashboard() {
   $("dashboardMission").textContent = progress.kingdomUnlocked ? "Kingdom unlocked. Continue the frontier timeline." : storyMissions[progress.missionIndex || 0];
   $("dashboardLoadout").innerHTML = Object.entries(guns).map(([key, gun]) => `<div><b>${gun.label}</b><small>Level ${progress.guns?.[key] || 0}/${gun.max === Infinity ? "∞" : gun.max}</small></div>`).join("") + `<div><b>Scrap Shield</b><small>Level ${progress.shieldLevel || 0}/10</small></div>`;
   $("dashboardTactics").innerHTML = ["Aim Stabilizer", "Quick Recovery", "Scavenger Pack", "Flag Runner"].map((name, index) => `<div><b>${name}</b><small>${(progress.storyStage || 1) > index ? "Unlocked" : "Stage " + (index + 1)}</small></div>`).join("");
+  setMenuSection("survivor");
   $("dashboardModal").classList.remove("hidden");
 }
 
@@ -1841,15 +1867,8 @@ function updateRiskPreview() {
 function leaveLobby() {
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
-  setNightfallScene("menu");
+  setMenuSection("home");
   showProfileChoice();
-}
-
-function loadReplayBackdrop() {
-  const replay = localStorage.getItem("wastland-survivor-last-replay");
-  if (!replay) return;
-  homeBackdrop.src = replay;
-  homeBackdrop.play().catch(() => {});
 }
 
 function enterGuestOffline() {
@@ -2169,8 +2188,125 @@ function exitToLobby() {
   ui.settings.classList.add("hidden");
   ui.over.classList.add("hidden");
   document.body.classList.add("menu-active");
-  setNightfallScene("menu");
+  setMenuSection("lobby");
   openLobby(activeProfile?.name || "Offline Guest");
+}
+
+function reducedMotionEnabled() {
+  return matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function applyMenuPresentation(section = menuSection, focusedCommand = null) {
+  const presentation = resolveMenuPresentation({
+    section,
+    focusedCommand,
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+  });
+  menuSection = presentation.section;
+  document.body.dataset.menuSection = presentation.section;
+  document.body.dataset.menuTier = presentation.tier;
+  document.body.dataset.reducedMotion = String(presentation.reducedMotion);
+  document.body.style.setProperty("--command-buoyancy", `${presentation.surface.buoyancyPx}px`);
+  document.body.style.setProperty("--command-loop-duration", `${presentation.surface.loopDurationMs}ms`);
+  document.body.style.setProperty("--command-ripple-opacity", String(presentation.surface.rippleOpacity));
+  document.body.style.setProperty("--command-vapor-opacity", String(presentation.surface.vaporOpacity));
+  document.body.style.setProperty("--command-vapor-duration", `${presentation.surface.vaporDriftDurationMs}ms`);
+  document.body.style.setProperty("--command-focus-forward", `${presentation.focus.forwardPx}px`);
+  document.body.style.setProperty("--command-focus-light", String(presentation.focus.illumination));
+  setNightfallPresentation(presentation);
+  return presentation;
+}
+
+function setMenuSection(section) {
+  const currentCommand = lobbyNavigator?.current();
+  const focused = section === "lobby" && currentCommand?.input !== "programmatic"
+    ? currentCommand?.id || null
+    : null;
+  const presentation = applyMenuPresentation(section, focused);
+  const menuActive = document.body.classList.contains("menu-active");
+  setNightfallScene(menuActive ? "menu" : "game");
+  if (menuActive && homeBackdrop.dataset.mediaKind && homeBackdrop.dataset.mediaKind !== "fallback") {
+    homeBackdrop.play().catch(() => retainNightfallFallback("autoplay-failed"));
+  }
+  return presentation;
+}
+
+function retainNightfallFallback(reason = "unavailable") {
+  homeBackdrop.classList.remove("is-ready");
+  homeBackdrop.pause();
+  homeBackdrop.dataset.mediaKind = "fallback";
+  homeBackdrop.dataset.mediaReason = reason;
+  return "fallback";
+}
+
+function revealMenuBackdrop(kind) {
+  const policy = resolveMenuMedia({
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+    saveData: Boolean(navigator.connection?.saveData),
+    playbackState: "playing",
+  });
+  if (policy.kind === "fallback") return retainNightfallFallback("capability-policy");
+  homeBackdrop.dataset.mediaKind = kind;
+  delete homeBackdrop.dataset.mediaReason;
+  homeBackdrop.classList.add("is-ready");
+  return kind;
+}
+
+async function tryMenuBackdrop(kind, configure) {
+  homeBackdrop.classList.remove("is-ready");
+  homeBackdrop.dataset.mediaCandidate = kind;
+  try {
+    if (configure) configure();
+    await homeBackdrop.play();
+    return revealMenuBackdrop(kind);
+  } catch {
+    homeBackdrop.classList.remove("is-ready");
+    return null;
+  }
+}
+
+async function initializeMenuBackdrop({ force = false } = {}) {
+  const attempt = ++menuMediaAttempt;
+  const policy = resolveMenuMedia({
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+    saveData: Boolean(navigator.connection?.saveData),
+    playbackState: "loading",
+  });
+  if (policy.kind === "fallback") return retainNightfallFallback("capability-policy");
+  if (!force && ["replay", "bundled"].includes(homeBackdrop.dataset.mediaKind)) {
+    const resumed = await tryMenuBackdrop(homeBackdrop.dataset.mediaKind);
+    return resumed || retainNightfallFallback("autoplay-failed");
+  }
+
+  homeBackdrop.pause();
+  homeBackdrop.classList.remove("is-ready");
+
+  const replayPlaying = await playRandomReplay(homeBackdrop);
+  if (attempt !== menuMediaAttempt) return homeBackdrop.dataset.mediaKind || "fallback";
+  if (replayPlaying) return revealMenuBackdrop("replay");
+
+  const legacyReplay = localStorage.getItem("wastland-survivor-last-replay");
+  if (legacyReplay) {
+    const legacyPlaying = await tryMenuBackdrop("replay", () => { homeBackdrop.src = legacyReplay; });
+    if (attempt !== menuMediaAttempt) return homeBackdrop.dataset.mediaKind || "fallback";
+    if (legacyPlaying) return legacyPlaying;
+  }
+
+  const bundledPolicy = resolveMenuMedia({ tier: effectiveGraphicsTier(), replayFailed: true, playbackState: "loading" });
+  if (bundledPolicy.kind !== "bundled") return retainNightfallFallback("decode-failed");
+  const bundledPlaying = await tryMenuBackdrop("bundled", () => {
+    homeBackdrop.removeAttribute("src");
+    homeBackdrop.load();
+  });
+  if (attempt !== menuMediaAttempt) return homeBackdrop.dataset.mediaKind || "fallback";
+  return bundledPlaying || retainNightfallFallback("autoplay-or-decode-failed");
+}
+
+function pauseMenuBackdrop() {
+  homeBackdrop.pause();
 }
 
 async function initializeNightfallBackground() {
@@ -2181,19 +2317,26 @@ async function initializeNightfallBackground() {
   } catch {
     // CSS fallback keeps the menu readable when optional artwork is unavailable.
   }
+  const presentation = resolveMenuPresentation({
+    section: menuSection,
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+  });
   createNightfallBackground(nightfallBackground, {
     manifest,
-    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    reducedMotion: reducedMotionEnabled(),
     tier: effectiveGraphicsTier(),
     scene: phase === "countdown" ? "countdown" : phase === "menu" ? "menu" : "game",
+    presentation,
   });
+  applyMenuPresentation(menuSection);
 }
 
 function effectiveGraphicsTier() {
   return selectGraphicsTier({
     deviceMemory: navigator.deviceMemory,
     hardwareConcurrency: navigator.hardwareConcurrency,
-    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    reducedMotion: reducedMotionEnabled(),
     savedTier: graphicsTierOverride === "auto" ? undefined : graphicsTierOverride,
   });
 }
@@ -2201,6 +2344,9 @@ function effectiveGraphicsTier() {
 function applyGraphicsTier() {
   const tier = effectiveGraphicsTier();
   setNightfallTier(tier);
+  applyMenuPresentation(menuSection, lobbyNavigator?.current().id || null);
+  if (document.body.classList.contains("menu-active")) initializeMenuBackdrop({ force: true });
+  else pauseMenuBackdrop();
   renderer.setPixelRatio(Math.min(devicePixelRatio, tier === "low" ? 1 : tier === "medium" ? 1.75 : 3));
   renderer.shadowMap.enabled = tier !== "low";
   renderer.shadowMap.autoUpdate = tier === "high";
@@ -2270,9 +2416,9 @@ addEventListener("gamepadconnected", () => updateControllerState(true));
 addEventListener("gamepaddisconnected", () => updateControllerState(false));
 addEventListener("keydown", event => {
   if (event.key === "Escape") {
-    if (!ui.settings.classList.contains("hidden")) { ui.settings.classList.add("hidden"); return; }
-    if (!$("dashboardModal").classList.contains("hidden")) { $("dashboardModal").classList.add("hidden"); return; }
-    if (!ui.shop.classList.contains("hidden")) { ui.shop.classList.add("hidden"); return; }
+    if (!ui.settings.classList.contains("hidden")) { closeSettings(); return; }
+    if (!$("dashboardModal").classList.contains("hidden")) { $("dashboardModal").classList.add("hidden"); restoreVisibleMenuSection(); return; }
+    if (!ui.shop.classList.contains("hidden")) { ui.shop.classList.add("hidden"); restoreVisibleMenuSection(); return; }
   }
   if (controllerLocked() || phase === "countdown") return;
   const key = event.key.toLowerCase();
@@ -2398,10 +2544,11 @@ $("openShopBtn").onclick = () => {
 $("openChestBtn").onclick = interact;
 $("closeShopBtn").onclick = () => {
   ui.shop.classList.add("hidden");
+  restoreVisibleMenuSection();
   if (chestAccessGranted && lobbySocket?.readyState === WebSocket.OPEN) lobbySocket.send(JSON.stringify({ type: "chest-leave" }));
   chestAccessGranted = false;
 };
-$("loadoutArmoryBtn").onclick = () => ui.shop.classList.remove("hidden");
+$("loadoutArmoryBtn").onclick = () => { setMenuSection("armory"); ui.shop.classList.remove("hidden"); };
 $("loadoutReadyBtn").onclick = () => {
   ui.shop.classList.add("hidden");
   if (mode === "teams" && !offlineMode) {
@@ -2424,18 +2571,18 @@ $("upgradeCannonBtn").onclick = () => upgrade("cannon");
 $("upgradeInfernoBtn").onclick = () => upgrade("inferno");
 $("upgradeShieldBtn").onclick = upgradeShield;
 $("restartBtn").onclick = () => { ui.over.classList.add("hidden"); start(); };
-$("settingsBtn").onclick = () => ui.settings.classList.remove("hidden");
-$("lobbySettingsBtn").onclick = () => ui.settings.classList.remove("hidden");
+$("settingsBtn").onclick = openSettings;
+$("lobbySettingsBtn").onclick = openSettings;
 $("lobbyConnectionsBtn").onclick = openConnections;
-$("menuSettingsBtn").onclick = () => ui.settings.classList.remove("hidden");
-$("closeSettingsBtn").onclick = () => ui.settings.classList.add("hidden");
+$("menuSettingsBtn").onclick = openSettings;
+$("closeSettingsBtn").onclick = closeSettings;
 $("menuToggle").onclick = () => menuOpen ? closeGameMenu() : openGameMenu();
 $("resumeGameBtn").onclick = closeGameMenu;
 $("frontViewBtn").onclick = () => { frontView = !frontView; $("frontViewBtn").textContent = frontView ? "Arena View" : "First Person"; };
 $("exitGameBtn").onclick = exitToLobby;
 $("mobileMenuSelect").onchange = event => {
   if (event.target.value === "resume") closeGameMenu();
-  if (event.target.value === "settings") ui.settings.classList.remove("hidden");
+  if (event.target.value === "settings") openSettings();
   if (event.target.value === "front") { frontView = true; closeGameMenu(); }
   if (event.target.value === "lobby") exitToLobby();
   event.target.value = "resume";
@@ -2552,10 +2699,11 @@ $("editProfileBtn").onclick = editActiveProfile;
 $("dashboardBtn").onclick = openDashboard;
 $("lobbyAvatarButton").onclick = openDashboard;
 $("lobbyProfileReadout").onclick = openDashboard;
-$("closeDashboardBtn").onclick = () => $("dashboardModal").classList.add("hidden");
+$("closeDashboardBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); restoreVisibleMenuSection(); };
 $("lobbyBackBtn").onclick = () => {
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
+  setMenuSection("home");
   initializeProfileScreen();
 };
 $("profileBackBtn").onclick = () => {
@@ -2563,12 +2711,13 @@ $("profileBackBtn").onclick = () => {
     editingProfile = false;
     welcomeScreen.classList.add("hidden");
     lobbyScreen.classList.remove("hidden");
+    setMenuSection("lobby");
     return;
   }
   initializeProfileScreen();
 };
 $("dashboardEditBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); editActiveProfile(); };
-$("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") ui.shop.classList.remove("hidden"); else openDashboard(); };
+$("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") { setMenuSection("armory"); ui.shop.classList.remove("hidden"); } else openDashboard(); };
 $("survivalLobbyBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("soloMode").click(); };
 $("teamLobbyBtn").onclick = () => {
   const choices = $("teamSizeChoices");
@@ -2626,6 +2775,17 @@ document.querySelectorAll("[data-lobby-ctf-players]").forEach(button => {
 
 bindLobbyNavigation();
 
+homeBackdrop.addEventListener("playing", () => {
+  revealMenuBackdrop(homeBackdrop.dataset.mediaCandidate || homeBackdrop.dataset.mediaKind || "bundled");
+});
+homeBackdrop.addEventListener("error", () => retainNightfallFallback("decode-failed"));
+homeBackdrop.addEventListener("stalled", () => retainNightfallFallback("stalled"));
+matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", () => {
+  applyMenuPresentation(menuSection, lobbyNavigator?.current().id || null);
+  if (document.body.classList.contains("menu-active")) initializeMenuBackdrop({ force: true });
+  else pauseMenuBackdrop();
+});
+
 resize();
 updateControllerState([...navigator.getGamepads()].some(Boolean));
 refreshInputMode();
@@ -2636,8 +2796,9 @@ phase = "menu";
 $("loadoutRoomModal").classList.add("hidden");
 document.body.classList.add("menu-active");
 $("matchCountdown").classList.add("hidden");
-loadReplayBackdrop();
 showProfileChoice();
-initializeNightfallBackground();
-playRandomReplay(homeBackdrop);
+initializeNightfallBackground().then(() => {
+  setMenuSection("home");
+  initializeMenuBackdrop();
+});
 render();

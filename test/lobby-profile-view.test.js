@@ -235,3 +235,14 @@ test("keeps portrait and short-landscape lobby content inside horizontal safe ar
     /@media \(max-width:\s*680px\),\s*\(orientation:\s*landscape\) and \(max-height:\s*520px\) and \(max-width:\s*960px\)\s*\{[\s\S]*?#lobbyBackBtn\s*\{[^}]*position:\s*relative[^}]*inset:\s*auto/,
   );
 });
+
+test("keeps all three primary commands in one short-landscape viewport row", () => {
+  const query = "@media (orientation: landscape) and (max-height: 520px) and (max-width: 960px)";
+  const start = css.indexOf(query);
+  const end = css.indexOf("@media", start + query.length);
+  const shortLandscape = start >= 0 ? css.slice(start, end >= 0 ? end : undefined) : "";
+
+  assert.match(shortLandscape, /#fightCommands\s*\{[^}]*width:\s*100%[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(shortLandscape, /#fightCommands \.floating-command\s*\{[^}]*height:\s*64px[^}]*min-height:\s*64px/);
+  assert.match(shortLandscape, /#fightCommands \.floating-command small\s*\{[^}]*font-size:\s*9px/);
+});

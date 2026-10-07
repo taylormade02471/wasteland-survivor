@@ -20,7 +20,10 @@
   <div id="aimReticle" class="aim-reticle" aria-hidden="true"><i></i><b></b></div>
   <aside id="controllerDebug" class="controller-debug hidden" aria-live="polite"><b>CONTROLLER DEBUG</b><span id="debugPadName">No controller detected</span><span id="debugAxes">LX 0.00 · LY 0.00 · RX 0.00 · RY 0.00</span><span id="debugButtons">Buttons: none</span><span id="debugAction">Action: waiting</span></aside>
   <div id="nightfallBackground" aria-hidden="true"></div>
-  <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline aria-hidden="true"></video>
+  <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline preload="metadata" poster="./assets/nightfall/backgrounds/nightfall-loading-v1.webp" aria-hidden="true">
+    <source src="./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.webm" type="video/webm" />
+    <source src="./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4" type="video/mp4" />
+  </video>
   <div id="matchCountdown" class="match-countdown hidden"><span id="countdownLabel">ENTERING NIGHTFALL</span><b id="countdownNumber">15</b></div>
 
   <section id="welcomeScreen" class="welcome-screen">
