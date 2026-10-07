@@ -103,27 +103,56 @@
     <img id="lobbyBackdropArt" class="lobby-backdrop-art" src="./assets/nightfall/backgrounds/nightfall-lobby-squad-v1.png" alt="" aria-hidden="true">
     <button id="lobbyBackBtn" class="screen-back-button screen-back-control" type="button" aria-label="Back to profile selection">&#8592; Back</button>
     <header class="lobby-title-plate">
-      <p class="eyebrow">Survivor Lobby</p>
+      <p class="eyebrow">Nightfall Operations</p>
       <h1>Choose Your Fight</h1>
       <p id="lobbyPlayer" class="welcome-copy"></p>
       <p id="replayStatus" class="replay-status">Cinematic backdrop active. Recent match clips will rotate here automatically.</p>
     </header>
-    <nav id="lobbyNavigation" class="floating-command-field" aria-label="Lobby commands">
-      <button id="survivalLobbyBtn" class="floating-command" type="button"><b>All-Out Story Survival</b><small>MW3-style endless cycles. Timeline advantages and progress save locally.</small></button>
-      <button id="onlineSurvivalBtn" class="floating-command hidden" type="button"><b>Online Survival Pair</b><small>Join the waiting player for a shared two-player survival round.</small></button>
-      <button id="teamLobbyBtn" class="floating-command" type="button" aria-expanded="false" aria-controls="teamSizeChoices"><b>Multiplayer</b><small>Open an online 1v1, 2v2, or 3v3 room. Empty seats fill when the match starts.</small></button>
+    <section class="lobby-survivor-hero" aria-label="Active survivor">
+      <button id="lobbyAvatarButton" class="lobby-avatar-button" type="button" aria-controls="dashboardModal">
+        <span class="lobby-avatar-glow" aria-hidden="true"></span>
+        <img id="lobbyAvatarImage" class="lobby-avatar-image" src="./assets/nightfall/characters/index/scout-v1.webp" alt="Dust Scout">
+        <span class="lobby-avatar-action">Open loadout</span>
+      </button>
+      <button id="lobbyProfileReadout" class="lobby-profile-readout" type="button" aria-controls="dashboardModal">
+        <span class="lobby-identity-line"><strong id="lobbyProfileName">Survivor</strong><em id="lobbyOnlineState">Local / Offline</em></span>
+        <span id="lobbyPlayerTag" class="lobby-player-tag">LOCAL PROFILE</span>
+        <span class="lobby-level-line"><b>LV <i id="lobbyLevel">1</i></b><span id="lobbyXpText">0 / 500 XP</span></span>
+        <span class="lobby-xp-track" aria-hidden="true"><i id="lobbyXpBar"></i></span>
+        <span class="lobby-readout-grid">
+          <span><small>Class</small><b id="lobbyClass">Scout</b></span>
+          <span><small>Skill</small><b id="lobbySkill">Light Footed</b></span>
+          <span><small>Ability</small><b id="lobbyAbility">Dash</b></span>
+          <span><small>Weapon</small><b id="lobbyWeapon">Scout L0</b></span>
+          <span><small>Shield</small><b id="lobbyShield">Unreinforced</b></span>
+        </span>
+      </button>
+    </section>
+    <nav id="lobbyNavigation" aria-label="Lobby commands">
+      <div id="fightCommands" class="floating-command-field" aria-label="Fight modes">
+        <button id="survivalLobbyBtn" class="floating-command lobby-fight-command" type="button"><b>Survival Mode</b><small>Enter the all-out story survival timeline.</small></button>
+        <button id="teamLobbyBtn" class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="teamSizeChoices"><b>Multiplayer</b><small>Choose an online 1v1, 2v2, or 3v3 room.</small></button>
+        <button id="ctf6LobbyBtn" class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="ctfPlayerChoices"><b>Capture the Flag</b><small>Choose a four-player or six-player flag match.</small></button>
+      </div>
+      <button id="onlineSurvivalBtn" class="floating-command hidden" type="button"><b>Online Survival Pair</b><small>Legacy online survival route.</small></button>
       <div id="teamSizeChoices" class="team-size-choices hidden" aria-label="Multiplayer team size">
         <button id="teamSize1Btn" class="floating-command team-size-choice" type="button" data-team-size="1"><b>1v1</b><small>2 seats</small></button>
         <button id="teamSize2Btn" class="floating-command team-size-choice" type="button" data-team-size="2"><b>2v2</b><small>4 seats</small></button>
         <button id="teamSize3Btn" class="floating-command team-size-choice" type="button" data-team-size="3"><b>3v3</b><small>6 seats</small></button>
       </div>
-      <button id="ctf6LobbyBtn" class="floating-command" type="button"><b>6v6 Capture The Flag</b><small>One five-minute match. Three flags. Highest points wins.</small></button>
-      <button id="dashboardBtn" class="floating-command floating-command-secondary" type="button">Loadout</button>
-      <button id="editProfileBtn" class="floating-command floating-command-secondary" type="button">Profile</button>
-      <button id="lobbySettingsBtn" class="floating-command floating-command-secondary" type="button">Settings</button>
-      <button id="signOutProfileBtn" class="floating-command floating-command-secondary" type="button">Switch Profile</button>
-    </nav>
-    <section class="lobby-support-plate" aria-label="Lobby options">
+      <div id="ctfPlayerChoices" class="ctf-player-choices hidden" aria-label="Capture the Flag player count">
+        <button id="ctf4PlayersLobbyBtn" class="floating-command ctf-player-choice" type="button" data-lobby-ctf-players="4"><b>4 Players</b><small>Fast squad match</small></button>
+        <button id="ctf6PlayersLobbyBtn" class="floating-command ctf-player-choice" type="button" data-lobby-ctf-players="6"><b>6 Players</b><small>Full field match</small></button>
+      </div>
+      <div class="lobby-edge-controls" aria-label="Profile and system actions">
+        <button id="dashboardBtn" class="floating-command floating-command-secondary lobby-edge-action" type="button">Loadout</button>
+        <button id="editProfileBtn" class="floating-command floating-command-secondary lobby-edge-action" type="button">Profile</button>
+        <button id="lobbyConnectionsBtn" class="floating-command floating-command-secondary lobby-edge-action" type="button">Connections</button>
+        <button id="lobbySettingsBtn" class="floating-command floating-command-secondary lobby-edge-action" type="button">Settings</button>
+        <button id="signOutProfileBtn" class="floating-command floating-command-secondary lobby-edge-action" type="button">Switch Profile</button>
+      </div>
+      <details id="lobbyGameOptions" class="lobby-game-options">
+        <summary>Game Options</summary>
         <div class="lobby-settings-row">
           <label for="botTeamSize">Team size <select id="botTeamSize"><option value="1">1v1</option><option value="2" selected>2v2</option><option value="3">3v3</option></select></label>
           <label for="botDifficulty">Difficulty <select id="botDifficulty"><option value="0.10">Easy</option><option value="0.22" selected>Medium</option><option value="0.35">Expert</option><option value="0.75">Insane</option></select></label>
@@ -131,12 +160,8 @@
           <label for="riskLevel">Risk and reward <select id="riskLevel"><option value="protected">Protected</option><option value="standard" selected>Standard</option><option value="high">High Risk</option></select></label>
         </div>
         <p id="riskPreview" class="risk-preview"></p>
-    </section>
-      <details class="lobby-roster-gallery">
-        <summary>View Survivors And Radioactive Threats</summary>
-        <figure><img src="./assets/nightfall/characters/survivor-roster-v1.png" alt="Six survivor avatars"><figcaption>Scout · Ranger · Heavy · Tech Runner · Field Medic · Warden</figcaption></figure>
-        <figure><img src="./assets/nightfall/enemies/radioactive-enemy-roster-v1.png" alt="Eight radioactive enemy archetypes"><figcaption>Rusher · Shooter · Sniper · Shield Brute · Heavy · Drone · Mutant · Boss</figcaption></figure>
       </details>
+    </nav>
   </section>
 
   <section id="hud">

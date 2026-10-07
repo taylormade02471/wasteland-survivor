@@ -13,6 +13,7 @@ import { createHudViewModel } from "./hud-view-model.mjs";
 import { createMenuNavigator, isMenuCommandDisabled, resolveMenuKeyAction } from "./menu-navigation.mjs";
 import { reduceClientMatchLifecycle } from "./matchmaking-client.mjs";
 import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
+import { createLobbyProfileView } from "./lobby-profile-view.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -1391,7 +1392,7 @@ async function syncPublicPlayer() {
     if (deviceCredential) activeProfile.backendDeviceCredential = deviceCredential;
     activeProfile.backendSession = session;
     saveProfile();
-    lobbyPlayer.textContent = `${activeProfile.name} · ${publicPlayer.playerTag}`;
+    renderLobbyProfile();
     return true;
   } catch {
     // Local play remains available when the optional backend is offline.
@@ -1486,8 +1487,13 @@ async function reportMatch(title) {
 
 function openLobby(contact) {
   welcomeScreen.classList.add("hidden");
-  lobbyPlayer.textContent = contact;
   lobbyScreen.classList.remove("hidden");
+  $("teamSizeChoices").classList.add("hidden");
+  $("ctfPlayerChoices").classList.add("hidden");
+  $("teamLobbyBtn").setAttribute("aria-expanded", "false");
+  $("ctf6LobbyBtn").setAttribute("aria-expanded", "false");
+  $("lobbyGameOptions").open = false;
+  renderLobbyProfile(contact);
   refreshLobbyNavigation();
   setNightfallScene("menu");
   updateNetworkStatus();
@@ -1500,6 +1506,43 @@ function openLobby(contact) {
       ? "Playing a recent match clip saved on this device."
       : "Cinematic backdrop active. Your recent match clips will rotate here automatically.";
   });
+}
+
+function renderLobbyProfile(fallbackName = "Offline Guest") {
+  const hasProgress = Boolean(activeProfile?.progress);
+  const view = createLobbyProfileView({
+    activeProfile: activeProfile || { name: fallbackName, avatarType: "scout" },
+    progress: hasProgress ? { ...activeProfile.progress, totalXp, shieldLevel } : { totalXp: 0, shieldLevel: 0 },
+    classProgress: hasProgress ? classProgress : { classId: avatarClass(activeProfile?.avatarType || "scout") },
+    activeWeapon: hasProgress ? activeGun : "scout",
+    weaponLevel: hasProgress ? guns[activeGun]?.level : 0,
+    shieldLevel: hasProgress ? shieldLevel : 0,
+    online: !offlineMode && Boolean(activeProfile?.backendSession || lobbySocket?.readyState === WebSocket.OPEN),
+  });
+
+  lobbyPlayer.textContent = `${view.avatar.name} // ${view.classLabel}`;
+  $("lobbyProfileName").textContent = view.displayName;
+  $("lobbyPlayerTag").textContent = view.playerTag;
+  $("lobbyLevel").textContent = view.level;
+  $("lobbyXpText").textContent = view.xp.label;
+  $("lobbyXpBar").style.width = `${view.xp.percentage}%`;
+  $("lobbyClass").textContent = view.classLabel;
+  $("lobbySkill").textContent = view.skillLabel;
+  $("lobbyAbility").textContent = view.abilityLabel;
+  $("lobbyWeapon").textContent = `${view.weapon.label} L${view.weapon.level}`;
+  $("lobbyShield").textContent = view.shield.label;
+  $("lobbyOnlineState").textContent = view.network.label;
+  $("lobbyOnlineState").dataset.online = String(view.network.online);
+  $("lobbyAvatarImage").src = view.avatar.image;
+  $("lobbyAvatarImage").alt = view.avatar.name;
+  $("lobbyAvatarButton").setAttribute("aria-label", `Open ${view.displayName} loadout`);
+  $("lobbyProfileReadout").setAttribute("aria-label", `Open ${view.displayName} profile and loadout`);
+}
+
+function openConnections() {
+  ui.settings.classList.remove("hidden");
+  $("networkStatus").scrollIntoView?.({ block: "center" });
+  $("offlineToggle").focus({ preventScroll: true });
 }
 
 async function refreshLobbyAvailability() {
@@ -1586,10 +1629,10 @@ function updateStoryProgress() {
 function avatarLabel(type) { return ({ scout: "Dust Scout", ranger: "Ranger", heavy: "Heavy", tech: "Tech Runner", medic: "Field Medic", warden: "Warden" })[type] || "Dust Scout"; }
 
 function openDashboard() {
-  if (!activeProfile) return;
-  const progress = activeProfile.progress || {};
-  $("dashboardName").textContent = activeProfile.name || "Survivor";
-  $("dashboardAvatar").textContent = avatarLabel(activeProfile.avatarType);
+  const profile = activeProfile || { name: "Offline Guest", avatarType: "scout", progress: {} };
+  const progress = profile.progress || {};
+  $("dashboardName").textContent = profile.name || "Survivor";
+  $("dashboardAvatar").textContent = avatarLabel(profile.avatarType);
   $("dashboardKingdom").textContent = progress.kingdomUnlocked ? "Kingdom Unlocked" : "Frontier Camp";
   $("dashboardLevel").textContent = progress.playerLevel || 1;
   $("dashboardXp").textContent = `${progress.totalXp || 0} XP`;
@@ -2298,6 +2341,7 @@ $("upgradeShieldBtn").onclick = upgradeShield;
 $("restartBtn").onclick = () => { ui.over.classList.add("hidden"); start(); };
 $("settingsBtn").onclick = () => ui.settings.classList.remove("hidden");
 $("lobbySettingsBtn").onclick = () => ui.settings.classList.remove("hidden");
+$("lobbyConnectionsBtn").onclick = openConnections;
 $("menuSettingsBtn").onclick = () => ui.settings.classList.remove("hidden");
 $("closeSettingsBtn").onclick = () => ui.settings.classList.add("hidden");
 $("menuToggle").onclick = () => menuOpen ? closeGameMenu() : openGameMenu();
@@ -2379,6 +2423,7 @@ ui.offline.onchange = () => {
   offlineMode = ui.offline.checked;
   localStorage.setItem("wastland-survivor-offline", String(offlineMode));
   updateNetworkStatus();
+  renderLobbyProfile(activeProfile?.name || "Offline Guest");
   if (offlineMode) closeLobbyRoom();
   else ensureLobbyRoom();
 };
@@ -2417,6 +2462,8 @@ $("newProfileBtn").onclick = () => {
 $("signOutProfileBtn").onclick = leaveLobby;
 $("editProfileBtn").onclick = editActiveProfile;
 $("dashboardBtn").onclick = openDashboard;
+$("lobbyAvatarButton").onclick = openDashboard;
+$("lobbyProfileReadout").onclick = openDashboard;
 $("closeDashboardBtn").onclick = () => $("dashboardModal").classList.add("hidden");
 $("lobbyBackBtn").onclick = () => {
   lobbyScreen.classList.add("hidden");
@@ -2438,6 +2485,8 @@ $("survivalLobbyBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("
 $("teamLobbyBtn").onclick = () => {
   const choices = $("teamSizeChoices");
   const expanded = choices.classList.toggle("hidden") === false;
+  $("ctfPlayerChoices").classList.add("hidden");
+  $("ctf6LobbyBtn").setAttribute("aria-expanded", "false");
   $("teamLobbyBtn").setAttribute("aria-expanded", String(expanded));
   refreshLobbyNavigation(expanded ? "teamSize2Btn" : "teamLobbyBtn");
   if (expanded) renderLobbyNavigation(true);
@@ -2470,10 +2519,22 @@ storyMapSelect.onchange = event => {
   mapKey = event.target.value;
 };
 $("ctf6LobbyBtn").onclick = () => {
-  lobbyScreen.classList.add("hidden");
-  $("ctfMode").click();
-  $("ctfPlayerControl").querySelector('[data-ctf-players="6"]').click();
+  const choices = $("ctfPlayerChoices");
+  const expanded = choices.classList.toggle("hidden") === false;
+  $("teamSizeChoices").classList.add("hidden");
+  $("teamLobbyBtn").setAttribute("aria-expanded", "false");
+  $("ctf6LobbyBtn").setAttribute("aria-expanded", String(expanded));
+  refreshLobbyNavigation(expanded ? "ctf4PlayersLobbyBtn" : "ctf6LobbyBtn");
+  if (expanded) renderLobbyNavigation(true);
 };
+document.querySelectorAll("[data-lobby-ctf-players]").forEach(button => {
+  button.onclick = () => {
+    ctfPlayers = Number(button.dataset.lobbyCtfPlayers) === 6 ? 6 : 4;
+    document.querySelectorAll("[data-ctf-players]").forEach(item => item.classList.toggle("active", Number(item.dataset.ctfPlayers) === ctfPlayers));
+    lobbyScreen.classList.add("hidden");
+    $("ctfMode").click();
+  };
+});
 
 bindLobbyNavigation();
 
