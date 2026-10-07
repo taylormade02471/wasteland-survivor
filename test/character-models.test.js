@@ -8,6 +8,7 @@ import {
   createCharacterModel,
   createPoseController,
   getCharacterArchetype,
+  measureCharacterModelBudget,
   sampleCharacterPose,
 } from "../public/character-models.mjs";
 
@@ -22,23 +23,59 @@ const REQUIRED_RIG_PARTS = [
   "rightLeg",
   "weapon",
   "backMount",
+  "muzzle",
+  "leftHandAnchor",
+  "rightHandAnchor",
+  "weaponAnchor",
 ];
 
 function createFakeThree() {
+  class Transform {
+    constructor(x = 0, y = 0, z = 0) {
+      this.x = x;
+      this.y = y;
+      this.z = z;
+    }
+    set(x = 0, y = x, z = x) {
+      this.x = x;
+      this.y = y;
+      this.z = z;
+      return this;
+    }
+    copy(source) {
+      this.x = source.x;
+      this.y = source.y;
+      this.z = source.z;
+      return this;
+    }
+  }
   class Object3D {
     constructor() {
       this.children = [];
+      this.parent = null;
       this.name = "";
-      this.position = { x: 0, y: 0, z: 0, set: (x = 0, y = 0, z = 0) => Object.assign(this.position, { x, y, z }) };
-      this.rotation = { x: 0, y: 0, z: 0, set: (x = 0, y = 0, z = 0) => Object.assign(this.rotation, { x, y, z }) };
-      this.scale = { x: 1, y: 1, z: 1, set: (x = 1, y = x, z = x) => Object.assign(this.scale, { x, y, z }) };
+      this.position = new Transform();
+      this.rotation = new Transform();
+      this.scale = new Transform(1, 1, 1);
       this.userData = {};
       this.castShadow = false;
       this.receiveShadow = false;
     }
     add(...children) {
+      for (const child of children) child.parent = this;
       this.children.push(...children);
       return this;
+    }
+    traverse(visitor) {
+      visitor(this);
+      for (const child of this.children) child.traverse(visitor);
+    }
+    getObjectByName(name) {
+      let found = null;
+      this.traverse((node) => {
+        if (!found && node.name === name) found = node;
+      });
+      return found;
     }
   }
   class Group extends Object3D {}
@@ -50,9 +87,11 @@ function createFakeThree() {
     }
   }
   class Geometry {
-    constructor(type, args) {
+    constructor(type, args, triangles) {
       this.type = type;
       this.args = args;
+      this.index = { count: triangles * 3 };
+      this.attributes = { position: { count: triangles * 3 } };
     }
   }
   class MeshStandardMaterial {
@@ -64,11 +103,12 @@ function createFakeThree() {
     Group,
     Mesh,
     MeshStandardMaterial,
-    BoxGeometry: class BoxGeometry extends Geometry { constructor(...args) { super("BoxGeometry", args); } },
-    CapsuleGeometry: class CapsuleGeometry extends Geometry { constructor(...args) { super("CapsuleGeometry", args); } },
-    ConeGeometry: class ConeGeometry extends Geometry { constructor(...args) { super("ConeGeometry", args); } },
-    CylinderGeometry: class CylinderGeometry extends Geometry { constructor(...args) { super("CylinderGeometry", args); } },
-    SphereGeometry: class SphereGeometry extends Geometry { constructor(...args) { super("SphereGeometry", args); } },
+    Object3D,
+    BoxGeometry: class BoxGeometry extends Geometry { constructor(...args) { super("BoxGeometry", args, 12); } },
+    CapsuleGeometry: class CapsuleGeometry extends Geometry { constructor(...args) { super("CapsuleGeometry", args, Math.max(24, (args[3] || 6) * 12)); } },
+    ConeGeometry: class ConeGeometry extends Geometry { constructor(...args) { super("ConeGeometry", args, Math.max(12, (args[2] || 8) * 2)); } },
+    CylinderGeometry: class CylinderGeometry extends Geometry { constructor(...args) { super("CylinderGeometry", args, Math.max(12, (args[3] || 8) * 4)); } },
+    SphereGeometry: class SphereGeometry extends Geometry { constructor(...args) { super("SphereGeometry", args, Math.max(24, (args[1] || 8) * (args[2] || 6) * 2)); } },
   };
 }
 
@@ -121,6 +161,12 @@ test("mesh factory builds named rig parts and distinct authored geometry for eve
     assert.equal(model.metadata.id, id);
     assert.equal(model.budget.triangles <= MOBILE_CHARACTER_BUDGET.triangles, true);
     assert.equal(model.budget.materials <= MOBILE_CHARACTER_BUDGET.materials, true);
+    assert.deepEqual(model.measuredBudget, measureCharacterModelBudget(model.root));
+    assert.equal(model.budget.meshes, model.measuredBudget.meshes);
+    assert.equal(model.budget.materials, model.measuredBudget.materials);
+    assert.ok(model.measuredBudget.meshes <= MOBILE_CHARACTER_BUDGET.drawGroups);
+    assert.ok(model.measuredBudget.materials <= MOBILE_CHARACTER_BUDGET.materials);
+    assert.ok(model.measuredBudget.triangles <= MOBILE_CHARACTER_BUDGET.triangles);
 
     for (const part of REQUIRED_RIG_PARTS) {
       assert.ok(model.parts[part], `${id} includes ${part}`);
@@ -139,6 +185,34 @@ test("mesh factory builds named rig parts and distinct authored geometry for eve
   }
 
   assert.equal(geometrySignatures.size, CHARACTER_ARCHETYPE_IDS.length);
+});
+
+test("class-defining equipment is materially modeled as named visible geometry", () => {
+  const THREE = createFakeThree();
+  const expectedMeshes = {
+    scout: ["head:hood", "shoulderMount:radio-whip"],
+    ranger: ["torso:coat-tail", "backMount:scope-pack", "backMount:rifle-sling"],
+    heavy: ["shoulderMount:left", "shoulderMount:right", "weapon:drum"],
+    tech: ["backMount:antenna", "backMount:tool-frame"],
+    medic: ["backMount:med-cross", "hipMount:triage-pouch"],
+    warden: ["torso:high-collar", "shield:tower"],
+  };
+
+  for (const [id, names] of Object.entries(expectedMeshes)) {
+    const model = createCharacterModel(THREE, id);
+    for (const name of names) assert.ok(model.root.getObjectByName(name), `${id} includes ${name}`);
+  }
+
+  const warden = createCharacterModel(THREE, "warden");
+  assert.ok(warden.parts.shield, "warden exposes shield anchor/part");
+  assert.equal(warden.parts.shield.parent, warden.parts.leftArm);
+});
+
+test("factory rejects incomplete THREE namespaces before building partial models", () => {
+  const THREE = createFakeThree();
+  assert.throws(() => createCharacterModel({}, "scout"), /THREE namespace.*Group.*Mesh.*BoxGeometry/i);
+  assert.throws(() => createCharacterModel({ ...THREE, CylinderGeometry: undefined }, "ranger"), /CylinderGeometry/i);
+  assert.throws(() => createCharacterModel({ ...THREE, MeshStandardMaterial: undefined }, "heavy"), /MeshStandardMaterial/i);
 });
 
 test("pose sampler exposes required states with finite bounded values including stable downed death", () => {
@@ -194,4 +268,33 @@ test("pose controller applies deterministic updates to rig parts", () => {
     torso: model.parts.torso.rotation,
     weapon: model.parts.weapon.rotation,
   }), deathSnapshot);
+});
+
+test("pose controller latches terminal downed state until deliberate reset", () => {
+  const THREE = createFakeThree();
+  const model = createCharacterModel(THREE, "warden");
+  const controller = createPoseController(model);
+
+  const downed = controller.update(0.1, { downed: true, speed: 1, aim: 1, fire: 1, hit: 1 });
+  const latchedSnapshot = JSON.stringify({
+    pose: downed,
+    root: model.parts.root.rotation,
+    torso: model.parts.torso.rotation,
+    weapon: model.parts.weapon.rotation,
+  });
+
+  const missingFlag = controller.update(0.25, {});
+  const falseFlag = controller.update(0.25, { downed: false, speed: 1, aim: 1, fire: 1, hit: 1 });
+  assert.equal(missingFlag.state, "downed");
+  assert.equal(falseFlag.state, "downed");
+  assert.equal(JSON.stringify({
+    pose: falseFlag,
+    root: model.parts.root.rotation,
+    torso: model.parts.torso.rotation,
+    weapon: model.parts.weapon.rotation,
+  }), latchedSnapshot);
+
+  controller.resetTerminalState();
+  const revived = controller.update(0.1, { downed: false, speed: 0, aim: 0, fire: 0, hit: 0 });
+  assert.equal(revived.state, "idle");
 });
