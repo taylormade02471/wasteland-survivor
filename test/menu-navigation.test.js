@@ -4,7 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createMenuNavigator, isMenuCommandDisabled, resolveMenuKeyAction } from "../public/menu-navigation.mjs";
+import {
+  LOBBY_CONTROL_ORDER,
+  createMenuNavigator,
+  describeLobbyControl,
+  isMenuCommandDisabled,
+  nextLobbySelectIndex,
+  resolveLobbyControllerAction,
+  resolveMenuKeyAction,
+  visibleLobbyControlDescriptors,
+} from "../public/menu-navigation.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
@@ -30,8 +39,8 @@ test("skips disabled commands and falls back to the first enabled command", () =
 });
 
 test("disables commands nested inside a collapsed lobby choice group", () => {
-  const collapsedChoice = { disabled: false, closest: selector => selector === ".hidden" ? { id: "teamSizeChoices" } : null };
-  const visibleChoice = { disabled: false, closest: () => null };
+  const collapsedChoice = { id: "teamSize1Btn", disabled: false, closest: selector => selector === ".hidden, [hidden]" ? { id: "teamSizeChoices" } : null };
+  const visibleChoice = { id: "survivalLobbyBtn", disabled: false, closest: () => null };
 
   assert.equal(isMenuCommandDisabled(collapsedChoice), true);
   assert.equal(isMenuCommandDisabled(visibleChoice), false);
@@ -79,7 +88,7 @@ test("leaves Tab native and synchronizes focus after mouse or touch input", () =
     assert.deepEqual(navigator.activate(), { id: "ctf", input: "keyboard" });
   }
 
-  assert.match(game, /button\.addEventListener\("focus", \(\) => \{\s*focusLobbyCommand\(button\.id, inputMode\);\s*\}\);/);
+  assert.match(game, /control\.addEventListener\("focus", \(\) => \{\s*focusLobbyCommand\(control\.id, inputMode\);\s*\}\);/);
 });
 
 test("routes Enter and Space to the focused floating command", () => {
@@ -98,7 +107,7 @@ test("routes Enter and Space to the focused floating command", () => {
     );
   }
 
-  assert.match(game, /resolveMenuKeyAction\(event\.key, \{ navigationFocused, nativeControlFocused \}\)/);
+  assert.match(game, /resolveMenuKeyAction\(event\.key, \{ navigationFocused, nativeControlFocused, selectFocused \}\)/);
   assert.match(game, /focusLobbyCommand\(activeElement\.id, "keyboard"\)/);
 });
 
@@ -115,6 +124,67 @@ test("does not intercept arrows owned by lobby selects or native controls", () =
     { type: "move", direction: "next" },
   );
   assert.match(game, /if \(nativeControlFocused \|\| key === "tab"\) return;/);
+});
+
+test("registers every required lobby controller target in one explicit order", () => {
+  const required = [
+    "lobbyAvatarButton", "lobbyProfileReadout",
+    "survivalLobbyBtn", "teamLobbyBtn", "ctf6LobbyBtn",
+    "teamSize1Btn", "teamSize2Btn", "teamSize3Btn",
+    "ctf4PlayersLobbyBtn", "ctf6PlayersLobbyBtn",
+    "dashboardBtn", "editProfileBtn", "lobbyConnectionsBtn", "lobbySettingsBtn", "signOutProfileBtn",
+    "lobbyGameOptionsSummary", "botTeamSize", "botDifficulty", "storyMapSelect", "riskLevel",
+    "lobbyBackBtn",
+  ];
+
+  for (const id of required) {
+    assert.ok(LOBBY_CONTROL_ORDER.includes(id), `missing #${id} from controller order`);
+    assert.match(html, new RegExp(`id="${id}"[^>]*data-lobby-control`), `#${id} is not marked as a lobby control`);
+  }
+  assert.equal(new Set(LOBBY_CONTROL_ORDER).size, LOBBY_CONTROL_ORDER.length);
+});
+
+test("excludes hidden groups and closed detail contents while retaining the Game Options summary", () => {
+  const mock = ({ id, tagName = "BUTTON", hidden = false, closedDetails = false, disabled = false }) => ({
+    id,
+    tagName,
+    disabled,
+    closest(selector) {
+      if (selector === ".hidden, [hidden]") return hidden ? { id: "hidden-parent" } : null;
+      if (selector === "details:not([open])") return closedDetails ? { id: "lobbyGameOptions" } : null;
+      return null;
+    },
+  });
+  const controls = [
+    mock({ id: "teamSize1Btn", hidden: true }),
+    mock({ id: "lobbyGameOptionsSummary", tagName: "SUMMARY", closedDetails: true }),
+    mock({ id: "botTeamSize", tagName: "SELECT", closedDetails: true }),
+    mock({ id: "dashboardBtn" }),
+  ];
+
+  assert.equal(describeLobbyControl(controls[0]).visible, false);
+  assert.equal(describeLobbyControl(controls[1]).visible, true);
+  assert.equal(describeLobbyControl(controls[2]).visible, false);
+  assert.deepEqual(
+    visibleLobbyControlDescriptors(controls).map(control => [control.id, control.type]),
+    [["lobbyGameOptionsSummary", "summary"], ["dashboardBtn", "button"]],
+  );
+});
+
+test("uses horizontal controller input to change selects and vertical input to leave them", () => {
+  const select = { id: "botDifficulty", type: "select", visible: true, disabled: false };
+
+  assert.deepEqual(resolveLobbyControllerAction({ dpadLeft: true }, select), { type: "select", step: -1 });
+  assert.deepEqual(resolveLobbyControllerAction({ dpadRight: true }, select), { type: "select", step: 1 });
+  assert.deepEqual(resolveLobbyControllerAction({ dpadUp: true }, select), { type: "move", direction: "previous" });
+  assert.deepEqual(resolveLobbyControllerAction({ dpadDown: true }, select), { type: "move", direction: "next" });
+  assert.deepEqual(resolveLobbyControllerAction({ interact: true }, { id: "dashboardBtn", type: "button" }), { type: "activate" });
+
+  const options = [{ disabled: false }, { disabled: true }, { disabled: false }];
+  assert.equal(nextLobbySelectIndex(options, 0, 1), 2);
+  assert.equal(nextLobbySelectIndex(options, 2, 1), 0);
+  assert.equal(nextLobbySelectIndex(options, 0, -1), 2);
+  assert.match(game, /dispatchEvent\(new Event\("change", \{ bubbles: true \}\)\)/);
 });
 
 test("keeps lobby actions as independent floating semantic commands", () => {

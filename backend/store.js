@@ -4,7 +4,9 @@ const path = require("path");
 
 const EMPTY_STATE = Object.freeze({ version: 1, players: {}, friendships: {}, invites: {}, matches: {}, audit: [] });
 const cleanText = (value, maximum = 40) => typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, maximum) : "";
-const publicTag = () => crypto.randomBytes(3).toString("hex").toUpperCase();
+const PUBLIC_PLAYER_TAG_PATTERN = /^WS-[A-F0-9]{6,8}$/;
+const proposedPlayerTag = value => typeof value === "string" && PUBLIC_PLAYER_TAG_PATTERN.test(value.trim()) ? value.trim() : "";
+const randomPlayerTag = () => `WS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 function safeProgress(source = {}, existing = {}) {
   const guns = {};
   for (const id of ["scout", "cannon", "inferno"]) guns[id] = Math.max(0, Math.min(id === "inferno" ? 50 : id === "cannon" ? 100 : 999, Math.floor(Number(source.guns?.[id]) || existing.guns?.[id] || 0)));
@@ -46,13 +48,21 @@ class BackendStore {
     this.state.audit.push({ id: crypto.randomUUID(), action, at: new Date().toISOString(), ...detail });
     this.state.audit = this.state.audit.slice(-500);
   }
+  issuePlayerTag(proposed = "") {
+    const existingTags = new Set(Object.values(this.state.players).map(player => player.playerTag));
+    const accepted = proposedPlayerTag(proposed);
+    if (accepted && !existingTags.has(accepted)) return accepted;
+    let generated = randomPlayerTag();
+    while (existingTags.has(generated)) generated = randomPlayerTag();
+    return generated;
+  }
   upsertPlayer(input = {}) {
     const deviceProfileId = cleanText(input.deviceProfileId, 80);
     if (!deviceProfileId) throw new Error("deviceProfileId is required");
     const existing = Object.values(this.state.players).find(player => player.deviceProfileId === deviceProfileId);
     const id = existing?.id || crypto.randomUUID();
     const player = {
-      id, deviceProfileId, playerTag: existing?.playerTag || `WS-${publicTag()}`,
+      id, deviceProfileId, playerTag: existing?.playerTag || this.issuePlayerTag(input.playerTag),
       displayName: cleanText(input.displayName, 24) || existing?.displayName || "Survivor",
       avatarType: ["scout", "ranger", "heavy", "tech"].includes(input.avatarType) ? input.avatarType : existing?.avatarType || "scout",
       level: Math.max(1, Math.floor(Number(input.level) || existing?.level || 1)),
@@ -131,4 +141,4 @@ class BackendStore {
     };
   }
 }
-module.exports = { BackendStore };
+module.exports = { BackendStore, PUBLIC_PLAYER_TAG_PATTERN };

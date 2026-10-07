@@ -8,8 +8,22 @@ function store() { const directory = fs.mkdtempSync(path.join(os.tmpdir(), "wast
 test("player records exclude private profile information", () => {
   const backend = store();
   const player = backend.upsertPlayer({ deviceProfileId: "local-profile-1", displayName: "Night Ranger", avatarType: "ranger", level: 7, birthDate: "2000-01-01", contact: "private@example.com", pin: "1234" });
-  assert.match(player.playerTag, /^WS-[A-F0-9]{6}$/); assert.equal(player.displayName, "Night Ranger");
+  assert.match(player.playerTag, /^WS-[A-F0-9]{8}$/); assert.equal(player.displayName, "Night Ranger");
   assert.equal(player.birthDate, undefined); assert.equal(player.contact, undefined); assert.equal(player.pin, undefined);
+});
+test("accepts a unique strict proposed tag only for a new player and preserves existing tags", () => {
+  const backend = store();
+  const proposed = backend.upsertPlayer({ deviceProfileId: "one", displayName: "One", playerTag: "WS-A1B2C3D4", contact: "private@example.com" });
+  const updated = backend.upsertPlayer({ deviceProfileId: "one", displayName: "Renamed", playerTag: "WS-FFFFFFFF" });
+  const collision = backend.upsertPlayer({ deviceProfileId: "two", displayName: "Two", playerTag: "WS-A1B2C3D4" });
+  const invalid = backend.upsertPlayer({ deviceProfileId: "three", displayName: "Three", playerTag: "private@example.com" });
+
+  assert.equal(proposed.playerTag, "WS-A1B2C3D4");
+  assert.equal(updated.playerTag, "WS-A1B2C3D4");
+  assert.notEqual(collision.playerTag, "WS-A1B2C3D4");
+  assert.match(collision.playerTag, /^WS-[A-F0-9]{8}$/);
+  assert.match(invalid.playerTag, /^WS-[A-F0-9]{8}$/);
+  assert.equal(invalid.contact, undefined);
 });
 test("players persist and can be found by tag or display name", () => {
   const backend = store(); const player = backend.upsertPlayer({ deviceProfileId: "one", displayName: "Kyle", online: true });

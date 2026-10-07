@@ -316,6 +316,7 @@ button:disabled {
 .lobby-edge-action { min-height: 44px; padding: 8px 10px; border-color: rgba(255,255,255,.2); font-size: 10px; text-align: center; }
 .lobby-game-options { position: fixed; z-index: 44; right: max(16px, env(safe-area-inset-right)); bottom: max(28px, calc(env(safe-area-inset-bottom) + 16px)); width: min(300px, calc(100vw - 32px)); border: 1px solid rgba(102,252,241,.28); background: rgba(4,10,13,.88); box-shadow: 0 16px 38px rgba(0,0,0,.38); }
 .lobby-game-options summary { min-height: 44px; display: flex; align-items: center; padding: 0 13px; color: #aef3ed; cursor: pointer; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+.lobby-game-options summary.is-selected, .lobby-settings-row select.is-selected { outline: 2px solid #ffdf52; outline-offset: 2px; }
 .lobby-game-options[open] { padding-bottom: 12px; }
 .lobby-game-options[open] summary { border-bottom: 1px solid rgba(102,252,241,.2); }
 .lobby-game-options .lobby-settings-row, .lobby-game-options .risk-preview { margin-inline: 12px; }
@@ -324,11 +325,11 @@ button:disabled {
 .lobby-avatar-button:hover, .lobby-profile-readout:hover { background: transparent; }
 .lobby-avatar-glow { position: absolute; right: 7%; bottom: 3%; width: 72%; height: 30%; background: radial-gradient(ellipse,rgba(102,252,241,.28),transparent 68%); filter: blur(10px); }
 .lobby-avatar-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center bottom; filter: drop-shadow(0 24px 24px rgba(0,0,0,.62)) drop-shadow(0 0 16px rgba(102,252,241,.14)); transition: filter .2s ease, transform .2s ease; }
-.lobby-avatar-button:hover .lobby-avatar-image, .lobby-avatar-button:focus-visible .lobby-avatar-image { filter: drop-shadow(0 24px 24px rgba(0,0,0,.62)) drop-shadow(0 0 22px rgba(255,223,82,.36)); transform: translateY(-3px); }
-.lobby-avatar-button:focus-visible { outline: 2px solid #ffdf52; outline-offset: -6px; }
+.lobby-avatar-button:hover .lobby-avatar-image, .lobby-avatar-button:focus-visible .lobby-avatar-image, .lobby-avatar-button.is-selected .lobby-avatar-image { filter: drop-shadow(0 24px 24px rgba(0,0,0,.62)) drop-shadow(0 0 22px rgba(255,223,82,.36)); transform: translateY(-3px); }
+.lobby-avatar-button:focus-visible, .lobby-avatar-button.is-selected { outline: 2px solid #ffdf52; outline-offset: -6px; }
 .lobby-avatar-action { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 6px 9px; border-left: 2px solid #66fcf1; background: rgba(4,10,13,.76); color: #d8edeb; font-size: 9px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
 .lobby-profile-readout { min-width: 44px; min-height: 44px; margin-bottom: 168px; display: grid; gap: 7px; padding: 0; border: 0; background: transparent; box-shadow: none; color: #f8f3df; text-align: left; pointer-events: auto; }
-.lobby-profile-readout:focus-visible { outline: 2px solid #ffdf52; outline-offset: 5px; }
+.lobby-profile-readout:focus-visible, .lobby-profile-readout.is-selected { outline: 2px solid #ffdf52; outline-offset: 5px; }
 .lobby-identity-line, .lobby-level-line, .lobby-readout-grid > span { border-left: 2px solid rgba(102,252,241,.78); background: linear-gradient(90deg,rgba(4,10,13,.9),rgba(4,10,13,.28)); }
 .lobby-identity-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; }
 .lobby-identity-line strong { min-width: 0; overflow: hidden; color: #f2ead7; font-family: "Bahnschrift Condensed", "Arial Narrow", Impact, sans-serif; font-size: 22px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
@@ -705,6 +706,65 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   .settings-block { align-items: flex-start; }
   .voice-block { display: grid; }
   .voice-actions { justify-content: start; }
+}
+
+@media (max-width: 680px), (orientation: landscape) and (max-height: 520px) and (max-width: 960px) {
+  #lobbyScreen {
+    overflow-y: auto;
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  #lobbyBackBtn {
+    position: relative;
+    inset: auto;
+    order: 0;
+    justify-self: start;
+    margin: 0;
+  }
+
+  .lobby-title-plate,
+  #fightCommands,
+  .lobby-survivor-hero,
+  .lobby-edge-controls,
+  .lobby-game-options,
+  .team-size-choices,
+  .ctf-player-choices {
+    position: relative;
+    inset: auto;
+    width: min(100%, 520px);
+    margin: 0 auto;
+  }
+
+  .lobby-title-plate { order: 1; padding: 12px 14px; }
+  .lobby-title-plate h1 { max-width: none; font-size: 32px; }
+  .lobby-title-plate .replay-status { display: none; }
+  .lobby-survivor-hero { order: 2; grid-template-columns: 96px minmax(0, 1fr); height: 132px; align-items: stretch; gap: 8px; }
+  .lobby-avatar-button, .lobby-avatar-image { height: 132px; }
+  .lobby-avatar-image { object-position: center bottom; }
+  .lobby-avatar-action, .lobby-avatar-glow { display: none; }
+  .lobby-profile-readout { margin: 0; gap: 3px; align-self: stretch; }
+  .lobby-identity-line { min-height: 30px; padding: 4px 7px; }
+  .lobby-identity-line strong { font-size: 16px; }
+  .lobby-identity-line em { font-size: 7px; }
+  .lobby-player-tag { padding-left: 7px; font-size: 8px; }
+  .lobby-level-line { min-height: 25px; padding: 3px 7px; }
+  .lobby-level-line b { font-size: 12px; }
+  .lobby-level-line span { font-size: 8px; }
+  .lobby-readout-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 3px; }
+  .lobby-readout-grid > span { padding: 3px 5px; }
+  .lobby-readout-grid small { font-size: 6px; }
+  .lobby-readout-grid b { font-size: 8px; }
+  #lobbyNavigation { order: 3; display: grid; gap: 10px; }
+  #fightCommands { order: 1; grid-template-columns: 1fr; gap: 7px; }
+  #fightCommands .floating-command { min-height: 64px; padding: 10px 12px; }
+  .team-size-choices, .ctf-player-choices { order: 2; }
+  .team-size-choices .floating-command, .ctf-player-choices .floating-command { min-height: 54px; }
+  .lobby-edge-controls { order: 3; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; }
+  .lobby-edge-action, .floating-command-secondary { min-height: 44px; }
+  .lobby-game-options { order: 4; }
 }
 
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 700px) {

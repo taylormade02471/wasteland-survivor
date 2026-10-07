@@ -10,10 +10,24 @@ import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
-import { createMenuNavigator, isMenuCommandDisabled, resolveMenuKeyAction } from "./menu-navigation.mjs";
+import {
+  LOBBY_CONTROL_ORDER,
+  createMenuNavigator,
+  describeLobbyControl,
+  nextLobbySelectIndex,
+  resolveLobbyControllerAction,
+  resolveMenuKeyAction,
+  visibleLobbyControlDescriptors,
+} from "./menu-navigation.mjs";
 import { reduceClientMatchLifecycle } from "./matchmaking-client.mjs";
 import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
-import { createLobbyProfileView } from "./lobby-profile-view.mjs";
+import {
+  applyAuthoritativePlayerIdentity,
+  backfillProfileIdentities,
+  createLobbyProfileView,
+  ensureProfileIdentity,
+  reduceLobbyConnectivity,
+} from "./lobby-profile-view.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -139,6 +153,11 @@ let musicEnabled = localStorage.getItem("wastland-survivor-music") !== "off";
 let musicVolume = Number(localStorage.getItem("wastland-survivor-music-volume") || 36);
 let musicSource = localStorage.getItem("wastland-survivor-music-source") || "builtin";
 let offlineMode = localStorage.getItem("wastland-survivor-offline") === "true";
+let lobbyConnectivity = {
+  offlineMode,
+  playerServiceReachable: false,
+  lobbySocketOpen: false,
+};
 let youthAccount = false;
 let pendingProfile = null;
 let activeProfile = null;
@@ -194,27 +213,33 @@ function refreshInputMode() {
   setInputMode(resolveInputMode({ coarsePointer: coarsePointer.matches, mouseInputActive, controllerConnected }));
 }
 
-function lobbyCommandButtons() {
-  return [...document.querySelectorAll("#lobbyNavigation .floating-command")];
+function updateLobbyConnectivity(event) {
+  lobbyConnectivity = reduceLobbyConnectivity(lobbyConnectivity, event);
+  if (!lobbyScreen.classList.contains("hidden")) renderLobbyProfile(activeProfile?.name || "Offline Guest");
+}
+
+function lobbyControlElements() {
+  return LOBBY_CONTROL_ORDER.map(id => $(id)).filter(control => control?.hasAttribute("data-lobby-control"));
+}
+
+function lobbyControlDescriptors() {
+  return visibleLobbyControlDescriptors(lobbyControlElements());
 }
 
 function renderLobbyNavigation(focus = false) {
   const current = lobbyNavigator?.current();
-  lobbyCommandButtons().forEach(button => {
-    const selected = button.id === current?.id;
-    button.classList.toggle("is-selected", selected);
-    if (selected) button.setAttribute("aria-current", "true");
-    else button.removeAttribute("aria-current");
+  lobbyControlElements().forEach(control => {
+    const selected = control.id === current?.id;
+    control.classList.toggle("is-selected", selected && current?.input !== "programmatic");
+    if (selected) control.setAttribute("aria-current", "true");
+    else control.removeAttribute("aria-current");
   });
   if (focus && current?.id) $(current.id)?.focus({ preventScroll: true });
 }
 
 function refreshLobbyNavigation(initialId) {
   const previousId = initialId ?? lobbyNavigator?.current().id;
-  lobbyNavigator = createMenuNavigator(lobbyCommandButtons().map(button => ({
-    id: button.id,
-    disabled: isMenuCommandDisabled(button),
-  })), previousId);
+  lobbyNavigator = createMenuNavigator(lobbyControlDescriptors(), previousId);
   renderLobbyNavigation();
 }
 
@@ -238,37 +263,43 @@ function activateLobbyCommand() {
 }
 
 function bindLobbyNavigation() {
-  lobbyCommandButtons().forEach(button => {
-    button.addEventListener("pointerenter", event => {
+  lobbyControlElements().forEach(control => {
+    control.addEventListener("pointerenter", event => {
       if (event.pointerType !== "mouse") return;
       setInputMode("mouse");
-      focusLobbyCommand(button.id, "mouse");
+      focusLobbyCommand(control.id, "mouse");
     });
-    button.addEventListener("pointerdown", event => {
-      if (event.pointerType !== "touch") return;
-      setInputMode("touch");
-      const alreadyFocused = lobbyNavigator?.current().id === button.id;
-      focusLobbyCommand(button.id, "touch");
-      event.preventDefault();
-      if (alreadyFocused) activateLobbyCommand();
+    control.addEventListener("pointerdown", event => {
+      if (event.pointerType === "touch") setInputMode("touch");
+      focusLobbyCommand(control.id, event.pointerType === "touch" ? "touch" : "mouse");
     });
-    button.addEventListener("focus", () => {
-      focusLobbyCommand(button.id, inputMode);
+    control.addEventListener("focus", () => {
+      focusLobbyCommand(control.id, inputMode);
     });
-    button.addEventListener("click", event => {
+    control.addEventListener("click", event => {
       if (event.isTrusted && event.detail === 0) {
         setInputMode("keyboard");
-        focusLobbyCommand(button.id, "keyboard");
+        focusLobbyCommand(control.id, "keyboard");
       }
     });
   });
+  $("lobbyGameOptions").addEventListener("toggle", () => refreshLobbyNavigation("lobbyGameOptionsSummary"));
+}
+
+function changeLobbySelect(select, step) {
+  const nextIndex = nextLobbySelectIndex(select?.options, select?.selectedIndex, step);
+  if (!select || nextIndex === select.selectedIndex) return;
+  select.selectedIndex = nextIndex;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function handleLobbyController() {
   const controller = pollController();
-  if (controller.dpadUp || controller.dpadLeft) moveLobbyFocus("previous", "controller");
-  if (controller.dpadDown || controller.dpadRight) moveLobbyFocus("next", "controller");
-  if (controller.interact) activateLobbyCommand();
+  const active = $(lobbyNavigator?.current().id);
+  const action = resolveLobbyControllerAction(controller, describeLobbyControl(active));
+  if (action?.type === "move") moveLobbyFocus(action.direction, "controller");
+  if (action?.type === "select") changeLobbySelect(active, action.step);
+  if (action?.type === "activate") activateLobbyCommand();
 }
 
 function persistAimSettings() {
@@ -1364,38 +1395,49 @@ function finishMathCheck() {
 }
 
 async function syncPublicPlayer() {
-  if (!activeProfile || activeProfile.youthAccount || offlineMode) return false;
+  if (!activeProfile || activeProfile.youthAccount || offlineMode) {
+    updateLobbyConnectivity(offlineMode
+      ? { type: "offline-changed", offlineMode: true }
+      : { type: "player-service-failure" });
+    return false;
+  }
+  const profile = activeProfile;
+  Object.assign(profile, ensureProfileIdentity(profile));
   try {
     const response = await fetch("/api/players", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        deviceProfileId: activeProfile.profileId,
-        deviceCredential: activeProfile.backendDeviceCredential || "",
-        displayName: activeProfile.name,
-        avatarType: activeProfile.avatarType,
-        level: activeProfile.progress?.playerLevel || 1,
+        deviceProfileId: profile.profileId,
+        deviceCredential: profile.backendDeviceCredential || "",
+        playerTag: profile.playerTag,
+        displayName: profile.name,
+        avatarType: profile.avatarType,
+        level: profile.progress?.playerLevel || 1,
         online: true,
         stats: {
-          kills: activeProfile.progress?.kills || 0,
-          matches: activeProfile.progress?.matches || 0,
-          wins: activeProfile.progress?.wins || 0,
-          deaths: activeProfile.progress?.deaths || 0,
+          kills: profile.progress?.kills || 0,
+          matches: profile.progress?.matches || 0,
+          wins: profile.progress?.wins || 0,
+          deaths: profile.progress?.deaths || 0,
         },
-        progress: activeProfile.progress || {},
+        progress: profile.progress || {},
       }),
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      updateLobbyConnectivity({ type: "player-service-failure" });
+      return false;
+    }
     const { player: publicPlayer, session, deviceCredential } = await response.json();
-    activeProfile.backendPlayerId = publicPlayer.id;
-    activeProfile.playerTag = publicPlayer.playerTag;
-    if (deviceCredential) activeProfile.backendDeviceCredential = deviceCredential;
-    activeProfile.backendSession = session;
-    saveProfile();
-    renderLobbyProfile();
+    Object.assign(profile, applyAuthoritativePlayerIdentity(profile, publicPlayer));
+    if (deviceCredential) profile.backendDeviceCredential = deviceCredential;
+    profile.backendSession = session;
+    saveProfile(profile);
+    updateLobbyConnectivity({ type: "player-service-success" });
     return true;
   } catch {
     // Local play remains available when the optional backend is offline.
+    updateLobbyConnectivity({ type: "player-service-failure" });
     return false;
   }
 }
@@ -1407,20 +1449,28 @@ async function createDeviceLink() {
     result.textContent = "Device linking requires an adult online profile.";
     return;
   }
-  if (!activeProfile.backendSession && !(await syncPublicPlayer())) {
+  try {
+    if (!activeProfile.backendSession && !(await syncPublicPlayer())) {
+      result.textContent = "The player service is unavailable. Try again when online.";
+      return;
+    }
+    let response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
+    if (!response.ok) updateLobbyConnectivity({ type: "player-service-failure" });
+    if (response.status === 401 && await syncPublicPlayer()) {
+      response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
+    }
+    if (!response.ok) {
+      updateLobbyConnectivity({ type: "player-service-failure" });
+      result.textContent = "A link code could not be created right now.";
+      return;
+    }
+    updateLobbyConnectivity({ type: "player-service-success" });
+    const link = await response.json();
+    result.textContent = `${link.playerTag}  ·  ${link.code}  ·  expires in 5 minutes`;
+  } catch {
+    updateLobbyConnectivity({ type: "player-service-failure" });
     result.textContent = "The player service is unavailable. Try again when online.";
-    return;
   }
-  let response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
-  if (response.status === 401 && await syncPublicPlayer()) {
-    response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
-  }
-  if (!response.ok) {
-    result.textContent = "A link code could not be created right now.";
-    return;
-  }
-  const link = await response.json();
-  result.textContent = `${link.playerTag}  ·  ${link.code}  ·  expires in 5 minutes`;
 }
 
 async function claimDeviceLink() {
@@ -1437,9 +1487,11 @@ async function claimDeviceLink() {
     const response = await fetch("/api/link/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerTag, code }) });
     const payload = await response.json();
     if (!response.ok) {
+      updateLobbyConnectivity({ type: "player-service-failure" });
       message.textContent = payload.error || "The link code is invalid or expired.";
       return;
     }
+    updateLobbyConnectivity({ type: "player-service-success" });
     const digest = await pinDigest(pin);
     const profile = {
       profileId: crypto.randomUUID(), name: payload.player.displayName, birthDate: "", age: null, contact: "",
@@ -1457,6 +1509,7 @@ async function claimDeviceLink() {
     $("linkLocalPin").value = "";
     openLobby(profile.name);
   } catch {
+    updateLobbyConnectivity({ type: "player-service-failure" });
     message.textContent = "The player service is unavailable. Your local profiles were not changed.";
   }
 }
@@ -1472,7 +1525,7 @@ function showDeviceLinkStep() {
 async function reportMatch(title) {
   if (!activeProfile?.backendPlayerId || offlineMode) return;
   try {
-    await fetch("/api/matches", {
+    const response = await fetch("/api/matches", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeProfile.backendSession || ""}` },
       body: JSON.stringify({
@@ -1480,12 +1533,15 @@ async function reportMatch(title) {
         players: [activeProfile.backendPlayerId], score: { score: Math.floor(score), blue: Math.floor(blue), red: Math.floor(red), result: title },
       }),
     });
+    updateLobbyConnectivity({ type: response.ok ? "player-service-success" : "player-service-failure" });
   } catch {
     // Match reporting is retriable and never blocks the local result screen.
+    updateLobbyConnectivity({ type: "player-service-failure" });
   }
 }
 
 function openLobby(contact) {
+  lobbyConnectivity = reduceLobbyConnectivity(lobbyConnectivity, { type: "offline-changed", offlineMode });
   welcomeScreen.classList.add("hidden");
   lobbyScreen.classList.remove("hidden");
   $("teamSizeChoices").classList.add("hidden");
@@ -1517,7 +1573,7 @@ function renderLobbyProfile(fallbackName = "Offline Guest") {
     activeWeapon: hasProgress ? activeGun : "scout",
     weaponLevel: hasProgress ? guns[activeGun]?.level : 0,
     shieldLevel: hasProgress ? shieldLevel : 0,
-    online: !offlineMode && Boolean(activeProfile?.backendSession || lobbySocket?.readyState === WebSocket.OPEN),
+    connectivity: { ...lobbyConnectivity, offlineMode },
   });
 
   lobbyPlayer.textContent = `${view.avatar.name} // ${view.classLabel}`;
@@ -1576,18 +1632,38 @@ function editActiveProfile() {
 }
 
 function savedProfiles() {
-  const profiles = JSON.parse(localStorage.getItem("wastland-survivor-profiles") || "[]");
-  if (profiles.length) return profiles;
-  const legacy = JSON.parse(localStorage.getItem("wastland-survivor-profile") || "null");
-  return legacy ? [legacy] : [];
+  let profiles = [];
+  let legacy = null;
+  try {
+    const stored = JSON.parse(localStorage.getItem("wastland-survivor-profiles") || "[]");
+    profiles = Array.isArray(stored) ? stored : [];
+  } catch {
+    profiles = [];
+  }
+  try {
+    legacy = JSON.parse(localStorage.getItem("wastland-survivor-profile") || "null");
+  } catch {
+    legacy = null;
+  }
+  const source = profiles.length ? profiles : legacy ? [legacy] : [];
+  const backfill = backfillProfileIdentities(source, () => crypto.randomUUID());
+  if (backfill.changed || (!profiles.length && backfill.profiles.length)) {
+    localStorage.setItem("wastland-survivor-profiles", JSON.stringify(backfill.profiles));
+    const currentId = typeof legacy?.profileId === "string" ? legacy.profileId : "";
+    const current = backfill.profiles.find(profile => profile.profileId === currentId) || backfill.profiles.at(-1);
+    if (current) localStorage.setItem("wastland-survivor-profile", JSON.stringify(current));
+  }
+  return backfill.profiles;
 }
 
 function saveProfile(profile = activeProfile) {
   if (!profile) return;
-  const profiles = savedProfiles().filter(item => item.profileId !== profile.profileId);
-  profiles.push(profile);
+  const stableProfile = ensureProfileIdentity(profile, () => crypto.randomUUID());
+  Object.assign(profile, stableProfile);
+  const profiles = savedProfiles().filter(item => item.profileId !== stableProfile.profileId);
+  profiles.push(stableProfile);
   localStorage.setItem("wastland-survivor-profiles", JSON.stringify(profiles));
-  localStorage.setItem("wastland-survivor-profile", JSON.stringify(profile));
+  localStorage.setItem("wastland-survivor-profile", JSON.stringify(stableProfile));
 }
 
 function saveProgress() {
@@ -1843,6 +1919,7 @@ function closeLobbyRoom() {
     lobbySocket.close();
     lobbySocket = null;
   }
+  updateLobbyConnectivity({ type: "lobby-socket-closed" });
   lobbyId = null;
   lobbyRoomName = null;
   lobbyPeers = 0;
@@ -1863,7 +1940,10 @@ function ensureLobbyRoom() {
   const protocol = location.protocol === "https:" ? "wss" : "ws";
   lobbyRoomName = roomName;
   lobbySocket = new WebSocket(`${protocol}://${location.host}/signal`);
-  lobbySocket.onopen = () => lobbySocket.send(JSON.stringify({ type: "join", room: roomName }));
+  lobbySocket.onopen = () => {
+    updateLobbyConnectivity({ type: "lobby-socket-open" });
+    lobbySocket.send(JSON.stringify({ type: "join", room: roomName }));
+  };
   lobbySocket.onmessage = event => {
     try {
       const message = JSON.parse(event.data);
@@ -1892,8 +1972,12 @@ function ensureLobbyRoom() {
       }
     } catch { updateNetworkStatus("Lobby connection issue"); }
   };
-  lobbySocket.onerror = () => updateNetworkStatus("Lobby connection issue");
+  lobbySocket.onerror = () => {
+    updateLobbyConnectivity({ type: "lobby-socket-closed" });
+    updateNetworkStatus("Lobby connection issue");
+  };
   lobbySocket.onclose = () => {
+    updateLobbyConnectivity({ type: "lobby-socket-closed" });
     lobbySocket = null;
     lobbyId = null;
     lobbyRoomName = null;
@@ -2194,16 +2278,17 @@ addEventListener("keydown", event => {
   const key = event.key.toLowerCase();
   if (!lobbyScreen.classList.contains("hidden")) {
     const activeElement = document.activeElement;
-    const navigationFocused = $("lobbyNavigation").contains(activeElement);
+    const navigationFocused = Boolean(activeElement?.matches?.("[data-lobby-control]"));
+    const selectFocused = activeElement?.tagName === "SELECT";
     const nativeControlFocused = Boolean(activeElement !== document.body
       && activeElement !== document.documentElement
       && activeElement?.matches('a[href], button, input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])'));
-    const action = resolveMenuKeyAction(event.key, { navigationFocused, nativeControlFocused });
+    const action = resolveMenuKeyAction(event.key, { navigationFocused, nativeControlFocused, selectFocused });
 
     if (action) {
       event.preventDefault();
       setInputMode("keyboard");
-      if (navigationFocused && activeElement.matches(".floating-command")) {
+      if (navigationFocused) {
         focusLobbyCommand(activeElement.id, "keyboard");
       }
       if (action.type === "move") moveLobbyFocus(action.direction, "keyboard");
@@ -2422,10 +2507,13 @@ ui.muteVoice.onclick = () => { voiceMuted = !voiceMuted; localStream?.getAudioTr
 ui.offline.onchange = () => {
   offlineMode = ui.offline.checked;
   localStorage.setItem("wastland-survivor-offline", String(offlineMode));
+  updateLobbyConnectivity({ type: "offline-changed", offlineMode });
   updateNetworkStatus();
-  renderLobbyProfile(activeProfile?.name || "Offline Guest");
   if (offlineMode) closeLobbyRoom();
-  else ensureLobbyRoom();
+  else {
+    syncPublicPlayer();
+    ensureLobbyRoom();
+  }
 };
 $("enterWastlandBtn").onclick = enterProfile;
 $("guestOfflineBtn").onclick = enterGuestOffline;

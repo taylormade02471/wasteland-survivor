@@ -13,6 +13,7 @@ export const LOBBY_AVATARS = Object.freeze([
 
 const AVATAR_BY_ID = new Map(LOBBY_AVATARS.map(avatar => [avatar.id, avatar]));
 const MAX_SHIELD_LEVEL = 10;
+export const PUBLIC_PLAYER_TAG_PATTERN = /^WS-[A-F0-9]{6,8}$/;
 
 function cleanText(value, fallback, maxLength) {
   if (typeof value !== "string") return fallback;
@@ -24,10 +25,85 @@ function cleanText(value, fallback, maxLength) {
   return cleaned || fallback;
 }
 
-function normalizePlayerTag(value) {
-  if (typeof value !== "string") return "LOCAL PROFILE";
-  const tag = value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 18);
-  return tag || "LOCAL PROFILE";
+export function normalizePublicPlayerTag(value) {
+  if (typeof value !== "string") return "";
+  const tag = value.trim().toUpperCase();
+  return PUBLIC_PLAYER_TAG_PATTERN.test(tag) ? tag : "";
+}
+
+export function createStablePlayerTag(profileId) {
+  const source = typeof profileId === "string" ? profileId.trim() : "";
+  if (!source) return "";
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `WS-${(hash >>> 0).toString(16).toUpperCase().padStart(8, "0")}`;
+}
+
+function defaultProfileId() {
+  return globalThis.crypto?.randomUUID?.() || "";
+}
+
+export function ensureProfileIdentity(profile = {}, createProfileId = defaultProfileId) {
+  const source = profile && typeof profile === "object" && !Array.isArray(profile) ? profile : {};
+  const currentId = typeof source.profileId === "string" ? source.profileId.trim() : "";
+  const generatedId = currentId || String(createProfileId?.() || "").trim();
+  const currentTag = normalizePublicPlayerTag(source.playerTag);
+  const generatedTag = currentTag || createStablePlayerTag(generatedId);
+  return { ...source, profileId: generatedId, playerTag: generatedTag };
+}
+
+export function backfillProfileIdentities(profiles, createProfileId = defaultProfileId) {
+  let changed = false;
+  const normalized = (Array.isArray(profiles) ? profiles : []).map(profile => {
+    const next = ensureProfileIdentity(profile, createProfileId);
+    if (profile?.profileId !== next.profileId || profile?.playerTag !== next.playerTag) changed = true;
+    return next;
+  });
+  return { profiles: normalized, changed };
+}
+
+export function applyAuthoritativePlayerIdentity(profile = {}, player = {}) {
+  const local = ensureProfileIdentity(profile);
+  const authoritativeTag = normalizePublicPlayerTag(player?.playerTag);
+  const backendPlayerId = typeof player?.id === "string" && player.id.trim()
+    ? player.id.trim()
+    : local.backendPlayerId;
+  return {
+    ...local,
+    ...(backendPlayerId ? { backendPlayerId } : {}),
+    playerTag: authoritativeTag || local.playerTag,
+  };
+}
+
+export function reduceLobbyConnectivity(state = {}, event = {}) {
+  const current = {
+    offlineMode: state?.offlineMode === true,
+    playerServiceReachable: state?.playerServiceReachable === true,
+    lobbySocketOpen: state?.lobbySocketOpen === true,
+  };
+  if (event?.type === "player-service-success") current.playerServiceReachable = true;
+  if (event?.type === "player-service-failure") current.playerServiceReachable = false;
+  if (event?.type === "lobby-socket-open") current.lobbySocketOpen = true;
+  if (event?.type === "lobby-socket-closed") current.lobbySocketOpen = false;
+  if (event?.type === "offline-changed") {
+    current.offlineMode = event.offlineMode === true;
+    if (current.offlineMode) {
+      current.playerServiceReachable = false;
+      current.lobbySocketOpen = false;
+    }
+  }
+  return current;
+}
+
+export function resolveLobbyConnectivity(state = {}) {
+  const online = state?.offlineMode !== true
+    && (state?.playerServiceReachable === true || state?.lobbySocketOpen === true);
+  return online
+    ? { online: true, label: "Online" }
+    : { online: false, label: "Local / Offline" };
 }
 
 function finiteWhole(value, fallback = 0) {
@@ -69,7 +145,7 @@ export function createLobbyProfileView(input = {}) {
 
   return {
     displayName: cleanText(activeProfile.name, "Survivor", 32),
-    playerTag: normalizePlayerTag(activeProfile.playerTag),
+    playerTag: normalizePublicPlayerTag(activeProfile.playerTag) || "TAG UNAVAILABLE",
     avatar: { ...avatar },
     level: normalizedProgress.level,
     xp: {
@@ -87,8 +163,8 @@ export function createLobbyProfileView(input = {}) {
       level: shieldLevel,
       label: shieldLevel > 0 ? `Level ${shieldLevel}` : "Unreinforced",
     },
-    network: source.online === true
-      ? { online: true, label: "Online" }
-      : { online: false, label: "Local / Offline" },
+    network: resolveLobbyConnectivity(source.connectivity || {
+      playerServiceReachable: source.online === true,
+    }),
   };
 }
