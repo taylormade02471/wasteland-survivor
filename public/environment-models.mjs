@@ -1,6 +1,97 @@
 export const ENVIRONMENT_MODEL_IDS = Object.freeze(["barricade", "ruined-wall", "vehicle-shell", "toxic-barrel-cluster", "ice-boulder", "lava-vent", "flooded-debris"]);
 export const ENVIRONMENT_ANIMATION_STATES = Object.freeze(["waterBob", "toxicPulse", "iceSparkle", "heatVent", "beacon", "chestOpen", "hitReaction"]);
 export const MOBILE_ENVIRONMENT_BUDGET = Object.freeze({ triangles: 1100, materials: 6, drawGroups: 18, particles: 24 });
+export const SUPPLY_STATION_IDS = Object.freeze(["gun-upgrade-station", "ammunition-supply-crate"]);
+export const WAYPOINT_ARROW_DESCRIPTOR = Object.freeze({
+  kind: "supply-waypoint-chevron",
+  palette: { fill: "#f2bd4d", shadow: "#171714", edge: "#fff0a8" },
+  sizePx: { min: 22, max: 34 },
+  clampMarginPx: 32,
+  nearFadeMeters: 4.5,
+  farScaleMeters: 90,
+  accessibility: {
+    icon: "chevron",
+    labelTemplate: "{supplyName} supply marker",
+    textWhenOffscreen: "Supply is off screen",
+  },
+});
+export const WORLD_ARENA_PRESETS = Object.freeze({
+  wasteland: {
+    mapId: "wasteland",
+    playableBounds: { radius: 112, width: 210, depth: 210 },
+    spawnClearance: 20,
+    landmarkSpacing: 34,
+    pathWidth: 8,
+    obstacleDensity: 0.18,
+    obstacleCount: { min: 18, max: 24 },
+    supplySeparation: 36,
+    chestObjectiveSafetyRadius: 18,
+    mobileRenderBudget: { drawGroups: 62, materials: 18, particles: 56 },
+  },
+  "toxic-pond": {
+    mapId: "toxic-pond",
+    playableBounds: { radius: 124, width: 220, depth: 230 },
+    spawnClearance: 22,
+    landmarkSpacing: 38,
+    pathWidth: 9,
+    obstacleDensity: 0.16,
+    obstacleCount: { min: 16, max: 22 },
+    supplySeparation: 40,
+    chestObjectiveSafetyRadius: 20,
+    mobileRenderBudget: { drawGroups: 64, materials: 18, particles: 62 },
+  },
+  "icy-mountain": {
+    mapId: "icy-mountain",
+    playableBounds: { radius: 118, width: 206, depth: 232 },
+    spawnClearance: 24,
+    landmarkSpacing: 36,
+    pathWidth: 8,
+    obstacleDensity: 0.17,
+    obstacleCount: { min: 17, max: 23 },
+    supplySeparation: 38,
+    chestObjectiveSafetyRadius: 18,
+    mobileRenderBudget: { drawGroups: 60, materials: 17, particles: 54 },
+  },
+  "fiery-inferno": {
+    mapId: "fiery-inferno",
+    playableBounds: { radius: 120, width: 218, depth: 218 },
+    spawnClearance: 24,
+    landmarkSpacing: 40,
+    pathWidth: 9,
+    obstacleDensity: 0.15,
+    obstacleCount: { min: 15, max: 21 },
+    supplySeparation: 42,
+    chestObjectiveSafetyRadius: 22,
+    mobileRenderBudget: { drawGroups: 66, materials: 18, particles: 68 },
+  },
+});
+export const LOBBY_LOADOUT_VISUAL_CONTRACT = Object.freeze({
+  version: 1,
+  backdropTreatment: "cinematic-backdrop-with-restrained-plates",
+  prohibitedPatterns: ["nested-cards", "blocky-grid-panels", "giant-center-overlay"],
+  backingPlate: { opacity: 0.64, blurPx: 10, border: "single-hairline" },
+  desktop: {
+    profileRail: { placement: "left", maxWidth: 260, minHeight: 560 },
+    modeStrip: { placement: "top-center", height: 54 },
+    floatingControls: { placement: "bottom-right", maxWidth: 340 },
+  },
+  mobile: {
+    profileRail: { placement: "top", maxHeight: 68 },
+    modeStrip: { placement: "below-profile", height: 46 },
+    floatingControls: { placement: "bottom-safe-area", maxHeight: 84 },
+  },
+  modeStrip: { presentation: "compact-segmented-strip", density: "single-row", focusRing: "amber-inner-line" },
+  loadoutRibbon: {
+    presentation: "integrated-ribbon-drawer",
+    closedHeight: 58,
+    drawer: { maxHeight: 168, columnsDesktop: 4, columnsMobile: 2 },
+  },
+  controllerFocus: {
+    order: ["profile-rail", "mode-strip", "loadout-ribbon", "floating-primary", "floating-secondary"],
+    wrap: true,
+    defaultTarget: "floating-primary",
+  },
+});
 
 const rawEnvironment = {
   barricade: {
@@ -86,6 +177,37 @@ const chestDefinition = {
   budget: { triangles: 680, materials: 5, drawGroups: 12, particles: 18 },
 };
 
+const rawSupplyStations = {
+  "gun-upgrade-station": {
+    id: "gun-upgrade-station",
+    displayName: "Weapon Upgrade Station",
+    role: "weapon-upgrade",
+    silhouetteTag: "upright-workbench-with-overhead-tool-arm",
+    palette: { metal: "#4d514d", dark: "#202422", accent: "#e2ad42", glow: "#67df70" },
+    footprint: { width: 1.65, depth: 1.0, height: 1.35 },
+    collider: { kind: "box", blocksPlayers: true, width: 1.48, depth: 0.86, height: 1.22 },
+    interaction: {
+      socket: { kind: "weapon-upgrade", x: 0, y: 0.94, z: -0.48, accepts: ["scrap", "weapon-family", "class-upgrade"] },
+      marker: { id: "upgrade-use", x: 0, z: -0.92, radius: 0.92, prompt: "Upgrade weapon" },
+    },
+    budget: { triangles: 820, materials: 5, drawGroups: 15, particles: 14 },
+  },
+  "ammunition-supply-crate": {
+    id: "ammunition-supply-crate",
+    displayName: "Ammunition Supply Crate",
+    role: "ammunition",
+    silhouetteTag: "low-stacked-open-ammo-crates-with-flag",
+    palette: { metal: "#4f6046", dark: "#232920", accent: "#d8dcc6", glow: "#eff1d8" },
+    footprint: { width: 1.85, depth: 1.12, height: 0.82 },
+    collider: { kind: "box", blocksPlayers: true, width: 1.7, depth: 0.98, height: 0.78 },
+    interaction: {
+      socket: { kind: "ammunition", x: 0.18, y: 0.56, z: -0.42, accepts: ["ammo", "magazine", "tactical-refill"] },
+      marker: { id: "ammo-use", x: 0, z: -0.94, radius: 0.86, prompt: "Resupply ammo" },
+    },
+    budget: { triangles: 740, materials: 5, drawGroups: 14, particles: 8 },
+  },
+};
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -100,8 +222,16 @@ function environmentId(id) {
   return ENVIRONMENT_MODEL_IDS.includes(id) ? id : "barricade";
 }
 
+function supplyStationId(id) {
+  return SUPPLY_STATION_IDS.includes(id) ? id : "gun-upgrade-station";
+}
+
 export function getEnvironmentDefinition(id) {
   return clone(rawEnvironment[environmentId(id)]);
+}
+
+export function getSupplyStationDefinition(id) {
+  return clone(rawSupplyStations[supplyStationId(id)]);
 }
 
 function hashSeed(seed) {
@@ -123,8 +253,9 @@ function random01(seed) {
 }
 
 export function seededVariant(seed = "default", id = "barricade") {
-  const base = random01(`${seed}:${environmentId(id)}:a`);
-  const secondary = random01(`${seed}:${environmentId(id)}:b`);
+  const stableId = ENVIRONMENT_MODEL_IDS.includes(id) ? environmentId(id) : supplyStationId(id);
+  const base = random01(`${seed}:${stableId}:a`);
+  const secondary = random01(`${seed}:${stableId}:b`);
   return {
     index: Math.floor(base * 4),
     yaw: Number(((base - 0.5) * 0.32).toFixed(4)),
@@ -262,6 +393,56 @@ export function createUpgradeChestModel(THREE, options = {}) {
   };
 }
 
+function addSupplyStationMeshes(THREE, root, materials, definition, variant) {
+  if (definition.id === "gun-upgrade-station") {
+    root.add(mesh(THREE, "upgrade:workbench", new THREE.BoxGeometry(1.42, 0.34, 0.72), materials.metal, [0, 0.38, 0]));
+    root.add(mesh(THREE, "upgrade:back-rack", new THREE.BoxGeometry(1.18, 0.82, 0.12), materials.dark, [0, 0.94, 0.34]));
+    root.add(mesh(THREE, "upgrade:tool-arm", new THREE.CylinderGeometry(0.035, 0.035, 0.94, 8), materials.accent, [0.42, 1.23, -0.08]));
+    root.children.at(-1).rotation.z = 0.42 + variant.yaw;
+    root.add(mesh(THREE, "upgrade:weapon-clamp", new THREE.BoxGeometry(0.62, 0.08, 0.12), materials.accent, [0, 0.72, -0.36]));
+    root.add(mesh(THREE, "upgrade:toxic-calibrator", new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8), materials.glow, [-0.46, 0.76, -0.22]));
+    return;
+  }
+  root.add(mesh(THREE, "ammo:lower-crate-left", new THREE.BoxGeometry(0.76, 0.42, 0.82), materials.metal, [-0.36, 0.24, 0]));
+  root.add(mesh(THREE, "ammo:lower-crate-right", new THREE.BoxGeometry(0.76, 0.42, 0.82), materials.metal, [0.48, 0.24, 0.08]));
+  root.add(mesh(THREE, "ammo:open-lid", new THREE.BoxGeometry(0.84, 0.08, 0.62), materials.dark, [-0.38, 0.56, -0.28]));
+  root.children.at(-1).rotation.x = -0.44;
+  root.add(mesh(THREE, "ammo:dirty-white-band", new THREE.BoxGeometry(1.42, 0.09, 0.05), materials.accent, [0.04, 0.42, -0.44]));
+  root.add(mesh(THREE, "ammo:small-flag", new THREE.BoxGeometry(0.08, 0.54, 0.28), materials.glow, [0.82, 0.78, -0.18]));
+}
+
+export function createSupplyStationModel(THREE, id = "gun-upgrade-station", options = {}) {
+  if (!THREE?.Group || !THREE?.Mesh) throw new TypeError("createSupplyStationModel requires a THREE-like namespace");
+  const metadata = getSupplyStationDefinition(id);
+  const variant = seededVariant(options.seed, metadata.id);
+  const materials = createMaterials(THREE, metadata.palette);
+  const root = part(THREE, `supply:${metadata.id}`);
+  const socket = part(THREE, `socket:${metadata.role}`);
+  const interactionMarker = part(THREE, `interaction:${metadata.interaction.marker.id}`);
+  const colliderMarker = part(THREE, `collider:${metadata.id}`);
+  root.userData.supplyStationId = metadata.id;
+  root.rotation.y = variant.yaw;
+  root.scale.set(variant.scale, variant.scale, variant.scale);
+  socket.position.set(metadata.interaction.socket.x, metadata.interaction.socket.y, metadata.interaction.socket.z);
+  socket.userData.socket = clone(metadata.interaction.socket);
+  interactionMarker.position.set(metadata.interaction.marker.x, 0, metadata.interaction.marker.z);
+  interactionMarker.userData.marker = clone(metadata.interaction.marker);
+  colliderMarker.userData.collider = clone(metadata.collider);
+  addSupplyStationMeshes(THREE, root, materials, metadata, variant);
+  root.add(socket, interactionMarker, colliderMarker);
+  return {
+    root,
+    parts: { root, socket, interactionMarker, colliderMarker },
+    metadata,
+    variant,
+    materials,
+    collider: clone(metadata.collider),
+    footprint: clone(metadata.footprint),
+    interaction: clone(metadata.interaction),
+    budget: clone(metadata.budget),
+  };
+}
+
 function posePart(x = 0, y = 0, z = 0, px = 0, py = 0, pz = 0, scale = 1) {
   return { rotation: { x, y, z }, position: { x: px, y: py, z: pz }, scale };
 }
@@ -287,5 +468,123 @@ export function sampleEnvironmentAnimation(id = "barricade", input = {}) {
     toxic: { pulse: state === "toxicPulse" ? pulse * intensity : 0, vent: state === "toxicPulse" ? intensity * 0.4 : 0 },
     ice: { sparkle: state === "iceSparkle" ? (0.45 + fast * 0.25) * intensity : 0 },
     heat: { shimmer: state === "heatVent" ? (0.55 + fast * 0.18) * intensity : 0, vent: state === "heatVent" ? pulse * intensity : 0 },
+  };
+}
+
+function normalizePoint(point = {}) {
+  return { x: Number(point.x) || 0, z: Number(point.z) || 0 };
+}
+
+export function sampleWaypointArrow(input = {}) {
+  const player = normalizePoint(input.player);
+  const target = normalizePoint(input.target);
+  const heading = Number(input.player?.heading) || 0;
+  const viewport = {
+    width: Math.max(160, Number(input.viewport?.width) || 390),
+    height: Math.max(160, Number(input.viewport?.height) || 844),
+  };
+  const dx = target.x - player.x;
+  const dz = target.z - player.z;
+  const distance = Math.hypot(dx, dz);
+  const angle = Math.atan2(dx, -dz) - heading;
+  const forward = Math.cos(angle);
+  const side = Math.sin(angle);
+  const centerX = viewport.width / 2;
+  const centerY = viewport.height / 2;
+  const margin = WAYPOINT_ARROW_DESCRIPTOR.clampMarginPx;
+  const projectedX = centerX + side * centerX * 0.72;
+  const projectedY = centerY - forward * centerY * 0.46;
+  const behind = forward < -0.12;
+  const outside = behind || distance > 60 || projectedX < margin || projectedX > viewport.width - margin || projectedY < margin || projectedY > viewport.height - margin;
+  const ui = {
+    x: Math.round(outside && Math.abs(side) > 0.35 ? (side > 0 ? viewport.width - margin : margin) : clamp(projectedX, margin, viewport.width - margin)),
+    y: Math.round(outside && Math.abs(side) <= 0.35 ? (forward > 0 ? margin : viewport.height - margin) : clamp(behind ? viewport.height - margin : projectedY, margin, viewport.height - margin)),
+  };
+  const near = clamp(distance / WAYPOINT_ARROW_DESCRIPTOR.nearFadeMeters, 0, 1);
+  const far = clamp(distance / WAYPOINT_ARROW_DESCRIPTOR.farScaleMeters, 0, 1);
+  const maxOpacity = distance < WAYPOINT_ARROW_DESCRIPTOR.nearFadeMeters ? 0.72 : outside ? 0.95 : 0.72;
+  const supplyName = String(input.supplyName || "Supply");
+  return {
+    visible: distance >= 2.2 && near > 0.2,
+    offscreen: outside,
+    distance: Number(distance.toFixed(3)),
+    rotation: Number(angle.toFixed(4)),
+    opacity: Number((near * maxOpacity).toFixed(4)),
+    ui: {
+      x: ui.x,
+      y: ui.y,
+      scale: Number((0.58 + far * 0.24).toFixed(4)),
+    },
+    accessibility: {
+      icon: WAYPOINT_ARROW_DESCRIPTOR.accessibility.icon,
+      label: WAYPOINT_ARROW_DESCRIPTOR.accessibility.labelTemplate.replace("{supplyName}", supplyName),
+    },
+  };
+}
+
+function presetId(id) {
+  return WORLD_ARENA_PRESETS[id] ? id : "wasteland";
+}
+
+function collides(candidate, blockers, padding = 1.5) {
+  return blockers.some((blocker) => Math.hypot(candidate.x - blocker.x, candidate.z - blocker.z) < candidate.radius + blocker.radius + padding);
+}
+
+export function sampleArenaPlacements(id = "wasteland", options = {}) {
+  const mapId = presetId(id);
+  const preset = clone(WORLD_ARENA_PRESETS[mapId]);
+  const blockers = [];
+  const obstacles = [];
+  const countSpread = preset.obstacleCount.max - preset.obstacleCount.min + 1;
+  const count = preset.obstacleCount.min + Math.floor(random01(`${options.seed}:${mapId}:count`) * countSpread);
+  const obstacleIds = mapId === "toxic-pond"
+    ? ["toxic-barrel-cluster", "flooded-debris", "barricade", "ruined-wall"]
+    : mapId === "icy-mountain"
+      ? ["ice-boulder", "ruined-wall", "vehicle-shell", "barricade"]
+      : mapId === "fiery-inferno"
+        ? ["lava-vent", "ruined-wall", "vehicle-shell", "barricade"]
+        : ["barricade", "ruined-wall", "vehicle-shell", "flooded-debris"];
+
+  for (let attempt = 0; obstacles.length < count && attempt < count * 8; attempt += 1) {
+    const index = attempt;
+    const obstacleId = obstacleIds[index % obstacleIds.length];
+    const laneOffset = preset.pathWidth * 0.95;
+    const ring = 34 + (obstacles.length % 5) * 13 + Math.floor(attempt / count) * 5 + random01(`${options.seed}:${mapId}:ring:${index}`) * 7;
+    const angle = attempt * 2.399963 + random01(`${options.seed}:${mapId}:angle:${index}`) * 0.38;
+    const candidate = {
+      id: `${obstacleId}:${obstacles.length}`,
+      type: obstacleId,
+      x: Number((Math.cos(angle) * ring + Math.sign(Math.cos(angle) || 1) * laneOffset).toFixed(3)),
+      z: Number((Math.sin(angle) * ring + Math.sign(Math.sin(angle) || 1) * laneOffset).toFixed(3)),
+      radius: Number((getEnvironmentDefinition(obstacleId).footprint.width * 0.5 + 0.7).toFixed(3)),
+    };
+    if (Math.abs(candidate.x) < preset.pathWidth * 0.8 || Math.abs(candidate.z) < preset.pathWidth * 0.8 || collides(candidate, blockers)) continue;
+    blockers.push(candidate);
+    obstacles.push({ ...candidate, variant: seededVariant(`${options.seed}:${index}`, obstacleId) });
+  }
+
+  const supplyDistance = preset.supplySeparation / 2;
+  const supplies = [
+    { id: "gun-upgrade-station", x: -supplyDistance, z: -preset.landmarkSpacing * 0.62, radius: 1.7 },
+    { id: "ammunition-supply-crate", x: supplyDistance, z: preset.landmarkSpacing * 0.62, radius: 1.6 },
+  ];
+  const objective = { id: "shared-upgrade-chest", x: 0, z: -preset.chestObjectiveSafetyRadius, radius: 2.2 };
+  return {
+    mapId,
+    preset,
+    blockers: [...blockers, ...supplies, objective],
+    obstacles,
+    supplies,
+    objective,
+    navigation: {
+      lanes: [
+        { id: "north-south", axis: "z", width: preset.pathWidth, x: 0 },
+        { id: "east-west", axis: "x", width: preset.pathWidth, z: 0 },
+      ],
+      spawnClearZones: [
+        { id: "alpha", x: -preset.spawnClearance, z: 0, radius: preset.spawnClearance },
+        { id: "bravo", x: preset.spawnClearance, z: 0, radius: preset.spawnClearance },
+      ],
+    },
   };
 }
