@@ -15,9 +15,9 @@ const SCENES = Object.freeze({
 });
 
 const TIER_EFFECTS = Object.freeze({
-  low: { particles: 4, reflection: 0.10, disturbance: 0.08, vapor: 0.10 },
-  medium: { particles: 14, reflection: 0.24, disturbance: 0.20, vapor: 0.18 },
-  high: { particles: 28, reflection: 0.42, disturbance: 0.34, vapor: 0.26 },
+  low: { particles: 4, reflection: 0.10, disturbance: 0.08, vapor: 0.10, idleFocus: 0.38, selectedFocus: 0.70, forwardPx: 2 },
+  medium: { particles: 14, reflection: 0.24, disturbance: 0.20, vapor: 0.18, idleFocus: 0.48, selectedFocus: 0.85, forwardPx: 4 },
+  high: { particles: 28, reflection: 0.42, disturbance: 0.34, vapor: 0.26, idleFocus: 0.58, selectedFocus: 1, forwardPx: 6 },
 });
 
 const BUNDLED_SOURCES = Object.freeze([
@@ -43,7 +43,7 @@ export function resolveMenuPresentation(input = {}) {
     : null;
   const scene = SCENES[section];
   const effects = TIER_EFFECTS[tier];
-  const focusIllumination = focusedCommand ? 1 : 0.58;
+  const focusIllumination = focusedCommand ? effects.selectedFocus : effects.idleFocus;
 
   return {
     section,
@@ -74,11 +74,14 @@ export function resolveMenuPresentation(input = {}) {
       reflectionOpacity: effects.reflection,
       vaporOpacity: effects.vapor,
       vaporDriftDurationMs: reducedMotion ? 0 : tier === "low" ? 9000 : tier === "medium" ? 7200 : 6000,
+      localDisturbance: reducedMotion ? 0 : effects.disturbance,
     },
     focus: {
       command: focusedCommand,
-      forwardPx: reducedMotion || !focusedCommand ? 0 : 6,
+      forwardPx: reducedMotion || !focusedCommand ? 0 : effects.forwardPx,
       illumination: focusIllumination,
+      selectedForwardPx: reducedMotion ? 0 : effects.forwardPx,
+      selectedIllumination: effects.selectedFocus,
     },
   };
 }

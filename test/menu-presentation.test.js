@@ -59,6 +59,37 @@ test("lower tiers reduce reflections and particles", async () => {
   assert.ok(medium.particles.budget < high.particles.budget);
 });
 
+test("scales idle and selected focus deliberately across every tier", async () => {
+  const { resolveMenuPresentation } = await import(modulePath);
+  const expected = {
+    low: { idle: 0.38, selected: 0.70, forwardPx: 2, disturbance: 0.08 },
+    medium: { idle: 0.48, selected: 0.85, forwardPx: 4, disturbance: 0.20 },
+    high: { idle: 0.58, selected: 1, forwardPx: 6, disturbance: 0.34 },
+  };
+
+  for (const [tier, values] of Object.entries(expected)) {
+    const idle = resolveMenuPresentation({ section: "lobby", tier, reducedMotion: false });
+    const selected = resolveMenuPresentation({ section: "lobby", focusedCommand: "teamLobbyBtn", tier, reducedMotion: false });
+    const reducedIdle = resolveMenuPresentation({ section: "lobby", tier, reducedMotion: true });
+    const reduced = resolveMenuPresentation({ section: "lobby", focusedCommand: "teamLobbyBtn", tier, reducedMotion: true });
+
+    assert.equal(idle.focus.illumination, values.idle, `${tier} idle illumination`);
+    assert.equal(idle.focus.forwardPx, 0, `${tier} idle movement`);
+    assert.equal(idle.focus.selectedIllumination, values.selected, `${tier} available focus illumination`);
+    assert.equal(idle.focus.selectedForwardPx, values.forwardPx, `${tier} available focus movement`);
+    assert.equal(selected.focus.illumination, values.selected, `${tier} selected illumination`);
+    assert.equal(selected.focus.forwardPx, values.forwardPx, `${tier} selected movement`);
+    assert.equal(selected.surface.localDisturbance, values.disturbance, `${tier} local disturbance`);
+    assert.equal(reducedIdle.focus.illumination, values.idle, `${tier} reduced-motion idle illumination`);
+    assert.equal(reducedIdle.focus.forwardPx, 0, `${tier} reduced-motion idle movement`);
+    assert.equal(reducedIdle.focus.selectedForwardPx, 0, `${tier} reduced-motion available movement`);
+    assert.equal(reducedIdle.surface.localDisturbance, 0, `${tier} reduced-motion idle disturbance`);
+    assert.equal(reduced.focus.illumination, values.selected, `${tier} reduced-motion illumination`);
+    assert.equal(reduced.focus.forwardPx, 0, `${tier} reduced-motion movement`);
+    assert.equal(reduced.surface.localDisturbance, 0, `${tier} reduced-motion disturbance`);
+  }
+});
+
 test("reduced motion removes positional and looping effects but keeps static focus treatment", async () => {
   const { resolveMenuPresentation } = await import(modulePath);
   const result = resolveMenuPresentation({

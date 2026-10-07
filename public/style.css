@@ -19,6 +19,7 @@ body {
   --command-ripple-opacity: .28;
   --command-vapor-opacity: .18;
   --command-vapor-duration: 7200ms;
+  --command-disturbance: .2;
   --command-focus-forward: 6px;
   --command-focus-light: 1;
 }
@@ -36,6 +37,7 @@ canvas { image-rendering: auto; }
 .home-backdrop { position: fixed; inset: 0; z-index: 4; width: 100%; height: 100%; object-fit: cover; object-position: center; opacity: 0; filter: brightness(.7) saturate(.82) contrast(1.12); pointer-events: none; background: transparent; transition: opacity .45s ease; }
 body.menu-active .home-backdrop.is-ready { opacity: .52; }
 .nightfall-background { position: fixed; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; background: radial-gradient(circle at 70% 28%, #274b55 0, #10191a 36%, #050809 78%); opacity: 1; transition: opacity .7s ease; --menu-camera-x: 0%; --menu-camera-y: 0%; --menu-camera-scale: 1.035; --menu-camera-duration: 520ms; --menu-camera-drift: .55%; --menu-amber-light: .3; --menu-cyan-light: .5; --menu-reflection-opacity: .24; --menu-disturbance: 0; }
+.nightfall-background.nightfall-media-hold { opacity: 1 !important; transition: none; }
 .nightfall-background[data-scene="game"] { opacity: 0; }
 .nightfall-background[data-scene="menu"] .nightfall-image { filter: brightness(1.16) saturate(1.18) contrast(1.04); }
 .nightfall-background[data-scene="menu"] .nightfall-color-wash { background: linear-gradient(108deg,rgba(7,20,22,.28) 0 27%,rgba(28,91,95,var(--menu-cyan-light)) 55%,rgba(128,55,22,var(--menu-amber-light)) 100%); }
@@ -300,16 +302,17 @@ button:disabled {
 #fightCommands { position: fixed; z-index: 44; bottom: max(28px, calc(env(safe-area-inset-bottom) + 16px)); left: max(24px, calc(env(safe-area-inset-left) + 12px)); width: min(760px, calc(100vw - 410px)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .floating-command { position: relative; min-width: 44px; min-height: 92px; display: grid; align-content: end; gap: 5px; overflow: hidden; isolation: isolate; padding: 14px; border-color: rgba(102,252,241,.42); background: linear-gradient(160deg,rgba(5,14,17,.72),rgba(4,10,13,.94)); box-shadow: inset 0 1px rgba(255,255,255,.06), 0 12px 28px rgba(0,0,0,.22); color: #f8f3df; text-align: left; }
 .floating-command::before { content:""; position:absolute; inset:0; z-index:-2; border-left:3px solid rgba(102,252,241,.68); background:linear-gradient(135deg,rgba(102,252,241,.12),transparent 52%,rgba(230,110,63,.13)); transform:translateY(0); animation:command-surface-float var(--command-loop-duration) ease-in-out infinite alternate; transition:transform .18s ease,filter .18s ease,background .18s ease; pointer-events:none; }
-.floating-command::after { content:""; position:absolute; z-index:-1; inset:52% -14% -28%; opacity:var(--command-ripple-opacity); background:repeating-radial-gradient(ellipse at 50% 64%,transparent 0 10px,rgba(102,252,241,.25) 12px 13px,transparent 15px 29px),linear-gradient(0deg,rgba(171,224,210,var(--command-vapor-opacity)),transparent 62%); filter:blur(2px); animation:command-vapor var(--command-vapor-duration) linear infinite; transition:opacity .18s ease,filter .18s ease,transform .18s ease; pointer-events:none; }
+.floating-command::after { content:""; position:absolute; z-index:-1; inset:52% -14% -28%; --tier-speck-alpha:var(--command-disturbance); --local-speck-alpha:0; opacity:var(--command-ripple-opacity); background:radial-gradient(circle at 18% 46%,rgba(255,223,82,var(--local-speck-alpha)) 0 1px,transparent 2px),radial-gradient(circle at 72% 34%,rgba(102,252,241,var(--local-speck-alpha)) 0 1.5px,transparent 2.5px),radial-gradient(circle at 84% 72%,rgba(244,115,68,var(--local-speck-alpha)) 0 1px,transparent 2px),repeating-radial-gradient(ellipse at 50% 64%,transparent 0 10px,rgba(102,252,241,.25) 12px 13px,transparent 15px 29px),linear-gradient(0deg,rgba(171,224,210,var(--command-vapor-opacity)),transparent 62%); filter:blur(2px); animation:command-vapor var(--command-vapor-duration) linear infinite; transition:opacity .18s ease,filter .18s ease,transform .18s ease; pointer-events:none; }
 .floating-command > * { position: relative; z-index:1; }
 .floating-command b { color: #8df3ed; font-size: 15px; }
 .floating-command small { color: #d4d7cf; line-height: 1.35; }
 .floating-command-secondary { min-height: 52px; align-content: center; padding: 10px 12px; background: rgba(5,12,15,.84); text-transform: uppercase; letter-spacing: 0; }
 .floating-command:hover, .floating-command.is-selected, .floating-command[aria-current="true"], .floating-command:focus-visible { border-color:#ffdf52; box-shadow:inset 0 0 0 1px rgba(255,223,82,.35),0 0 calc(18px * var(--command-focus-light)) rgba(102,252,241,.38),0 10px 26px rgba(0,0,0,.28); outline:2px solid transparent; }
 .floating-command:hover::before, .floating-command.is-selected::before, .floating-command[aria-current="true"]::before, .floating-command:focus-visible::before { border-left-color:#ffdf52; background:linear-gradient(135deg,rgba(255,223,82,.21),transparent 52%,rgba(102,252,241,.2)); transform:translateY(calc(-1 * var(--command-focus-forward))); filter:brightness(1.18) saturate(1.16); }
-.floating-command:hover::after, .floating-command.is-selected::after, .floating-command[aria-current="true"]::after, .floating-command:focus-visible::after { opacity:calc(var(--command-ripple-opacity) + .26); filter:blur(1px) brightness(1.35); transform:scaleX(1.08); }
+.floating-command:hover::after, .floating-command.is-selected::after, .floating-command[aria-current="true"]::after, .floating-command:focus-visible::after { --local-speck-alpha:var(--tier-speck-alpha); opacity:calc(var(--command-ripple-opacity) + .26); filter:blur(1px) brightness(1.35); transform:scaleX(1.08); animation:command-speck 1800ms steps(4,end) infinite; }
 @keyframes command-surface-float { 50% { transform:translateY(calc(-1 * var(--command-buoyancy))); } }
 @keyframes command-vapor { from { background-position:0 0,0 0; } to { background-position:24px 10px,0 -28px; } }
+@keyframes command-speck { from { background-position:0 0,0 0,0 0,0 0,0 0; } to { background-position:7px -4px,-5px 3px,4px -6px,24px 10px,0 -28px; } }
 body[data-reduced-motion="true"] .floating-command::before, body[data-reduced-motion="true"] .floating-command::after { animation:none !important; transition-property:filter,background,opacity; }
 body[data-reduced-motion="true"] .floating-command:hover::before, body[data-reduced-motion="true"] .floating-command.is-selected::before, body[data-reduced-motion="true"] .floating-command[aria-current="true"]::before, body[data-reduced-motion="true"] .floating-command:focus-visible::before { transform:none; }
 .team-size-choices, .ctf-player-choices { position: fixed; z-index: 45; bottom: max(154px, calc(env(safe-area-inset-bottom) + 142px)); left: max(24px, calc(env(safe-area-inset-left) + 12px)); width: min(760px, calc(100vw - 410px)); display: grid; gap: 8px; }

@@ -88,6 +88,32 @@ test("menu and low-tier CSS consume declarative camera and lighting variables", 
   assert.match(css, /\[data-tier="low"\] \.nightfall-image\s*\{[^}]*translate3d\(var\(--menu-camera-x\),var\(--menu-camera-y\),0\)[^}]*scale\(var\(--menu-camera-scale\)\)/s);
 });
 
+test("selected commands use a tier-fed local speck layer without moving hit boxes", () => {
+  const css = fs.readFileSync(path.resolve(__dirname, "../public/style.css"), "utf8");
+  const game = fs.readFileSync(path.resolve(__dirname, "../public/game3d.js"), "utf8");
+
+  assert.match(game, /--command-disturbance["'],\s*String\(presentation\.surface\.localDisturbance\)/);
+  assert.match(css, /\.floating-command::after\s*\{[^}]*--tier-speck-alpha:\s*var\(--command-disturbance\)[^}]*--local-speck-alpha:\s*0[^}]*radial-gradient/s);
+  assert.match(css, /\.floating-command:hover::after[\s\S]*?--local-speck-alpha:\s*var\(--tier-speck-alpha\)[^}]*animation:[^;}]*command-speck/s);
+  assert.match(css, /@keyframes command-speck\s*\{/);
+  assert.match(css, /body\[data-reduced-motion="true"\] \.floating-command::before,[^}]*\.floating-command::after\s*\{[^}]*animation:\s*none/s);
+  const hitBoxState = css.match(/\.floating-command:hover,\s*\.floating-command\.is-selected,\s*\.floating-command\[aria-current="true"\],\s*\.floating-command:focus-visible\s*\{[^}]*\}/)?.[0] || "";
+  assert.doesNotMatch(hitBoxState, /transform\s*:/);
+});
+
+test("menu media handoff forces the Nightfall fallback visible until playback is ready", () => {
+  const css = fs.readFileSync(path.resolve(__dirname, "../public/style.css"), "utf8");
+  const game = fs.readFileSync(path.resolve(__dirname, "../public/game3d.js"), "utf8");
+  const holdFallback = game.match(/function holdNightfallFallback[\s\S]*?\n\}/)?.[0] || "";
+  const revealBackdrop = game.match(/function revealMenuBackdrop[\s\S]*?\n\}/)?.[0] || "";
+  const pauseBackdrop = game.match(/function pauseMenuBackdrop[\s\S]*?\n\}/)?.[0] || "";
+
+  assert.match(css, /\.nightfall-background\.nightfall-media-hold\s*\{[^}]*opacity:\s*1\s*!important[^}]*transition:\s*none/s);
+  assert.match(holdFallback, /nightfallBackground\.classList\.add\("nightfall-media-hold"\)/);
+  assert.match(revealBackdrop, /nightfallBackground\.classList\.remove\("nightfall-media-hold"\)/);
+  assert.match(pauseBackdrop, /nightfallBackground\.classList\.remove\("nightfall-media-hold"\)/);
+});
+
 test("match opening uses exactly fifteen seconds without changing round timers", async () => {
   const game = fs.readFileSync(path.resolve(__dirname, "../public/game3d.js"), "utf8");
   const rules = await import(new URL("../public/matchmaking-rules.mjs", `file://${__filename.replace(/\\/g, "/")}`));

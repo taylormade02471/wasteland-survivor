@@ -2,6 +2,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
 import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
+import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
 import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
 import { activateAbility, createClassProgress, getClassDefinition, getClassStats, normalizeClassProgress } from "./class-rules.mjs";
 import { composeWave, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
@@ -83,6 +84,7 @@ const lobbyPlayer = $("lobbyPlayer");
 const storyMapSelect = $("storyMapSelect");
 const homeBackdrop = $("homeBackdrop");
 const nightfallBackground = $("nightfallBackground");
+const menuMediaLifecycle = createMenuMediaLifecycle();
 const MAPS = {
   wasteland: { label: "Wasteland", texture: "assets/wasteland-ground-v1.png", fog: 0x554331, hazard: 0x83ff47 },
   toxic: { label: "Toxic Ponds", texture: "assets/wasteland-ground-v1.png", fog: 0x344a2d, hazard: 0x93ff30 },
@@ -109,7 +111,6 @@ let timer = 60;
 let menuOpen = false;
 let lobbyNavigator = null;
 let menuSection = "home";
-let menuMediaAttempt = 0;
 let menuOpenedFromPrep = false;
 let countdown = 15;
 let countdownDeadline = 0;
@@ -631,6 +632,9 @@ function nextCombat() {
   if (!replayCaptureActive) {
     replayCaptureActive = true;
     captureGameplayClip(canvas, { durationMs: 12000, metadata: { mode, map: mapKey, wave } })
+      .then(saved => {
+        if (saved) markMenuReplayRefresh({ recheckVisible: true });
+      })
       .finally(() => { replayCaptureActive = false; });
   }
 }
@@ -1564,13 +1568,7 @@ function openLobby(contact) {
   $("riskLevel").value = riskLevel;
   updateRiskPreview();
   syncPublicPlayer();
-  initializeMenuBackdrop().then(kind => {
-    $("replayStatus").textContent = kind === "replay"
-      ? "Playing a recent match clip saved on this device."
-      : kind === "bundled"
-        ? "Cinematic water-walk loop active. Recent match clips take priority when available."
-        : "Nightfall fallback active for this device or motion preference.";
-  });
+  initializeMenuBackdrop().then(updateMenuReplayStatus);
 }
 
 function renderLobbyProfile(fallbackName = "Offline Guest") {
@@ -2188,6 +2186,7 @@ function exitToLobby() {
   ui.settings.classList.add("hidden");
   ui.over.classList.add("hidden");
   document.body.classList.add("menu-active");
+  markMenuReplayRefresh();
   setMenuSection("lobby");
   openLobby(activeProfile?.name || "Offline Guest");
 }
@@ -2212,8 +2211,9 @@ function applyMenuPresentation(section = menuSection, focusedCommand = null) {
   document.body.style.setProperty("--command-ripple-opacity", String(presentation.surface.rippleOpacity));
   document.body.style.setProperty("--command-vapor-opacity", String(presentation.surface.vaporOpacity));
   document.body.style.setProperty("--command-vapor-duration", `${presentation.surface.vaporDriftDurationMs}ms`);
-  document.body.style.setProperty("--command-focus-forward", `${presentation.focus.forwardPx}px`);
-  document.body.style.setProperty("--command-focus-light", String(presentation.focus.illumination));
+  document.body.style.setProperty("--command-disturbance", String(presentation.surface.localDisturbance));
+  document.body.style.setProperty("--command-focus-forward", `${presentation.focus.selectedForwardPx}px`);
+  document.body.style.setProperty("--command-focus-light", String(presentation.focus.selectedIllumination));
   setNightfallPresentation(presentation);
   return presentation;
 }
@@ -2226,18 +2226,27 @@ function setMenuSection(section) {
   const presentation = applyMenuPresentation(section, focused);
   const menuActive = document.body.classList.contains("menu-active");
   setNightfallScene(menuActive ? "menu" : "game");
-  if (menuActive && homeBackdrop.dataset.mediaKind && homeBackdrop.dataset.mediaKind !== "fallback") {
+  const replayRefreshPending = menuMediaLifecycle.replayRefreshPending();
+  if (menuActive && !replayRefreshPending && homeBackdrop.dataset.mediaKind && homeBackdrop.dataset.mediaKind !== "fallback") {
     homeBackdrop.play().catch(() => retainNightfallFallback("autoplay-failed"));
   }
   return presentation;
 }
 
 function retainNightfallFallback(reason = "unavailable") {
+  nightfallBackground.classList.add("nightfall-media-hold");
   homeBackdrop.classList.remove("is-ready");
   homeBackdrop.pause();
   homeBackdrop.dataset.mediaKind = "fallback";
   homeBackdrop.dataset.mediaReason = reason;
   return "fallback";
+}
+
+function holdNightfallFallback(reason = "loading") {
+  nightfallBackground.classList.add("nightfall-media-hold");
+  homeBackdrop.classList.remove("is-ready");
+  homeBackdrop.pause();
+  homeBackdrop.dataset.mediaReason = reason;
 }
 
 function revealMenuBackdrop(kind) {
@@ -2250,8 +2259,20 @@ function revealMenuBackdrop(kind) {
   if (policy.kind === "fallback") return retainNightfallFallback("capability-policy");
   homeBackdrop.dataset.mediaKind = kind;
   delete homeBackdrop.dataset.mediaReason;
+  delete homeBackdrop.dataset.mediaCandidate;
   homeBackdrop.classList.add("is-ready");
+  nightfallBackground.classList.remove("nightfall-media-hold");
   return kind;
+}
+
+async function resumeMenuBackdrop(kind) {
+  homeBackdrop.dataset.mediaCandidate = kind;
+  try {
+    await homeBackdrop.play();
+    return revealMenuBackdrop(kind);
+  } catch {
+    return null;
+  }
 }
 
 async function tryMenuBackdrop(kind, configure) {
@@ -2267,8 +2288,15 @@ async function tryMenuBackdrop(kind, configure) {
   }
 }
 
+function markMenuReplayRefresh({ recheckVisible = false } = {}) {
+  menuMediaLifecycle.markReplayRefresh();
+  if (recheckVisible && document.body.classList.contains("menu-active")) {
+    return initializeMenuBackdrop().then(updateMenuReplayStatus);
+  }
+  return Promise.resolve(null);
+}
+
 async function initializeMenuBackdrop({ force = false } = {}) {
-  const attempt = ++menuMediaAttempt;
   const policy = resolveMenuMedia({
     tier: effectiveGraphicsTier(),
     reducedMotion: reducedMotionEnabled(),
@@ -2276,36 +2304,48 @@ async function initializeMenuBackdrop({ force = false } = {}) {
     playbackState: "loading",
   });
   if (policy.kind === "fallback") return retainNightfallFallback("capability-policy");
-  if (!force && ["replay", "bundled"].includes(homeBackdrop.dataset.mediaKind)) {
-    const resumed = await tryMenuBackdrop(homeBackdrop.dataset.mediaKind);
-    return resumed || retainNightfallFallback("autoplay-failed");
-  }
-
-  homeBackdrop.pause();
-  homeBackdrop.classList.remove("is-ready");
-
-  const replayPlaying = await playRandomReplay(homeBackdrop);
-  if (attempt !== menuMediaAttempt) return homeBackdrop.dataset.mediaKind || "fallback";
-  if (replayPlaying) return revealMenuBackdrop("replay");
-
-  const legacyReplay = localStorage.getItem("wastland-survivor-last-replay");
-  if (legacyReplay) {
-    const legacyPlaying = await tryMenuBackdrop("replay", () => { homeBackdrop.src = legacyReplay; });
-    if (attempt !== menuMediaAttempt) return homeBackdrop.dataset.mediaKind || "fallback";
-    if (legacyPlaying) return legacyPlaying;
-  }
-
-  const bundledPolicy = resolveMenuMedia({ tier: effectiveGraphicsTier(), replayFailed: true, playbackState: "loading" });
-  if (bundledPolicy.kind !== "bundled") return retainNightfallFallback("decode-failed");
-  const bundledPlaying = await tryMenuBackdrop("bundled", () => {
-    homeBackdrop.removeAttribute("src");
-    homeBackdrop.load();
+  const result = await menuMediaLifecycle.selectOnEntry({
+    force,
+  }, {
+    currentKind: () => homeBackdrop.dataset.mediaKind,
+    isVisible: () => document.body.classList.contains("menu-active"),
+    showFallback: reason => holdNightfallFallback(reason),
+    resumeCurrent: kind => resumeMenuBackdrop(kind),
+    playReplay: async () => {
+      homeBackdrop.dataset.mediaCandidate = "replay";
+      const playing = await playRandomReplay(homeBackdrop);
+      return playing ? Boolean(revealMenuBackdrop("replay")) : false;
+    },
+    playLegacyReplay: async () => {
+      const legacyReplay = localStorage.getItem("wastland-survivor-last-replay");
+      if (!legacyReplay) return false;
+      return Boolean(await tryMenuBackdrop("replay", () => { homeBackdrop.src = legacyReplay; }));
+    },
+    playBundled: async () => {
+      const bundledPolicy = resolveMenuMedia({ tier: effectiveGraphicsTier(), replayFailed: true, playbackState: "loading" });
+      if (bundledPolicy.kind !== "bundled") return false;
+      return Boolean(await tryMenuBackdrop("bundled", () => {
+        homeBackdrop.removeAttribute("src");
+        homeBackdrop.load();
+      }));
+    },
   });
-  if (attempt !== menuMediaAttempt) return homeBackdrop.dataset.mediaKind || "fallback";
-  return bundledPlaying || retainNightfallFallback("autoplay-or-decode-failed");
+  return result.kind === "fallback"
+    ? retainNightfallFallback("autoplay-or-decode-failed")
+    : result.kind;
+}
+
+function updateMenuReplayStatus(kind) {
+  $("replayStatus").textContent = kind === "replay"
+    ? "Playing a recent match clip saved on this device."
+    : kind === "bundled"
+      ? "Cinematic water-walk loop active. Recent match clips take priority when available."
+      : "Nightfall fallback active for this device or motion preference.";
+  return kind;
 }
 
 function pauseMenuBackdrop() {
+  nightfallBackground.classList.remove("nightfall-media-hold");
   homeBackdrop.pause();
 }
 
