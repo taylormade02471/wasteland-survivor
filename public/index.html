@@ -111,7 +111,12 @@
     <nav id="lobbyNavigation" class="floating-command-field" aria-label="Lobby commands">
       <button id="survivalLobbyBtn" class="floating-command" type="button"><b>All-Out Story Survival</b><small>MW3-style endless cycles. Timeline advantages and progress save locally.</small></button>
       <button id="onlineSurvivalBtn" class="floating-command hidden" type="button"><b>Online Survival Pair</b><small>Join the waiting player for a shared two-player survival round.</small></button>
-      <button id="teamLobbyBtn" class="floating-command hidden" type="button"><b>Computer Team Match</b><small>No online players are waiting. Choose 1v1, 2v2, or 3v3 below.</small></button>
+      <button id="teamLobbyBtn" class="floating-command" type="button" aria-expanded="false" aria-controls="teamSizeChoices"><b>Multiplayer</b><small>Open an online 1v1, 2v2, or 3v3 room. Empty seats fill when the match starts.</small></button>
+      <div id="teamSizeChoices" class="team-size-choices hidden" aria-label="Multiplayer team size">
+        <button id="teamSize1Btn" class="floating-command team-size-choice" type="button" data-team-size="1"><b>1v1</b><small>2 seats</small></button>
+        <button id="teamSize2Btn" class="floating-command team-size-choice" type="button" data-team-size="2"><b>2v2</b><small>4 seats</small></button>
+        <button id="teamSize3Btn" class="floating-command team-size-choice" type="button" data-team-size="3"><b>3v3</b><small>6 seats</small></button>
+      </div>
       <button id="ctf6LobbyBtn" class="floating-command" type="button"><b>6v6 Capture The Flag</b><small>One five-minute match. Three flags. Highest points wins.</small></button>
       <button id="dashboardBtn" class="floating-command floating-command-secondary" type="button">Loadout</button>
       <button id="editProfileBtn" class="floating-command floating-command-secondary" type="button">Profile</button>
@@ -120,7 +125,7 @@
     </nav>
     <section class="lobby-support-plate" aria-label="Lobby options">
         <div class="lobby-settings-row">
-          <label for="botTeamSize">Computer team size <select id="botTeamSize"><option value="1">1v1</option><option value="2" selected>2v2</option><option value="3">3v3</option></select></label>
+          <label for="botTeamSize">Team size <select id="botTeamSize"><option value="1">1v1</option><option value="2" selected>2v2</option><option value="3">3v3</option></select></label>
           <label for="botDifficulty">Difficulty <select id="botDifficulty"><option value="0.10">Easy</option><option value="0.22" selected>Medium</option><option value="0.35">Expert</option><option value="0.75">Insane</option></select></label>
           <label for="storyMapSelect">Map <select id="storyMapSelect"><option value="wasteland">Wasteland</option><option value="toxic">Toxic Ponds</option><option value="ice">Icy Mountain</option><option value="inferno">Fire Inferno</option></select></label>
           <label for="riskLevel">Risk and reward <select id="riskLevel"><option value="protected">Protected</option><option value="standard" selected>Standard</option><option value="high">High Risk</option></select></label>

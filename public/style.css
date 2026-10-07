@@ -296,6 +296,10 @@ button:disabled {
 .floating-command-secondary { min-height: 52px; align-content: center; padding: 10px 12px; background: rgba(5,12,15,.84); text-transform: uppercase; letter-spacing: 0; }
 .floating-command:hover, .floating-command.is-selected, .floating-command[aria-current="true"], .floating-command:focus-visible { border-color: #ffdf52; box-shadow: inset 0 0 0 1px rgba(255,223,82,.35), 0 0 24px rgba(102,252,241,.25); outline: 2px solid transparent; }
 .floating-command.is-selected::before, .floating-command[aria-current="true"]::before { border-left-color: #ffdf52; background: linear-gradient(135deg,rgba(255,223,82,.16),transparent 58%,rgba(102,252,241,.12)); }
+.team-size-choices { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.team-size-choices .floating-command { min-height: 64px; align-content: center; padding: 10px 12px; text-align: center; }
+.team-size-choices .floating-command::before { border-left-width: 2px; }
+.team-size-choices .floating-command b { font-size: 18px; }
 .lobby-support-plate { position: fixed; z-index: 41; top: max(82px, calc(env(safe-area-inset-top) + 70px)); right: max(24px, calc(env(safe-area-inset-right) + 12px)); width: min(316px, calc(100vw - 48px)); padding: 14px; border: 1px solid rgba(102,252,241,.26); background: rgba(4,10,13,.82); box-shadow: 0 16px 44px rgba(0,0,0,.34); }
 .replay-status { margin-top:8px; color:#91aaa9; font-size:11px; }
 .lobby-settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }

@@ -11,6 +11,9 @@ const port = Number(process.env.PORT || 8080);
 const publicDirectory = path.join(__dirname, "public");
 const rooms = new Map();
 const clients = new Map();
+const readyMatches = new Map();
+let matchmakingRules;
+const matchmakingRulesReady = import("./public/matchmaking-rules.mjs").then(module => { matchmakingRules = module; });
 const chestAccess = new ChestAccess(2);
 const store = createBackendStore({ rootDirectory: __dirname });
 const adminToken = process.env.ADMIN_TOKEN || "";
@@ -31,13 +34,15 @@ const mimeTypes = {
   ".svg": "image/svg+xml",
   ".webp": "image/webp"
 };
-const roomPattern = /^(wasteland|toxic|ice|inferno)-(solo|teams|ctf)(?:-(4|6))?$/;
+const roomPattern = /^(wasteland|toxic|ice|inferno)-(?:solo|ctf-(?:4|6)|teams-(?:1v1|2v2|3v3))$/;
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
 function roomCapacity(room) {
+  const teamRoom = matchmakingRules.parseTeamRoomId(room);
+  if (teamRoom) return teamRoom.capacity;
   const parts = room.split("-");
   if (parts[1] === "ctf") return Number(parts[2] || 4);
   return 4;
@@ -212,9 +217,23 @@ function removeClient(socket) {
   if (!room) return;
   const chestStatus = chestAccess.leave(client.room, client.id);
   room.delete(client.id);
-  for (const peer of room.values()) send(peer, { type: "peer-left", id: client.id });
+  const capacity = roomCapacity(client.room);
+  for (const peer of room.values()) send(peer, { type: "peer-left", id: client.id, capacity });
   for (const peer of room.values()) send(peer, { type: "chest-status", ...chestStatus });
-  if (!room.size) rooms.delete(client.room);
+  if (!room.size) {
+    rooms.delete(client.room);
+    readyMatches.delete(client.room);
+  }
+}
+
+function emitMatchReady(roomName, room) {
+  if (readyMatches.has(roomName)) return readyMatches.get(roomName);
+  const teamRoom = matchmakingRules.parseTeamRoomId(roomName);
+  if (!teamRoom) return null;
+  const payload = { type: "match-ready", ...matchmakingRules.createMatchPlan(teamRoom.teamSize, [...room.keys()]) };
+  readyMatches.set(roomName, payload);
+  for (const peer of room.values()) send(peer, payload);
+  return payload;
 }
 
 function joinRoom(socket, roomName) {
@@ -226,14 +245,14 @@ function joinRoom(socket, roomName) {
     rooms.set(roomName, room);
   }
   const capacity = roomCapacity(roomName);
-  if (room.size >= capacity) return send(socket, { type: "room-full" });
+  if (readyMatches.has(roomName) || room.size >= capacity) return send(socket, { type: "room-full" });
   const id = crypto.randomUUID();
   const peers = [...room.keys()];
   room.set(id, socket);
   clients.set(socket, { id, room: roomName });
   send(socket, { type: "welcome", id, peers, capacity });
-  for (const peer of room.values()) if (peer !== socket) send(peer, { type: "peer-joined", id });
-  if (room.size === capacity) for (const peer of room.values()) send(peer, { type: "match-ready", capacity });
+  for (const peer of room.values()) if (peer !== socket) send(peer, { type: "peer-joined", id, capacity });
+  if (room.size === capacity) emitMatchReady(roomName, room);
 }
 
 function handleMessage(socket, raw) {
@@ -246,6 +265,11 @@ function handleMessage(socket, raw) {
   }
   if (message?.type === "join" && typeof message.room === "string") return joinRoom(socket, message.room);
   const sender = clients.get(socket);
+  if (message?.type === "start-match" && sender) {
+    const room = rooms.get(sender.room);
+    if (room?.has(sender.id)) emitMatchReady(sender.room, room);
+    return;
+  }
   if (message?.type === "chest-enter" && sender) {
     const result = chestAccess.enter(sender.room, sender.id);
     send(socket, { type: "chest-access", ...result });
@@ -340,7 +364,7 @@ websocketServer.on("connection", socket => {
   socket.on("error", () => removeClient(socket));
 });
 
-store.ready
+Promise.all([store.ready, matchmakingRulesReady])
   .then(() => server.listen(port, "0.0.0.0", () => console.log(`Wasteland Survivor listening on ${port} with ${store.storageType} storage`)))
   .catch(error => {
     console.error("Backend storage failed to initialize", error);

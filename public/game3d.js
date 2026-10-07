@@ -11,6 +11,7 @@ import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createMenuNavigator, resolveMenuKeyAction } from "./menu-navigation.mjs";
+import { createTeamRoomId, normalizeTeamSize } from "./matchmaking-rules.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -153,6 +154,8 @@ let voiceSocket = null;
 let lobbySocket = null;
 let lobbyId = null;
 let lobbyPeers = 0;
+let activeMatchPlan = null;
+let matchStartRequested = false;
 let chestOccupants = 0;
 let chestAccessGranted = false;
 let lobbyRetryTimer = null;
@@ -407,7 +410,7 @@ function resetMap() {
   player.shieldMax = classStats.maxShield + shieldLevel * 30;
   player.shield = player.shieldMax;
   allies = [];
-  const botCount = mode === "solo" ? 0 : mode === "ctf" ? ctfPlayers / 2 - 1 : botTeamSize - 1;
+  const botCount = mode === "ctf" ? ctfPlayers / 2 - 1 : 0;
   for (let index = 0; index < botCount; index++) allies.push(unit(0x3985ff, 2.5 + index * 2, 1.5, index % 2 ? "tech" : "ranger"));
   ally = allies[0] || null;
   if (mode === "ctf") createCtfFlags();
@@ -462,6 +465,27 @@ function spawnEnemy(index = enemies.length, requestedType = null) {
   enemies.push(enemy);
 }
 
+function spawnMatchBots(plan = activeMatchPlan) {
+  allies.forEach(bot => world.remove(bot.g));
+  enemies.forEach(bot => world.remove(bot.g));
+  allies = [];
+  enemies = [];
+  ally = null;
+  if (mode !== "teams" || !plan?.slots?.length) return;
+
+  const localSlot = plan.slots.find(slot => slot.playerType === "human" && slot.playerId === lobbyId)
+    || plan.slots.find(slot => slot.playerType === "human");
+  const localTeam = localSlot?.team || "alpha";
+  for (const slot of plan.slots.filter(item => item.playerType === "bot")) {
+    if (slot.team === localTeam) {
+      allies.push(unit(0x3985ff, 2.5 + allies.length * 2, 1.5, allies.length % 2 ? "tech" : "ranger"));
+    } else {
+      spawnEnemy(enemies.length, "shooter");
+    }
+  }
+  ally = allies[0] || null;
+}
+
 function start() {
   blue = red = score = kills = scrap = shieldLevel = 0;
   wave = 1;
@@ -470,6 +494,8 @@ function start() {
   ui.shop.classList.add("hidden");
   Object.values(guns).forEach(gun => { gun.level = 0; });
   loadProgress(activeProfile);
+  activeMatchPlan = null;
+  matchStartRequested = false;
   resetMap();
   ensureLobbyRoom();
   phase = "loadout";
@@ -505,12 +531,17 @@ function nextCombat() {
   player.hp = player.maxHp || 100;
   player.shield = player.shieldMax;
   player.alive = true;
-  allies.forEach(bot => { bot.hp = 100; bot.alive = true; bot.g.visible = true; bot.respawn = 0; });
-  enemies.forEach(enemy => world.remove(enemy.g));
-  enemies = [];
-  enemySpawnTypes = mode === "solo"
-    ? composeWave({ wave, difficulty: difficultyName(), map: mapKey, playerCount: 1 })
-    : Array.from({ length: mode === "teams" ? botTeamSize + wave - 1 : ctfPlayers / 2 }, () => "shooter");
+  if (mode === "teams") {
+    spawnMatchBots();
+    enemySpawnTypes = [];
+  } else {
+    allies.forEach(bot => { bot.hp = 100; bot.alive = true; bot.g.visible = true; bot.respawn = 0; });
+    enemies.forEach(enemy => world.remove(enemy.g));
+    enemies = [];
+    enemySpawnTypes = mode === "solo"
+      ? composeWave({ wave, difficulty: difficultyName(), map: mapKey, playerCount: 1 })
+      : Array.from({ length: ctfPlayers / 2 }, () => "shooter");
+  }
   spawnQueue = enemySpawnTypes.length;
   spawnTimer = 0;
   if (!replayCaptureActive) {
@@ -1428,25 +1459,11 @@ function openLobby(contact) {
 
 async function refreshLobbyAvailability() {
   const onlineButton = $("onlineSurvivalBtn");
-  const computerButton = $("teamLobbyBtn");
-  if (offlineMode || !activeProfile) {
-    onlineButton.classList.add("hidden");
-    computerButton.classList.remove("hidden");
-    refreshLobbyNavigation();
-    return;
-  }
-  try {
-    const response = await fetch(`/room-status?room=${encodeURIComponent(`${mapKey}-teams`)}`, { cache: "no-store" });
-    const status = await response.json();
-    const playersWaiting = Number(status.players) > 0;
-    onlineButton.classList.toggle("hidden", !playersWaiting);
-    computerButton.classList.toggle("hidden", playersWaiting);
-    refreshLobbyNavigation();
-  } catch {
-    onlineButton.classList.add("hidden");
-    computerButton.classList.remove("hidden");
-    refreshLobbyNavigation();
-  }
+  const multiplayerButton = $("teamLobbyBtn");
+  onlineButton.classList.add("hidden");
+  multiplayerButton.classList.remove("hidden");
+  multiplayerButton.disabled = offlineMode || !activeProfile;
+  refreshLobbyNavigation();
 }
 
 function editActiveProfile() {
@@ -1724,10 +1741,14 @@ function updateVoiceButtons() {
   ui.muteVoice.textContent = voiceMuted ? "Unmute" : "Mute";
 }
 
-function voiceRoom() { return mode === "ctf" ? `${mapKey}-ctf-${ctfPlayers}` : `${mapKey}-${mode}`; }
+function voiceRoom() {
+  if (mode === "ctf") return `${mapKey}-ctf-${ctfPlayers}`;
+  if (mode === "teams") return createTeamRoomId(mapKey, botTeamSize);
+  return `${mapKey}-solo`;
+}
 
 function lobbyRoom() {
-  return mode === "ctf" ? `${mapKey}-ctf-${ctfPlayers}` : `${mapKey}-teams`;
+  return mode === "ctf" ? `${mapKey}-ctf-${ctfPlayers}` : createTeamRoomId(mapKey, botTeamSize);
 }
 
 function closeLobbyRoom() {
@@ -1763,7 +1784,13 @@ function ensureLobbyRoom() {
         lobbyPeers = Math.max(0, lobbyPeers - 1);
         updateNetworkStatus(`Room open: ${lobbyPeers + 1}/${message.capacity || 4}`);
       } else if (message.type === "match-ready") {
-        updateNetworkStatus(`Room ready: ${message.capacity} players`);
+        activeMatchPlan = message;
+        spawnMatchBots(message);
+        updateNetworkStatus(`Match ready: ${message.humanPlayers} human, ${message.botPlayers} bot${message.botPlayers === 1 ? "" : "s"}`);
+        if (matchStartRequested) {
+          $("loadoutRoomModal").classList.add("hidden");
+          beginCountdown();
+        }
       } else if (message.type === "room-full") {
         updateNetworkStatus("Room full: waiting for the next room");
       } else if (message.type === "chest-access") {
@@ -2200,6 +2227,19 @@ $("closeShopBtn").onclick = () => {
 $("loadoutArmoryBtn").onclick = () => ui.shop.classList.remove("hidden");
 $("loadoutReadyBtn").onclick = () => {
   ui.shop.classList.add("hidden");
+  if (mode === "teams" && !offlineMode) {
+    if (activeMatchPlan) {
+      $("loadoutRoomModal").classList.add("hidden");
+      beginCountdown();
+    } else if (lobbySocket?.readyState === WebSocket.OPEN) {
+      matchStartRequested = true;
+      updateNetworkStatus("Starting match and filling open seats...");
+      lobbySocket.send(JSON.stringify({ type: "start-match" }));
+    } else {
+      updateNetworkStatus("Waiting for the multiplayer room...");
+    }
+    return;
+  }
   $("loadoutRoomModal").classList.add("hidden");
   beginCountdown();
 };
@@ -2350,10 +2390,24 @@ $("profileBackBtn").onclick = () => {
 $("dashboardEditBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); editActiveProfile(); };
 $("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") ui.shop.classList.remove("hidden"); else openDashboard(); };
 $("survivalLobbyBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("soloMode").click(); };
-$("teamLobbyBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("teamMode").click(); };
-$("onlineSurvivalBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("teamMode").click(); };
+$("teamLobbyBtn").onclick = () => {
+  const choices = $("teamSizeChoices");
+  const expanded = choices.classList.toggle("hidden") === false;
+  $("teamLobbyBtn").setAttribute("aria-expanded", String(expanded));
+  refreshLobbyNavigation(expanded ? "teamSize2Btn" : "teamLobbyBtn");
+  if (expanded) renderLobbyNavigation(true);
+};
+document.querySelectorAll("[data-team-size]").forEach(button => {
+  button.onclick = () => {
+    botTeamSize = normalizeTeamSize(button.dataset.teamSize);
+    $("botTeamSize").value = String(botTeamSize);
+    lobbyScreen.classList.add("hidden");
+    $("teamMode").click();
+  };
+});
+$("onlineSurvivalBtn").onclick = () => $("teamLobbyBtn").click();
 $("botTeamSize").onchange = event => {
-  botTeamSize = Number(event.target.value);
+  botTeamSize = normalizeTeamSize(event.target.value);
 };
 $("botDifficulty").onchange = event => {
   difficultyRatio = Number(event.target.value);
