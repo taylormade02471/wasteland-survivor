@@ -10,7 +10,7 @@ import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
-import { createMenuNavigator } from "./menu-navigation.mjs";
+import { createMenuNavigator, resolveMenuKeyAction } from "./menu-navigation.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -247,7 +247,7 @@ function bindLobbyNavigation() {
       if (alreadyFocused) activateLobbyCommand();
     });
     button.addEventListener("focus", () => {
-      if (inputMode !== "mouse" && inputMode !== "touch") focusLobbyCommand(button.id, "keyboard");
+      focusLobbyCommand(button.id, inputMode);
     });
     button.addEventListener("click", event => {
       if (event.isTrusted && event.detail === 0) {
@@ -2074,10 +2074,25 @@ addEventListener("keydown", event => {
   if (controllerLocked() || phase === "countdown") return;
   const key = event.key.toLowerCase();
   if (!lobbyScreen.classList.contains("hidden")) {
-    if (["arrowup", "arrowleft", "arrowdown", "arrowright", "enter", " "].includes(key)) event.preventDefault();
-    if (["arrowup", "arrowleft"].includes(key)) { setInputMode("keyboard"); moveLobbyFocus("previous", "keyboard"); return; }
-    if (["arrowdown", "arrowright"].includes(key)) { setInputMode("keyboard"); moveLobbyFocus("next", "keyboard"); return; }
-    if (["enter", " "].includes(key)) { setInputMode("keyboard"); activateLobbyCommand(); return; }
+    const activeElement = document.activeElement;
+    const navigationFocused = $("lobbyNavigation").contains(activeElement);
+    const nativeControlFocused = Boolean(activeElement !== document.body
+      && activeElement !== document.documentElement
+      && activeElement?.matches('a[href], button, input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])'));
+    const action = resolveMenuKeyAction(event.key, { navigationFocused, nativeControlFocused });
+
+    if (action) {
+      event.preventDefault();
+      setInputMode("keyboard");
+      if (navigationFocused && activeElement.matches(".floating-command")) {
+        focusLobbyCommand(activeElement.id, "keyboard");
+      }
+      if (action.type === "move") moveLobbyFocus(action.direction, "keyboard");
+      if (action.type === "activate") activateLobbyCommand();
+      return;
+    }
+
+    if (nativeControlFocused || key === "tab") return;
   }
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) event.preventDefault();
   if (key === "escape") { menuOpen ? closeGameMenu() : openGameMenu(); return; }

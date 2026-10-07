@@ -1,6 +1,9 @@
 const INPUTS = new Set(["controller", "keyboard", "mouse", "touch"]);
 const FORWARD_DIRECTIONS = new Set(["next", "right", "down"]);
 const BACKWARD_DIRECTIONS = new Set(["previous", "left", "up"]);
+const PREVIOUS_KEYS = new Set(["arrowup", "arrowleft"]);
+const NEXT_KEYS = new Set(["arrowdown", "arrowright"]);
+const ACTIVATE_KEYS = new Set(["enter", " "]);
 
 function normalizeCommands(commandIds) {
   const seen = new Set();
@@ -21,6 +24,17 @@ function directionStep(direction) {
   if (FORWARD_DIRECTIONS.has(direction)) return 1;
   if (BACKWARD_DIRECTIONS.has(direction)) return -1;
   return 0;
+}
+
+export function resolveMenuKeyAction(key, context = {}) {
+  const { navigationFocused = false, nativeControlFocused = false } = context || {};
+  if (!navigationFocused && nativeControlFocused) return null;
+
+  const normalizedKey = typeof key === "string" ? key.toLowerCase() : "";
+  if (PREVIOUS_KEYS.has(normalizedKey)) return { type: "move", direction: "previous" };
+  if (NEXT_KEYS.has(normalizedKey)) return { type: "move", direction: "next" };
+  if (ACTIVATE_KEYS.has(normalizedKey)) return { type: "activate" };
+  return null;
 }
 
 export function createMenuNavigator(commandIds, initialId) {

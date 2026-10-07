@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createMenuNavigator } from "../public/menu-navigation.mjs";
+import { createMenuNavigator, resolveMenuKeyAction } from "../public/menu-navigation.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
@@ -57,6 +57,55 @@ test("activates the currently focused command without changing focus", () => {
   navigator.focus("loadout", "keyboard");
   assert.deepEqual(navigator.activate(), { id: "loadout", input: "keyboard" });
   assert.deepEqual(navigator.current(), { id: "loadout", input: "keyboard" });
+});
+
+test("leaves Tab native and synchronizes focus after mouse or touch input", () => {
+  assert.equal(resolveMenuKeyAction("Tab", { navigationFocused: false, nativeControlFocused: false }), null);
+
+  for (const pointerInput of ["mouse", "touch"]) {
+    const navigator = createMenuNavigator(["survival", "ctf", "loadout"], "survival");
+    navigator.focus("loadout", pointerInput);
+
+    assert.deepEqual(navigator.focus("ctf", "keyboard"), { id: "ctf", input: "keyboard" });
+    assert.deepEqual(navigator.activate(), { id: "ctf", input: "keyboard" });
+  }
+
+  assert.match(game, /button\.addEventListener\("focus", \(\) => \{\s*focusLobbyCommand\(button\.id, inputMode\);\s*\}\);/);
+});
+
+test("routes Enter and Space to the focused floating command", () => {
+  for (const key of ["Enter", " "]) {
+    const navigator = createMenuNavigator(["survival", "ctf", "loadout"], "survival");
+    navigator.focus("ctf", "keyboard");
+
+    assert.deepEqual(
+      resolveMenuKeyAction(key, { navigationFocused: true, nativeControlFocused: true }),
+      { type: "activate" },
+    );
+    assert.equal(navigator.activate()?.id, "ctf");
+    assert.equal(
+      resolveMenuKeyAction(key, { navigationFocused: false, nativeControlFocused: true }),
+      null,
+    );
+  }
+
+  assert.match(game, /resolveMenuKeyAction\(event\.key, \{ navigationFocused, nativeControlFocused \}\)/);
+  assert.match(game, /focusLobbyCommand\(activeElement\.id, "keyboard"\)/);
+});
+
+test("does not intercept arrows owned by lobby selects or native controls", () => {
+  for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) {
+    assert.equal(
+      resolveMenuKeyAction(key, { navigationFocused: false, nativeControlFocused: true }),
+      null,
+    );
+  }
+
+  assert.deepEqual(
+    resolveMenuKeyAction("ArrowDown", { navigationFocused: false, nativeControlFocused: false }),
+    { type: "move", direction: "next" },
+  );
+  assert.match(game, /if \(nativeControlFocused \|\| key === "tab"\) return;/);
 });
 
 test("keeps lobby actions as independent floating semantic commands", () => {
