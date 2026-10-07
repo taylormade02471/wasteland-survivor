@@ -19,8 +19,8 @@ function availablePort() {
   });
 }
 
-function startServer(port, dataFile, extraEnv = {}) {
-  const child = spawn(process.execPath, ["server.js"], {
+function startServer(port, dataFile, extraEnv = {}, preload = "") {
+  const child = spawn(process.execPath, [...(preload ? ["--require", preload] : []), "server.js"], {
     cwd: root,
     env: {
       ...process.env,
@@ -266,4 +266,26 @@ test("unconfigured phone auth keeps Google and Firebase origins out of the CSP",
   const page = await get(port, "/");
   const csp = page.headers.get("content-security-policy");
   assert.doesNotMatch(csp, /gstatic|googleapis|recaptcha|firebaseapp/);
+});
+
+test("account endpoint returns no session or device credential when durable Firestore linking fails", async t => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-phone-durable-failure-"));
+  const port = await availablePort();
+  const preload = path.join(root, "test", "fixtures", "failing-phone-account-store.js");
+  const server = await startServer(port, path.join(tempDirectory, "state.json"), {}, preload);
+  t.after(() => {
+    server.kill();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  });
+
+  const result = await post(port, "/api/account/phone", {
+    idToken: "fictional-token-1",
+    deviceProfileId: "durability-device",
+    player: { displayName: "Durability Test", avatarType: "scout" },
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.body.session, undefined);
+  assert.equal(result.body.deviceCredential, undefined);
+  assert.equal(JSON.stringify(result.body).includes("fictional-token"), false);
 });

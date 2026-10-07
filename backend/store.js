@@ -29,6 +29,151 @@ function safeProgress(source = {}, existing = {}) {
   };
 }
 
+class BackendStoreError extends Error {
+  constructor(code, message, status = 409) {
+    super(message);
+    this.name = "BackendStoreError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const cloneBackendState = state => JSON.parse(JSON.stringify(state || EMPTY_STATE));
+
+function normalizeBackendState(source = {}) {
+  const state = cloneBackendState(EMPTY_STATE);
+  if (!source || typeof source !== "object") return state;
+  state.version = Math.max(3, Math.floor(Number(source.version) || 0));
+  for (const key of ["players", "identities", "phoneTokenUses", "friendships", "invites", "matches"]) {
+    state[key] = source[key] && typeof source[key] === "object" && !Array.isArray(source[key]) ? cloneBackendState(source[key]) : {};
+  }
+  state.audit = Array.isArray(source.audit) ? cloneBackendState(source.audit).slice(-500) : [];
+  return state;
+}
+
+function findPlayerByDeviceProfileIdInState(state, deviceProfileId) {
+  const profileId = cleanText(deviceProfileId, 80);
+  if (!profileId) return null;
+  return Object.values(state.players || {}).find(player => player.deviceProfileId === profileId || player.deviceProfileIds?.includes(profileId)) || null;
+}
+
+function identityForPlayerInState(state, playerId) {
+  return Object.entries(state.identities || {}).find(([, identity]) => identity?.playerId === playerId) || null;
+}
+
+function verifyDeviceCredentialInState(state, playerId, credentialHash) {
+  const player = state.players?.[playerId];
+  const credentials = player?.deviceCredentialHashes || (player?.deviceCredentialHash ? [player.deviceCredentialHash] : []);
+  return credentials.includes(credentialHash);
+}
+
+function issuePlayerTagInState(state, proposed = "") {
+  const existingTags = new Set(Object.values(state.players || {}).map(player => player.playerTag));
+  const accepted = proposedPlayerTag(proposed);
+  if (accepted && !existingTags.has(accepted)) return accepted;
+  let generated = randomPlayerTag();
+  while (existingTags.has(generated)) generated = randomPlayerTag();
+  return generated;
+}
+
+function appendAudit(state, action, detail = {}) {
+  state.audit.push({ id: crypto.randomUUID(), action, at: new Date().toISOString(), ...detail });
+  state.audit = state.audit.slice(-500);
+}
+
+function applyVerifiedPhoneAccountState(state, input = {}, { playerId = "", restored = false, authoritative = false } = {}) {
+  const uid = cleanText(input.providerUid, 128);
+  const hint = cleanText(input.phoneHint, 40);
+  const profileId = cleanText(input.deviceProfileId, 80);
+  const credentialHash = cleanText(input.newDeviceCredentialHash, 128);
+  if (!uid || !profileId || !/^[a-f0-9]{64}$/.test(credentialHash)) {
+    throw new BackendStoreError("phone-account-invalid", "Verified account details are incomplete", 400);
+  }
+  if (!/[\u2022*]/.test(hint) || hint.replace(/\D/g, "").length > 7) {
+    throw new BackendStoreError("phone-hint-invalid", "Only a masked phone hint may be stored", 400);
+  }
+
+  let existing = playerId ? state.players[playerId] : null;
+  if (playerId && !existing && restored) throw new BackendStoreError("phone-account-missing", "No player is linked to that verified phone", 404);
+  const aliasOwner = findPlayerByDeviceProfileIdInState(state, profileId);
+  if (aliasOwner && aliasOwner.id !== playerId) {
+    if (!authoritative) throw new BackendStoreError("phone-device-conflict", "Device profile belongs to a different player", 409);
+    aliasOwner.deviceProfileIds = (aliasOwner.deviceProfileIds || []).filter(id => id !== profileId);
+    if (aliasOwner.deviceProfileId === profileId) aliasOwner.deviceProfileId = aliasOwner.deviceProfileIds[0] || "";
+  }
+
+  if (!existing) {
+    const source = input.player && typeof input.player === "object" ? input.player : {};
+    if (typeof source.displayName !== "string" || !source.displayName.trim()) {
+      throw new BackendStoreError("phone-account-not-found", "No player is linked to that verified phone", 404);
+    }
+    const id = playerId || crypto.randomUUID();
+    existing = {
+      id,
+      deviceProfileId: profileId,
+      deviceProfileIds: [profileId],
+      playerTag: issuePlayerTagInState(state, source.playerTag),
+      displayName: cleanText(source.displayName, 24) || "Survivor",
+      avatarType: ["scout", "ranger", "heavy", "tech"].includes(source.avatarType) ? source.avatarType : "scout",
+      level: Math.max(1, Math.floor(Number(source.level) || 1)),
+      online: Boolean(source.online),
+      lastSeenAt: new Date().toISOString(),
+      stats: {
+        kills: Math.max(0, Math.floor(Number(source.stats?.kills) || 0)),
+        deaths: Math.max(0, Math.floor(Number(source.stats?.deaths) || 0)),
+        wins: Math.max(0, Math.floor(Number(source.stats?.wins) || 0)),
+        matches: Math.max(0, Math.floor(Number(source.stats?.matches) || 0)),
+      },
+      progress: safeProgress(source.progress),
+    };
+    state.players[id] = existing;
+    appendAudit(state, "player.created", { playerId: id });
+  } else if (!restored) {
+    const source = input.player && typeof input.player === "object" ? input.player : {};
+    existing.deviceProfileIds = [...new Set([...(existing.deviceProfileIds || []), existing.deviceProfileId, profileId].filter(Boolean))].slice(-10);
+    existing.displayName = cleanText(source.displayName, 24) || existing.displayName || "Survivor";
+    existing.avatarType = ["scout", "ranger", "heavy", "tech"].includes(source.avatarType) ? source.avatarType : existing.avatarType || "scout";
+    existing.level = Math.max(1, Math.floor(Number(source.level) || existing.level || 1));
+    existing.online = Boolean(source.online);
+    existing.lastSeenAt = new Date().toISOString();
+    existing.stats = {
+      kills: Math.max(0, Math.floor(Number(source.stats?.kills) || existing.stats?.kills || 0)),
+      deaths: Math.max(0, Math.floor(Number(source.stats?.deaths) || existing.stats?.deaths || 0)),
+      wins: Math.max(0, Math.floor(Number(source.stats?.wins) || existing.stats?.wins || 0)),
+      matches: Math.max(0, Math.floor(Number(source.stats?.matches) || existing.stats?.matches || 0)),
+    };
+    existing.progress = safeProgress(source.progress, existing.progress);
+    appendAudit(state, "player.updated", { playerId: existing.id });
+  } else {
+    existing.deviceProfileIds = [...new Set([...(existing.deviceProfileIds || []), existing.deviceProfileId, profileId].filter(Boolean))].slice(-10);
+  }
+
+  const existingUidIdentity = state.identities[uid];
+  const existingPlayerIdentity = identityForPlayerInState(state, existing.id);
+  if (!authoritative && existingUidIdentity && existingUidIdentity.playerId !== existing.id) {
+    throw new BackendStoreError("phone-identity-conflict", "Verified identity is already linked", 409);
+  }
+  if (!authoritative && existingPlayerIdentity && existingPlayerIdentity[0] !== uid) {
+    throw new BackendStoreError("phone-player-already-linked", "Player is already linked to a verified phone", 409);
+  }
+  if (authoritative) {
+    for (const [knownUid, identity] of Object.entries(state.identities)) {
+      if (knownUid === uid || identity?.playerId === existing.id) delete state.identities[knownUid];
+    }
+  }
+  state.identities[uid] = {
+    playerId: existing.id,
+    phoneHint: hint,
+    linkedAt: existingUidIdentity?.linkedAt || new Date().toISOString(),
+  };
+  const credentials = new Set(existing.deviceCredentialHashes || (existing.deviceCredentialHash ? [existing.deviceCredentialHash] : []));
+  credentials.add(credentialHash);
+  existing.deviceCredentialHashes = [...credentials].slice(-5);
+  delete existing.deviceCredentialHash;
+  appendAudit(state, restored ? "identity.phone-restored" : "identity.phone-created", { playerId: existing.id });
+  return { restored, player: existing, phoneHint: hint };
+}
+
 class BackendStore {
   constructor(filePath) {
     this.filePath = filePath;
@@ -37,12 +182,7 @@ class BackendStore {
   read() {
     try {
       const stored = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
-      return {
-        ...EMPTY_STATE,
-        ...stored,
-        identities: stored.identities && typeof stored.identities === "object" ? stored.identities : {},
-        phoneTokenUses: stored.phoneTokenUses && typeof stored.phoneTokenUses === "object" ? stored.phoneTokenUses : {},
-      };
+      return normalizeBackendState(stored);
     }
     catch { return JSON.parse(JSON.stringify(EMPTY_STATE)); }
   }
@@ -163,6 +303,51 @@ class BackendStore {
     this.persist();
     return true;
   }
+  async linkVerifiedPhoneAccount(input = {}) {
+    const uid = cleanText(input.providerUid, 128);
+    const profileId = cleanText(input.deviceProfileId, 80);
+    const source = input.player && typeof input.player === "object" ? input.player : {};
+    let player = this.playerByProviderUid(uid);
+    const restored = Boolean(player);
+    if (!player) {
+      if (typeof source.displayName !== "string" || !source.displayName.trim()) {
+        throw new BackendStoreError("phone-account-not-found", "No player is linked to that verified phone", 404);
+      }
+      const profileOwner = this.playerByDeviceProfileId(profileId);
+      const sessionOwner = input.sessionPlayerId ? this.playerById(input.sessionPlayerId) : null;
+      if (profileOwner && sessionOwner && profileOwner.id !== sessionOwner.id) {
+        throw new BackendStoreError("phone-device-conflict", "Device profile belongs to a different player", 409);
+      }
+      if (profileOwner) {
+        const ownsDevice = sessionOwner?.id === profileOwner.id
+          || this.verifyDeviceCredential(profileOwner.id, input.ownershipCredentialHash);
+        if (!ownsDevice) throw new BackendStoreError("phone-device-ownership-required", "Existing device ownership is required", 401);
+        player = profileOwner;
+      } else if (sessionOwner) {
+        player = sessionOwner;
+      }
+      if (player && this.playerHasVerifiedIdentity(player.id)) {
+        throw new BackendStoreError("phone-player-already-linked", "Player is already linked to a verified phone", 409);
+      }
+    } else {
+      const profileOwner = this.playerByDeviceProfileId(profileId);
+      if (profileOwner && profileOwner.id !== player.id) {
+        throw new BackendStoreError("phone-device-conflict", "Device profile belongs to a different player", 409);
+      }
+    }
+
+    const previous = this.state;
+    const working = cloneBackendState(this.state);
+    const result = applyVerifiedPhoneAccountState(working, input, { playerId: player?.id, restored });
+    this.state = working;
+    try {
+      this.persist();
+      return result;
+    } catch {
+      this.state = previous;
+      throw new BackendStoreError("account-storage-unavailable", "Account storage is temporarily unavailable", 503);
+    }
+  }
   addFriend(playerId, friendId) {
     if (!this.state.players[playerId] || !this.state.players[friendId] || playerId === friendId) throw new Error("Invalid friendship");
     const key = [playerId, friendId].sort().join(":");
@@ -201,4 +386,14 @@ class BackendStore {
     };
   }
 }
-module.exports = { BackendStore, PUBLIC_PLAYER_TAG_PATTERN };
+module.exports = {
+  applyVerifiedPhoneAccountState,
+  BackendStore,
+  BackendStoreError,
+  cloneBackendState,
+  findPlayerByDeviceProfileIdInState,
+  identityForPlayerInState,
+  normalizeBackendState,
+  PUBLIC_PLAYER_TAG_PATTERN,
+  verifyDeviceCredentialInState,
+};

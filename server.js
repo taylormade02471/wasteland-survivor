@@ -111,10 +111,15 @@ function enforceRateLimit(request, response, suffix) {
   return false;
 }
 
-function sessionPlayer(request) {
+function sessionPlayerId(request) {
   const token = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const payload = sessions.verify(token);
-  return payload ? store.playerById(payload.sub) : null;
+  return payload?.sub || "";
+}
+
+function sessionPlayer(request) {
+  const playerId = sessionPlayerId(request);
+  return playerId ? store.playerById(playerId) : null;
 }
 
 function publicPlayer(player) {
@@ -203,34 +208,16 @@ function handleApi(request, response, requestUrl) {
     readJson(request, response, async body => {
       try {
         const verified = await phoneAuth.verify(body.idToken);
-        let player = store.playerByProviderUid(verified.providerUid);
-        const restored = Boolean(player);
-        if (!player) {
-          const source = body.player && typeof body.player === "object" ? body.player : {};
-          if (typeof source.displayName !== "string" || !source.displayName.trim()) {
-            throw new PhoneAuthError("phone-account-not-found", "No player is linked to that verified phone", 404);
-          }
-          const profileOwner = store.playerByDeviceProfileId(body.deviceProfileId);
-          const sessionOwner = sessionPlayer(request);
-          if (profileOwner && sessionOwner && profileOwner.id !== sessionOwner.id) {
-            throw new PhoneAuthError("phone-device-conflict", "Device profile belongs to a different player", 409);
-          }
-          if (profileOwner) {
-            const ownsDevice = sessionOwner?.id === profileOwner.id
-              || store.verifyDeviceCredential(profileOwner.id, hash(body.deviceCredential || ""));
-            if (!ownsDevice) throw new PhoneAuthError("phone-device-ownership-required", "Existing device ownership is required", 401);
-            player = profileOwner;
-          } else if (sessionOwner) {
-            player = sessionOwner;
-          }
-          if (player) {
-            if (store.playerHasVerifiedIdentity(player.id)) {
-              throw new PhoneAuthError("phone-player-already-linked", "Player is already linked to a verified phone", 409);
-            }
-            store.addDeviceProfile(player.id, body.deviceProfileId);
-          }
-          player = store.upsertPlayer({
-            deviceProfileId: body.deviceProfileId,
+        const deviceCredential = crypto.randomBytes(32).toString("base64url");
+        const source = body.player && typeof body.player === "object" ? body.player : {};
+        const linked = await store.linkVerifiedPhoneAccount({
+          providerUid: verified.providerUid,
+          phoneHint: verified.phoneHint,
+          deviceProfileId: body.deviceProfileId,
+          ownershipCredentialHash: hash(body.deviceCredential || ""),
+          sessionPlayerId: sessionPlayerId(request),
+          newDeviceCredentialHash: hash(deviceCredential),
+          player: {
             playerTag: source.playerTag,
             displayName: source.displayName,
             avatarType: source.avatarType,
@@ -238,28 +225,17 @@ function handleApi(request, response, requestUrl) {
             online: true,
             stats: source.stats,
             progress: source.progress,
-          });
-          store.bindVerifiedIdentity({ providerUid: verified.providerUid, playerId: player.id, phoneHint: verified.phoneHint });
-        } else {
-          const profileOwner = store.playerByDeviceProfileId(body.deviceProfileId);
-          if (profileOwner && profileOwner.id !== player.id) {
-            throw new PhoneAuthError("phone-device-conflict", "Device profile belongs to a different player", 409);
-          }
-          store.addDeviceProfile(player.id, body.deviceProfileId);
-        }
-        const deviceCredential = crypto.randomBytes(32).toString("base64url");
-        store.setDeviceCredential(player.id, hash(deviceCredential));
-        store.audit(restored ? "identity.phone-restored" : "identity.phone-created", { playerId: player.id });
-        store.persist();
+          },
+        });
         json(response, 200, {
-          restored,
-          player: publicPlayer(store.playerById(player.id)),
-          phoneHint: store.phoneHintForPlayer(player.id),
-          session: sessions.issue(player.id),
+          restored: linked.restored,
+          player: publicPlayer(linked.player),
+          phoneHint: linked.phoneHint,
+          session: sessions.issue(linked.player.id),
           deviceCredential,
         });
       } catch (error) {
-        if (error instanceof PhoneAuthError) json(response, error.status, { error: error.message, code: error.code });
+        if (error instanceof PhoneAuthError || Number.isInteger(error?.status)) json(response, error.status, { error: error.message, code: error.code });
         else json(response, /required|known player/i.test(error.message) ? 400 : 409, { error: error.message });
       }
     });
