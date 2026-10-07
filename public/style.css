@@ -126,14 +126,32 @@ button:disabled {
 
 #hud {
   position: fixed;
-  left: 12px;
-  top: 12px;
-  display: flex;
-  gap: 12px;
+  inset: 0;
+  z-index: 8;
   align-items: start;
   color: #fff;
   pointer-events: none;
   text-shadow: 0 2px 8px #000;
+}
+
+#combatRail {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  top: max(12px, env(safe-area-inset-top));
+  width: min(220px, calc(100vw - max(24px, env(safe-area-inset-left) + env(safe-area-inset-right))));
+  display: grid;
+  gap: 8px;
+}
+
+#objectiveRail {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(250px, calc(env(safe-area-inset-left) + 238px));
+  right: max(230px, calc(env(safe-area-inset-right) + 218px));
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .brand {
@@ -143,7 +161,7 @@ button:disabled {
 }
 
 .meters {
-  min-width: 170px;
+  min-width: 0;
   display: grid;
   gap: 4px;
   font-size: 12px;
@@ -163,9 +181,18 @@ button:disabled {
 .mode-control, .map-control { display: flex; gap: 4px; }
 .mode-control button, .map-control button { min-height: 30px; padding: 0 8px; font-size: 11px; }
 .mode-control .active, .map-control .active { background: #3d7b84; border-color: #66fcf1; }
-.match-strip { display: flex; flex-wrap: wrap; gap: 6px; max-width: 410px; font-size: 11px; }
+.match-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 100%; font-size: 11px; }
 .match-strip span { padding: 5px 7px; background: rgba(0,0,0,.42); border: 1px solid rgba(255,255,255,.14); }
 .match-strip .blue { color: #6ad6ff; }.match-strip .red { color: #ff6c84; }
+.hud-readout, .hud-team { display: grid; gap: 4px; padding: 7px 8px; border: 1px solid rgba(255,255,255,.16); background: rgba(0,0,0,.34); font-size: 10px; letter-spacing: .04em; }
+.hud-readout { grid-template-columns: 1fr auto; align-items: center; }
+.hud-readout b, .hud-team b { color: #f8f3df; font-size: 12px; }
+.hud-ability { grid-template-columns: 1fr; }
+.hud-ability > .bar { width: 100%; }
+.hud-team small { color: #9ba6a9; }
+.hud-text-ellipsis { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#objectiveText { width: min(560px, 100%); margin: 0; padding: 6px 9px; border-left: 2px solid #ffdf52; background: rgba(0,0,0,.38); color: #f8f3df; font-size: 12px; font-weight: 800; text-align: center; }
+.combat-feedback { position: absolute; left: 50%; top: 52%; max-width: min(360px, calc(100vw - 32px)); transform: translate(-50%, -50%); padding: 9px 12px; border: 1px solid rgba(255,223,82,.72); background: rgba(5,10,13,.76); color: #ffdf52; font-size: 12px; font-weight: 800; text-align: center; }
 .chest-prompt { position: fixed; left: 50%; bottom: 22px; z-index: 12; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; padding: 12px 16px; background: rgba(12,17,23,.9); border: 1px solid #ffdf52; color: #ffdf52; text-align: center; }
 .chest-prompt span { color: #f8f3df; font-size: 12px; }.chest-prompt i { font-style: normal; color: #ffdf52; }.chest-prompt button { min-height: 34px; padding: 0 14px; }.hidden, .welcome-screen.hidden, .parent-setup.hidden, .game-menu.hidden, .match-countdown.hidden { display: none !important; }
 .chest-locator { position:fixed; z-index:18; top:86px; left:50%; display:flex; gap:9px; align-items:center; transform:translateX(-50%); padding:7px 11px; border:1px solid rgba(255,223,82,.7); background:rgba(7,11,13,.82); color:#ffdf52; font-size:10px; letter-spacing:.08em; box-shadow:0 0 18px rgba(255,194,60,.16); }
@@ -432,20 +459,22 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
 
 .bar i {
   display: block;
-  width: 100%;
+  width: var(--hud-fill, 100%);
   height: 100%;
   background: linear-gradient(90deg, #ff255d, #ffbd59);
 }
 
 .bar.heat i {
-  width: 0%;
+  --hud-fill: 0%;
   background: linear-gradient(90deg, #66fcf1, #ffcc4d);
 }
 
 .bar.shield i {
-  width: 0%;
+  --hud-fill: 0%;
   background: linear-gradient(90deg, #4de0ff, #7294ff);
 }
+
+#abilityBar, #teamHealthBar { --hud-fill: 0%; }
 
 .shop-actions {
   display: flex;
@@ -475,11 +504,21 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   .touch-action-grid { grid-template-columns: repeat(2, 58px); }
   .touch-action-grid button { min-height: 38px; font-size: 9px; }
   #hud {
-    display: block;
-    left: 8px;
-    top: 8px;
-    right: auto;
-    width: 118px;
+    inset: 0;
+  }
+
+  #combatRail {
+    left: max(8px, env(safe-area-inset-left));
+    top: max(8px, env(safe-area-inset-top));
+    width: min(136px, calc(42vw - env(safe-area-inset-left)));
+    gap: 5px;
+  }
+
+  #objectiveRail {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(150px, calc(env(safe-area-inset-left) + 144px));
+    right: max(8px, env(safe-area-inset-right));
+    justify-items: stretch;
   }
 
   .brand {
@@ -499,12 +538,12 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   .nightfall-weapon { right: -7%; width: 72vw; }
 
   .meters {
-    min-width: 118px;
+    min-width: 0;
     font-size: 10px;
   }
 
   .bar {
-    width: 118px;
+    width: 100%;
     height: 7px;
   }
 
@@ -521,20 +560,12 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
     padding: 4px 5px;
   }
 
-  .match-strip {
-    position: fixed;
-    left: 8px;
-    top: 142px;
-    display: grid;
-    grid-template-columns: repeat(2, max-content);
-    gap: 3px;
-    max-width: 150px;
-    font-size: 9px;
-  }
+  .match-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; max-width: none; font-size: 9px; }
 
-  .match-strip span {
-    padding: 3px 4px;
-  }
+  .match-strip span { min-width: 0; padding: 3px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hud-readout, .hud-team { gap: 3px; padding: 5px; font-size: 9px; }
+  .hud-readout b, .hud-team b { font-size: 10px; }
+  #objectiveText { padding: 4px 6px; font-size: 10px; }
 
   #topRightMenu {
     top: 8px;

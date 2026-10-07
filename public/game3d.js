@@ -9,6 +9,7 @@ import { kingdomUnlocked as hasKingdom, levelFromXp, unlockedMaps } from "./prog
 import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
+import { createHudViewModel } from "./hud-view-model.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -30,6 +31,7 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const ui = {
   hp: $("hpText"), hpBar: $("hpBar"), shield: $("shieldText"), shieldBar: $("shieldBar"), heat: $("heatText"), heatBar: $("heatBar"),
+  ammo: $("ammoText"), ability: $("abilityText"), abilityBar: $("abilityBar"), team: $("teamText"), teamName: $("teamName"), teamHealth: $("teamHealthText"), teamHealthBar: $("teamHealthBar"), objective: $("objectiveText"),
   scrap: $("scrapText"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
   controllerStatus: $("controllerStatus"), controllerOnly: $("controllerOnlyToggle"), soundToggle: $("soundToggle"), volume: $("volumeSlider"), musicToggle: $("musicToggle"), musicVolume: $("musicVolumeSlider"), musicSource: $("musicSource"), musicStatus: $("musicStatus"),
@@ -392,8 +394,6 @@ function start() {
   ensureLobbyRoom();
   phase = "loadout";
   timer = 0;
-  ui.phase.textContent = "LOADOUT";
-  ui.timer.textContent = "WAITING";
   $("loadoutMode").textContent = mode === "solo" ? "STORY SURVIVAL" : mode === "teams" ? `${botTeamSize}V${botTeamSize}` : `${ctfPlayers}-PLAYER CTF`;
   $("loadoutMap").textContent = MAPS[mapKey].label.toUpperCase();
   $("loadoutRoomModal").classList.remove("hidden");
@@ -987,30 +987,67 @@ function formatTime(seconds) {
   return `${String(Math.max(0, Math.ceil(seconds) / 60 | 0)).padStart(2, "0")}:${String(Math.max(0, Math.ceil(seconds) % 60)).padStart(2, "0")}`;
 }
 
-function render() {
-  const dt = Math.min(clock.getDelta(), .04);
-  update(dt);
+function renderHud() {
   const weapon = weaponProfile();
-  ui.hp.textContent = Math.max(0, Math.ceil(player.hp));
-  ui.hpBar.style.width = `${Math.max(0, player.hp)}%`;
-  ui.shield.textContent = Math.ceil(player.shield);
-  ui.shieldBar.style.width = `${player.shieldMax ? player.shield / player.shieldMax * 100 : 0}%`;
+  const classDefinition = getClassDefinition(classProgress.classId);
+  const classStats = getClassStats(classProgress);
+  const teamMembers = [player, ...allies];
+  const teamHealth = teamMembers.reduce((total, member) => total + Math.max(0, member?.hp || 0), 0);
+  const teamHealthMax = teamMembers.reduce((total, member) => total + Math.max(0, member?.maxHp || 0), 0);
+  const chapter = soldierStory[Math.min(storyStage - 1, soldierStory.length - 1)];
+  const objective = kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex];
+  const hud = createHudViewModel({
+    health: player.hp,
+    maxHealth: player.maxHp,
+    armor: player.shield,
+    maxArmor: player.shieldMax,
+    ammo: { current: magazines[activeGun], reserve: magazineSizes[activeGun] },
+    ability: { label: classDefinition.ability.label, readyAt: classProgress.abilityReadyAt, cooldownMs: classDefinition.ability.cooldownMs * classStats.abilityCooldownMultiplier, now: Date.now() },
+    mode,
+    playerName: activeProfile?.name,
+    teamHealth,
+    teamHealthMax,
+    mission: `Mission: ${objective}`,
+    round: wave,
+    timer: phase === "loadout" ? "WAITING" : formatTime(timer),
+    objective,
+    score: { blue: mode === "ctf" ? Math.floor(blue) : blue, red: mode === "ctf" ? Math.floor(red) : red },
+  });
+
+  ui.hp.textContent = hud.health.value;
+  ui.hpBar.style.setProperty("--hud-fill", `${hud.health.percentage}%`);
+  ui.shield.textContent = hud.armor.value;
+  ui.shieldBar.style.setProperty("--hud-fill", `${hud.armor.percentage}%`);
   ui.heat.textContent = Math.round(Math.max(0, player.cooldown / weapon.delay) * 100);
-  ui.heatBar.style.width = `${Math.round(Math.max(0, player.cooldown / weapon.delay) * 100)}%`;
+  ui.heatBar.style.setProperty("--hud-fill", `${Math.round(Math.max(0, player.cooldown / weapon.delay) * 100)}%`);
+  ui.ammo.textContent = hud.ammo.label;
+  ui.ability.textContent = `${hud.ability.label} ${hud.ability.statusLabel}`;
+  ui.abilityBar.style.setProperty("--hud-fill", `${hud.ability.percentage}%`);
+  ui.team.textContent = hud.team.label;
+  ui.teamName.textContent = hud.team.playerName;
+  ui.teamHealth.textContent = hud.team.healthLabel;
+  ui.teamHealthBar.style.setProperty("--hud-fill", `${hud.team.healthPercentage}%`);
+  ui.objective.textContent = hud.objective.label;
   ui.scrap.textContent = scrap;
   ui.kills.textContent = kills;
   ui.wave.textContent = wave;
   ui.level.textContent = playerLevel;
   ui.stage.textContent = storyStage;
-  ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${soldierStory[Math.min(storyStage - 1, soldierStory.length - 1)].title}`;
-  ui.mission.textContent = `Mission: ${kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex]}`;
+  ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${chapter.title}`;
+  ui.mission.textContent = hud.mission.label;
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
   ui.map.textContent = MAPS[mapKey].label.toUpperCase();
   ui.phase.textContent = mode === "ctf" ? "CAPTURE" : phase.toUpperCase();
-  ui.timer.textContent = phase === "loadout" ? "WAITING" : formatTime(timer);
-  ui.prep.textContent = ui.timer.textContent;
-  ui.blue.textContent = mode === "ctf" ? Math.floor(blue) : blue;
-  ui.red.textContent = mode === "ctf" ? Math.floor(red) : red;
+  ui.timer.textContent = hud.timer.label;
+  ui.prep.textContent = hud.timer.label;
+  ui.blue.textContent = hud.score.blue;
+  ui.red.textContent = hud.score.red;
+}
+
+function render() {
+  const dt = Math.min(clock.getDelta(), .04);
+  update(dt);
+  renderHud();
   player.cooldown = Math.max(0, player.cooldown - dt);
   allies.forEach(bot => { bot.cooldown = Math.max(0, bot.cooldown - dt); });
   renderer.render(scene, camera);

@@ -135,27 +135,41 @@
   </section>
 
   <section id="hud">
-    <div class="brand">WASTELAND SURVIVOR</div>
-    <div class="meters">
-      <label>HP <span id="hpText">100</span></label>
-      <div class="bar"><i id="hpBar"></i></div>
-      <label>Shield <span id="shieldText">0</span></label>
-      <div class="bar shield"><i id="shieldBar"></i></div>
-      <label>Heat <span id="heatText">0</span></label>
-      <div class="bar heat"><i id="heatBar"></i></div>
-    </div>
-    <div class="stats">
-      <span>Scrap <b id="scrapText">0</b></span>
-      <span>Kills <b id="killsText">0</b></span>
-      <span>Wave <b id="waveText">1</b></span>
-      <span id="weaponText">Scout L0</span>
-      <span>Level <b id="levelText">1</b></span>
-      <span>Stage <b id="stageText">1</b></span>
-    </div>
-    <div class="match-strip">
-      <span id="mapText">WASTELAND</span><span id="phaseText">COMBAT</span><span id="timerText">01:00</span><span id="chapterText">Chapter 1: First Watch</span><span id="missionText">Mission: Survive the cycle</span>
-      <span class="blue">BLUE <b id="blueScore">0</b></span><span class="red">RED <b id="redScore">0</b></span>
-    </div>
+    <aside id="combatRail" aria-label="Combat status">
+      <div class="brand">WASTELAND SURVIVOR</div>
+      <div class="meters">
+        <label>HP <span id="hpText">100</span></label>
+        <div class="bar"><i id="hpBar"></i></div>
+        <label>Shield <span id="shieldText">0</span></label>
+        <div class="bar shield"><i id="shieldBar"></i></div>
+        <label>Heat <span id="heatText">0</span></label>
+        <div class="bar heat"><i id="heatBar"></i></div>
+      </div>
+      <div class="hud-readout hud-ammo"><span>AMMO</span><b id="ammoText">30 / 30</b></div>
+      <div class="hud-readout hud-ability"><span id="abilityText">DASH READY</span><div class="bar"><i id="abilityBar"></i></div></div>
+      <div class="hud-team">
+        <span id="teamText">SOLO OPERATION</span>
+        <b id="teamName" class="hud-text-ellipsis">UNKNOWN OPERATOR</b>
+        <div class="bar"><i id="teamHealthBar"></i></div>
+        <small id="teamHealthText">100%</small>
+      </div>
+      <div class="stats">
+        <span>Scrap <b id="scrapText">0</b></span>
+        <span>Kills <b id="killsText">0</b></span>
+        <span>Wave <b id="waveText">1</b></span>
+        <span id="weaponText">Scout L0</span>
+        <span>Level <b id="levelText">1</b></span>
+        <span>Stage <b id="stageText">1</b></span>
+      </div>
+    </aside>
+    <section id="objectiveRail" aria-label="Mission objective">
+      <div class="match-strip">
+        <span id="mapText">WASTELAND</span><span id="phaseText">COMBAT</span><span id="timerText">01:00</span><span id="chapterText">Chapter 1: First Watch</span><span id="missionText">Mission: Survive the cycle</span>
+        <span class="blue">BLUE <b id="blueScore">0</b></span><span class="red">RED <b id="redScore">0</b></span>
+      </div>
+      <p id="objectiveText" class="hud-text-ellipsis">Survive the cycle</p>
+    </section>
+    <div id="combatFeedback" class="combat-feedback hidden" role="status" aria-live="polite"></div>
   </section>
 
   <div id="topRightMenu">
