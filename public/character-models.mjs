@@ -12,7 +12,7 @@ const rawArchetypes = {
     palette: { primary: "#5f6f55", secondary: "#202922", accent: "#d8b55a", cloth: "#3d342a", visor: "#8ed4cf" },
     mounts: { shoulder: "left-radio-whip", back: "rolled-bedroll", hip: "small-satchel" },
     weapon: { kind: "compact-smg", grip: "two-hand", length: 0.72 },
-    mobileBudget: { triangles: 980, materials: 5, drawGroups: 21 },
+    mobileBudget: { triangles: 980, materials: 5, drawGroups: 22 },
   },
   ranger: {
     id: "ranger",
@@ -67,7 +67,7 @@ const rawArchetypes = {
     palette: { primary: "#4e5e64", secondary: "#151d21", accent: "#bfc7b5", cloth: "#2c3235", visor: "#d9ede5" },
     mounts: { shoulder: "high-collar-guard", back: "tower-shield", hip: "restraint-cases" },
     weapon: { kind: "riot-shotgun", grip: "guard", length: 0.82 },
-    mobileBudget: { triangles: 1220, materials: 6, drawGroups: 22 },
+    mobileBudget: { triangles: 1220, materials: 6, drawGroups: 23 },
   },
 };
 
@@ -94,6 +94,7 @@ const REQUIRED_THREE_CONSTRUCTORS = Object.freeze([
   "Mesh",
   "MeshStandardMaterial",
   "BoxGeometry",
+  "ConeGeometry",
   "CylinderGeometry",
   "SphereGeometry",
 ]);
@@ -282,12 +283,8 @@ export function createCharacterModel(THREE, id = "scout") {
   const { weapon, muzzle } = addWeapon(THREE, root, materials, metadata);
   const shield = leftArm.children.find((child) => child.name === "shield:tower") || null;
   const measuredBudget = measureCharacterModelBudget(root);
-  const budget = {
-    ...clone(metadata.mobileBudget),
-    meshes: measuredBudget.meshes,
-    materials: measuredBudget.materials,
-    triangles: Math.max(measuredBudget.triangles, metadata.mobileBudget.triangles),
-  };
+  const budget = clone(measuredBudget);
+  const declaredBudget = clone(metadata.mobileBudget);
 
   return {
     root,
@@ -311,6 +308,7 @@ export function createCharacterModel(THREE, id = "scout") {
     metadata,
     materials,
     budget,
+    declaredBudget,
     measuredBudget,
   };
 }

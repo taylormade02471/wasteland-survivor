@@ -162,11 +162,17 @@ test("mesh factory builds named rig parts and distinct authored geometry for eve
     assert.equal(model.budget.triangles <= MOBILE_CHARACTER_BUDGET.triangles, true);
     assert.equal(model.budget.materials <= MOBILE_CHARACTER_BUDGET.materials, true);
     assert.deepEqual(model.measuredBudget, measureCharacterModelBudget(model.root));
-    assert.equal(model.budget.meshes, model.measuredBudget.meshes);
-    assert.equal(model.budget.materials, model.measuredBudget.materials);
+    assert.deepEqual(model.budget, model.measuredBudget);
+    assert.deepEqual(model.declaredBudget, model.metadata.mobileBudget);
+    assert.ok(model.declaredBudget.triangles >= model.measuredBudget.triangles);
+    assert.ok(model.declaredBudget.drawGroups >= model.measuredBudget.meshes);
+    assert.ok(model.declaredBudget.materials >= model.measuredBudget.materials);
     assert.ok(model.measuredBudget.meshes <= MOBILE_CHARACTER_BUDGET.drawGroups);
     assert.ok(model.measuredBudget.materials <= MOBILE_CHARACTER_BUDGET.materials);
     assert.ok(model.measuredBudget.triangles <= MOBILE_CHARACTER_BUDGET.triangles);
+    assert.ok(model.declaredBudget.triangles <= MOBILE_CHARACTER_BUDGET.triangles);
+    assert.ok(model.declaredBudget.drawGroups <= MOBILE_CHARACTER_BUDGET.drawGroups);
+    assert.ok(model.declaredBudget.materials <= MOBILE_CHARACTER_BUDGET.materials);
 
     for (const part of REQUIRED_RIG_PARTS) {
       assert.ok(model.parts[part], `${id} includes ${part}`);
@@ -211,6 +217,10 @@ test("class-defining equipment is materially modeled as named visible geometry",
 test("factory rejects incomplete THREE namespaces before building partial models", () => {
   const THREE = createFakeThree();
   assert.throws(() => createCharacterModel({}, "scout"), /THREE namespace.*Group.*Mesh.*BoxGeometry/i);
+  assert.throws(
+    () => createCharacterModel({ ...THREE, ConeGeometry: undefined, Mesh: class Mesh { constructor() { throw new Error("partial construction started"); } } }, "scout"),
+    /ConeGeometry/i,
+  );
   assert.throws(() => createCharacterModel({ ...THREE, CylinderGeometry: undefined }, "ranger"), /CylinderGeometry/i);
   assert.throws(() => createCharacterModel({ ...THREE, MeshStandardMaterial: undefined }, "heavy"), /MeshStandardMaterial/i);
 });
