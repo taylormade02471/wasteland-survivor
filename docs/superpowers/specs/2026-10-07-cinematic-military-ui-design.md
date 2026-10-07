@@ -66,7 +66,7 @@ Safe-area insets are honored on notched devices. Text and controls must remain r
 
 ## Living Menu
 
-The main menu removes the large central form-card composition. Menu commands become floating tactical controls positioned over the cinematic Nightfall environment.
+The main menu removes the large central form-card composition. Menu commands become floating tactical controls positioned over the cinematic Nightfall environment. Their visual layers should feel buoyed by radioactive water or slime: slow uneven rise and fall, soft ripples or glow beneath each command, thin vapor, and tiny disturbed particles. The underlying button geometry stays fixed so the animation never makes a command difficult to click or tap.
 
 Primary commands include:
 
@@ -120,7 +120,7 @@ The Nightfall and Wasteland Survivor wordmarks use condensed military display ty
 Motion supports depth and state:
 
 - Slow environmental camera drift.
-- Subtle floating menu depth.
+- Subtle floating menu depth with toxic-surface buoyancy, localized ripples, vapor, and particle disturbance.
 - Focus illumination and forward movement.
 - Smoke, embers, haze, rain, and reflective surface motion.
 - Short camera transitions between menu regions.
@@ -176,7 +176,7 @@ The redesign is complete only after:
 - The HUD is edge-mounted and does not cover the central battlefield.
 - The left tactical rail contains health, armor, ammunition, ability cooldown, and team status.
 - The top rail contains mission, round, timer, objective, and applicable score.
-- Main menu commands appear as animated floating controls with stable hit targets.
+- Main menu commands appear as animated floating controls buoyed over toxic water or slime, with stable hit targets and readable labels.
 - Controller, keyboard, mouse, and touch share consistent focus states.
 - Section changes use cinematic environmental transitions.
 - Bright backgrounds do not compromise text readability.

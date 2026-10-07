@@ -27,6 +27,7 @@
 - A long player name, mission title, or objective must wrap or truncate without expanding an edge rail into the battlefield; covered by Task 2 responsive-content tests.
 - A controller disconnected while a floating command is focused must preserve focus and allow keyboard or touch takeover; covered by Task 3 navigation tests.
 - Reduced-motion mode must stop positional loops while retaining visible focus and section feedback; covered by Task 4 motion tests.
+- Floating commands must read as buoyant objects over toxic water or slime without moving their interactive hit targets; covered by Task 4 presentation and motion tests.
 - A bright inferno or icy background must not reduce text below readable contrast; covered by Task 5 screenshot checks and backing-plate assertions.
 - A narrow phone in landscape must keep combat controls clear of the HUD, chest locator, and safe areas; covered by Task 6 viewport checks.
 
@@ -170,7 +171,7 @@ git commit -m "feat: add unified floating menu navigation"
 
 - [ ] **Step 1: Write failing presentation tests**
 
-Test distinct scene responses for home, lobby, survivor, armory, friends, and settings. Assert reduced motion sets positional duration and looping drift to zero while leaving focus illumination enabled.
+Test distinct scene responses for home, lobby, survivor, armory, friends, and settings. Assert that full-motion presentation enables toxic-surface buoyancy, ripples, vapor, and disturbed particles. Assert reduced motion sets positional duration, looping drift, ripples, and particle disturbance to zero while leaving focus illumination and static toxic-surface treatment enabled.
 
 - [ ] **Step 2: Verify the tests fail**
 
@@ -187,7 +188,7 @@ Add named menu regions and interpolate existing camera/background layers between
 
 - [ ] **Step 5: Add floating-control visual layers**
 
-Implement restrained breathing light, forward focus movement, particle response, and warning-amber/cyan selected states. Keep transforms on child visual layers so hit targets remain stable.
+Implement restrained breathing light, forward focus movement, warning-amber/cyan selected states, and a toxic-surface treatment that makes each control appear buoyant over radioactive water or slime. Add localized ripple/glow layers, thin vapor, and small particle disturbances around the selected control. Keep transforms and effects on child visual layers so hit targets remain stable.
 
 - [ ] **Step 6: Verify reduced motion and commit**
 
