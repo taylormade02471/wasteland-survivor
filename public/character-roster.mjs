@@ -57,7 +57,9 @@ function normalizeHumanSlot(slot, index) {
   };
 }
 
-function normalizeInput({ roomSize, seed, humans }) {
+function normalizeInput(options = {}) {
+  assert(options && typeof options === "object" && !Array.isArray(options), "options must be an object when creating a free-for-all character roster");
+  const { roomSize, seed, humans } = options;
   assert(SUPPORTED_FREE_FOR_ALL_ROOM_SIZES.includes(roomSize), "roomSize must be 4 or 6 for free-for-all character rosters");
   assert(typeof seed === "string" && seed.trim(), "seed is required for deterministic roster assignment");
   assert(Array.isArray(humans), "humans must be an array of normalized human slot records");

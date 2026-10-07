@@ -125,6 +125,11 @@ test("resolves duplicate preferences deterministically by input order then seede
 });
 
 test("rejects invalid room sizes malformed humans duplicate IDs and overfilled rooms", () => {
+  assert.throws(() => createFreeForAllCharacterRoster(), /roomSize.*4.*6/i);
+  assert.throws(() => createFreeForAllCharacterRoster(null), /options.*object/i);
+  assert.throws(() => createFreeForAllCharacterRoster("bad"), /options.*object/i);
+  assert.throws(() => createFreeForAllCharacterRoster(4), /options.*object/i);
+  assert.throws(() => createFreeForAllCharacterRoster([]), /options.*object/i);
   assert.throws(() => createFreeForAllCharacterRoster({ roomSize: 5, seed: "x", humans: [human("a")] }), /roomSize.*4.*6/i);
   assert.throws(() => createFreeForAllCharacterRoster({ roomSize: 4, seed: "x", humans: [human("a"), human("a")] }), /duplicate.*id/i);
   assert.throws(() => createFreeForAllCharacterRoster({ roomSize: 4, seed: "x", humans: [human("a"), human("b"), human("c"), human("d"), human("e")] }), /too many humans/i);
