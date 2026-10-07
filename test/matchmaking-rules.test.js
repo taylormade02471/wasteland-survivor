@@ -8,8 +8,6 @@ import {
   normalizeTeamSize,
   parseTeamRoomId,
   resolveMatchCountdown,
-  resolveMatchReadyAction,
-  resolveMatchResetAction,
   teamCapacity,
 } from "../public/matchmaking-rules.mjs";
 
@@ -56,18 +54,6 @@ test("derives synchronized countdown state from the authoritative start deadline
     secondsRemaining: 0,
     expired: true,
   });
-});
-
-test("starts every pre-combat client once and defers roster changes during combat", () => {
-  assert.equal(resolveMatchReadyAction({ phase: "loadout", currentStartsAt: null, startsAt: 25_000 }), "start");
-  assert.equal(resolveMatchReadyAction({ phase: "countdown", currentStartsAt: 25_000, startsAt: 25_000 }), "ignore");
-  assert.equal(resolveMatchReadyAction({ phase: "combat", currentStartsAt: null, startsAt: 30_000 }), "defer");
-  assert.equal(resolveMatchReadyAction({ phase: "loadout", currentStartsAt: null, startsAt: "invalid" }), "ignore");
-
-  assert.equal(resolveMatchResetAction("loadout"), "loadout");
-  assert.equal(resolveMatchResetAction("countdown"), "loadout");
-  assert.equal(resolveMatchResetAction("combat"), "preserve");
-  assert.equal(resolveMatchResetAction("prep"), "preserve");
 });
 
 test("fills every open 1v1 seat with a bot when no humans have joined", () => {

@@ -11,7 +11,8 @@ import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createMenuNavigator, isMenuCommandDisabled, resolveMenuKeyAction } from "./menu-navigation.mjs";
-import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown, resolveMatchReadyAction, resolveMatchResetAction } from "./matchmaking-rules.mjs";
+import { reduceClientMatchLifecycle } from "./matchmaking-client.mjs";
+import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -153,8 +154,10 @@ let localStream = null;
 let voiceSocket = null;
 let lobbySocket = null;
 let lobbyId = null;
+let lobbyRoomName = null;
 let lobbyPeers = 0;
 let activeMatchPlan = null;
+let awaitingRematch = false;
 let chestOccupants = 0;
 let chestAccessGranted = false;
 let lobbyRetryTimer = null;
@@ -524,11 +527,30 @@ function beginCountdown(startsAt = Date.now() + 15000) {
   setNightfallScene("countdown");
 }
 
-function resetMatchReadiness(message = {}) {
-  const action = resolveMatchResetAction(phase);
-  activeMatchPlan = null;
-  if (action === "preserve") {
-    updateNetworkStatus("Room roster changed. Current combat continues.");
+function applyMatchLifecycleMessage(message = {}) {
+  const transition = reduceClientMatchLifecycle({ phase, activeMatchPlan, awaitingRematch }, message);
+  activeMatchPlan = transition.activeMatchPlan;
+  awaitingRematch = transition.awaitingRematch;
+  if (transition.action === "ignore") return;
+  if (transition.action === "hold-current-view") {
+    updateNetworkStatus("Fresh room plan held until loadout.");
+    return;
+  }
+  if (transition.action === "preserve-current-view") {
+    updateNetworkStatus("Room roster changed. Current round continues; rematch will wait.");
+    return;
+  }
+  if (transition.action === "wait-for-rematch") {
+    const readyPlayers = Number(message.readyPlayers) || 0;
+    const humanPlayers = Number(message.humanPlayers) || lobbyPeers + 1;
+    updateNetworkStatus(`Rematch ready: ${readyPlayers}/${humanPlayers} players`);
+    return;
+  }
+  if (transition.action === "start-countdown") {
+    spawnMatchBots(message);
+    updateNetworkStatus(`Match ready: ${message.humanPlayers} human, ${message.botPlayers} bot${message.botPlayers === 1 ? "" : "s"}`);
+    $("loadoutRoomModal").classList.add("hidden");
+    beginCountdown(message.startsAt);
     return;
   }
   spawnMatchBots(null);
@@ -1779,18 +1801,26 @@ function closeLobbyRoom() {
     lobbySocket = null;
   }
   lobbyId = null;
+  lobbyRoomName = null;
   lobbyPeers = 0;
 }
 
 function ensureLobbyRoom() {
+  const roomName = lobbyRoom();
+  if (awaitingRematch && lobbyRoomName === roomName
+    && (lobbySocket?.readyState === WebSocket.OPEN || lobbySocket?.readyState === WebSocket.CONNECTING)) {
+    updateNetworkStatus("Rematch room open: waiting for Ready");
+    return;
+  }
   closeLobbyRoom();
   if (offlineMode || mode === "solo") {
     updateNetworkStatus();
     return;
   }
   const protocol = location.protocol === "https:" ? "wss" : "ws";
+  lobbyRoomName = roomName;
   lobbySocket = new WebSocket(`${protocol}://${location.host}/signal`);
-  lobbySocket.onopen = () => lobbySocket.send(JSON.stringify({ type: "join", room: lobbyRoom() }));
+  lobbySocket.onopen = () => lobbySocket.send(JSON.stringify({ type: "join", room: roomName }));
   lobbySocket.onmessage = event => {
     try {
       const message = JSON.parse(event.data);
@@ -1804,20 +1834,8 @@ function ensureLobbyRoom() {
       } else if (message.type === "peer-left") {
         lobbyPeers = Math.max(0, lobbyPeers - 1);
         updateNetworkStatus(`Room open: ${lobbyPeers + 1}/${message.capacity || 4}`);
-      } else if (message.type === "match-ready") {
-        const action = resolveMatchReadyAction({ phase, currentStartsAt: activeMatchPlan?.startsAt, startsAt: message.startsAt });
-        if (action === "ignore") return;
-        activeMatchPlan = message;
-        if (action === "defer") {
-          updateNetworkStatus("Fresh room roster ready for the next round.");
-          return;
-        }
-        spawnMatchBots(message);
-        updateNetworkStatus(`Match ready: ${message.humanPlayers} human, ${message.botPlayers} bot${message.botPlayers === 1 ? "" : "s"}`);
-        $("loadoutRoomModal").classList.add("hidden");
-        beginCountdown(message.startsAt);
-      } else if (message.type === "match-reset") {
-        resetMatchReadiness(message);
+      } else if (["match-ready", "match-reset", "match-waiting"].includes(message.type)) {
+        applyMatchLifecycleMessage(message);
       } else if (message.type === "room-full") {
         updateNetworkStatus("Room full: waiting for the next room");
       } else if (message.type === "chest-access") {
@@ -1835,7 +1853,8 @@ function ensureLobbyRoom() {
   lobbySocket.onclose = () => {
     lobbySocket = null;
     lobbyId = null;
-    if (mode === "teams") resetMatchReadiness({ reason: "connection-lost" });
+    lobbyRoomName = null;
+    if (mode === "teams") applyMatchLifecycleMessage({ type: "match-reset", reason: "connection-lost" });
     else updateNetworkStatus();
     if (!offlineMode && mode !== "solo") {
       clearTimeout(lobbyRetryTimer);
@@ -1962,6 +1981,8 @@ async function joinVoice() {
 }
 
 function lobbyChanged() {
+  activeMatchPlan = null;
+  awaitingRematch = false;
   if (localStream) closeVoice("Voice left: lobby changed");
 }
 
@@ -2257,7 +2278,7 @@ $("loadoutReadyBtn").onclick = () => {
   ui.shop.classList.add("hidden");
   if (mode === "teams" && !offlineMode) {
     if (lobbySocket?.readyState === WebSocket.OPEN) {
-      updateNetworkStatus("Starting match and filling open seats...");
+      updateNetworkStatus(awaitingRematch ? "Ready. Waiting for every player..." : "Starting match and filling open seats...");
       lobbySocket.send(JSON.stringify({ type: "start-match" }));
     } else {
       updateNetworkStatus("Waiting for the multiplayer room...");

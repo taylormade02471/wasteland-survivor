@@ -11,7 +11,7 @@ const port = Number(process.env.PORT || 8080);
 const publicDirectory = path.join(__dirname, "public");
 const rooms = new Map();
 const clients = new Map();
-const readyMatches = new Map();
+const roomMatchStates = new Map();
 const matchCountdownMs = 15000;
 let matchmakingRules;
 const matchmakingRulesReady = import("./public/matchmaking-rules.mjs").then(module => { matchmakingRules = module; });
@@ -47,6 +47,30 @@ function roomCapacity(room) {
   const parts = room.split("-");
   if (parts[1] === "ctf") return Number(parts[2] || 4);
   return 4;
+}
+
+function matchStateFor(roomName) {
+  if (!matchmakingRules.parseTeamRoomId(roomName)) return null;
+  let state = roomMatchStates.get(roomName);
+  if (!state) {
+    state = { phase: "forming", generation: 0, readyPlayerIds: new Set(), payload: null };
+    roomMatchStates.set(roomName, state);
+  }
+  return state;
+}
+
+function notifyMatchWaiting(roomName, room, reason = "waiting-for-players") {
+  const state = roomMatchStates.get(roomName);
+  if (!state || state.phase !== "awaiting-rematch") return;
+  const payload = {
+    type: "match-waiting",
+    reason,
+    awaitingRematch: true,
+    readyPlayers: state.readyPlayerIds.size,
+    humanPlayers: room.size,
+    capacity: roomCapacity(roomName),
+  };
+  for (const peer of room.values()) send(peer, payload);
 }
 
 function activeRoomSummary() {
@@ -219,29 +243,45 @@ function removeClient(socket) {
   const chestStatus = chestAccess.leave(client.room, client.id);
   room.delete(client.id);
   const capacity = roomCapacity(client.room);
-  const invalidatedPlan = readyMatches.delete(client.room);
+  const matchState = roomMatchStates.get(client.room);
+  const invalidatedPlan = matchState?.phase === "active" && Boolean(matchState.payload);
+  if (matchState) {
+    matchState.readyPlayerIds.clear();
+    if (invalidatedPlan) {
+      matchState.phase = "awaiting-rematch";
+      matchState.payload = null;
+    }
+  }
   for (const peer of room.values()) send(peer, { type: "peer-left", id: client.id, capacity });
   if (invalidatedPlan) {
     for (const peer of room.values()) {
-      send(peer, { type: "match-reset", reason: "player-left", departedId: client.id, humanPlayers: room.size, capacity });
+      send(peer, { type: "match-reset", reason: "player-left", departedId: client.id, humanPlayers: room.size, capacity, awaitingRematch: true });
     }
+  } else if (matchState?.phase === "awaiting-rematch") {
+    notifyMatchWaiting(client.room, room, "roster-changed");
   }
   for (const peer of room.values()) send(peer, { type: "chest-status", ...chestStatus });
   if (!room.size) {
     rooms.delete(client.room);
+    roomMatchStates.delete(client.room);
   }
 }
 
 function emitMatchReady(roomName, room) {
-  if (readyMatches.has(roomName)) return readyMatches.get(roomName);
+  const matchState = matchStateFor(roomName);
+  if (!matchState) return null;
+  if (matchState.phase === "active" && matchState.payload) return matchState.payload;
   const teamRoom = matchmakingRules.parseTeamRoomId(roomName);
-  if (!teamRoom) return null;
+  matchState.generation++;
   const payload = {
     type: "match-ready",
+    generation: matchState.generation,
     ...matchmakingRules.createMatchPlan(teamRoom.teamSize, [...room.keys()]),
     startsAt: Date.now() + matchCountdownMs,
   };
-  readyMatches.set(roomName, payload);
+  matchState.phase = "active";
+  matchState.readyPlayerIds.clear();
+  matchState.payload = payload;
   for (const peer of room.values()) send(peer, payload);
   return payload;
 }
@@ -255,14 +295,17 @@ function joinRoom(socket, roomName) {
     rooms.set(roomName, room);
   }
   const capacity = roomCapacity(roomName);
-  if (readyMatches.has(roomName) || room.size >= capacity) return send(socket, { type: "room-full" });
+  const matchState = matchStateFor(roomName);
+  if (matchState?.phase === "active" || room.size >= capacity) return send(socket, { type: "room-full" });
   const id = crypto.randomUUID();
   const peers = [...room.keys()];
   room.set(id, socket);
   clients.set(socket, { id, room: roomName });
-  send(socket, { type: "welcome", id, peers, capacity });
+  if (matchState?.phase === "awaiting-rematch") matchState.readyPlayerIds.clear();
+  send(socket, { type: "welcome", id, peers, capacity, awaitingRematch: matchState?.phase === "awaiting-rematch" });
   for (const peer of room.values()) if (peer !== socket) send(peer, { type: "peer-joined", id, capacity });
-  if (room.size === capacity) emitMatchReady(roomName, room);
+  if (matchState?.phase === "awaiting-rematch") notifyMatchWaiting(roomName, room, "roster-changed");
+  else if (matchState?.phase === "forming" && room.size === capacity) emitMatchReady(roomName, room);
 }
 
 function handleMessage(socket, raw) {
@@ -277,7 +320,16 @@ function handleMessage(socket, raw) {
   const sender = clients.get(socket);
   if (message?.type === "start-match" && sender) {
     const room = rooms.get(sender.room);
-    if (room?.has(sender.id)) emitMatchReady(sender.room, room);
+    if (!room?.has(sender.id)) return;
+    const matchState = matchStateFor(sender.room);
+    if (!matchState || matchState.phase === "active") return;
+    if (matchState.phase === "awaiting-rematch") {
+      matchState.readyPlayerIds.add(sender.id);
+      if (matchState.readyPlayerIds.size === room.size) emitMatchReady(sender.room, room);
+      else notifyMatchWaiting(sender.room, room, "player-ready");
+      return;
+    }
+    emitMatchReady(sender.room, room);
     return;
   }
   if (message?.type === "chest-enter" && sender) {

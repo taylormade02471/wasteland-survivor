@@ -36,17 +36,6 @@ export function resolveMatchCountdown(startsAt, now = Date.now()) {
   };
 }
 
-export function resolveMatchReadyAction({ phase, currentStartsAt, startsAt } = {}) {
-  const deadline = Number(startsAt);
-  if (!Number.isFinite(deadline)) return "ignore";
-  if (Number(currentStartsAt) === deadline) return "ignore";
-  return phase === "combat" || phase === "prep" ? "defer" : "start";
-}
-
-export function resolveMatchResetAction(phase) {
-  return phase === "loadout" || phase === "countdown" ? "loadout" : "preserve";
-}
-
 export function parseTeamRoomId(roomId) {
   const match = String(roomId ?? "").match(/^(wasteland|toxic|ice|inferno)-teams-([123])v\2$/);
   if (!match) return null;
