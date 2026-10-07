@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "Wasteland Survivor Nightfall",
+  "assets": {
+    "loading": "/assets/nightfall/backgrounds/nightfall-loading-v1.webp",
+    "shareThumbnail": "/assets/nightfall/thumbnails/wasteland-survivor-share-v1.png",
+    "icon512": "/assets/nightfall/icons/icon-512-v1.png",
+    "lobbySquad": "/assets/nightfall/backgrounds/nightfall-lobby-squad-v1.png",
+    "survivorRoster": "/assets/nightfall/characters/survivor-roster-v1.png",
+    "survivorIndex": "/assets/nightfall/characters/index.json",
+    "enemyRoster": "/assets/nightfall/enemies/radioactive-enemy-roster-v1.png",
+    "enemyIndex": "/assets/nightfall/enemies/index.json"
+  }
+}

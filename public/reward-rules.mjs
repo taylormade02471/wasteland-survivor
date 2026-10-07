@@ -1,0 +1,44 @@
+export const RISK_PROFILES = Object.freeze({
+  protected: Object.freeze({ id: "protected", label: "Protected", rewardMultiplier: 0.8, defeatScrapRate: 0, xpFloor: 50 }),
+  standard: Object.freeze({ id: "standard", label: "Standard", rewardMultiplier: 1, defeatScrapRate: 0.08, xpFloor: 75 }),
+  high: Object.freeze({ id: "high", label: "High Risk", rewardMultiplier: 1.65, defeatScrapRate: 0.18, xpFloor: 100 }),
+});
+const DIFFICULTY = Object.freeze({ easy: 1, medium: 1.25, expert: 1.6, insane: 2.2 });
+const whole = value => Math.max(0, Math.floor(Number(value) || 0));
+
+export function rewardPreview({ risk = "standard", difficulty = "medium", winStreak = 0 } = {}) {
+  const profile = RISK_PROFILES[risk] || RISK_PROFILES.standard;
+  const streakMultiplier = 1 + Math.min(0.5, whole(winStreak) * 0.05);
+  return {
+    risk: profile.id,
+    rewardMultiplier: Number((profile.rewardMultiplier * (DIFFICULTY[difficulty] || DIFFICULTY.medium) * streakMultiplier).toFixed(3)),
+    defeatScrapRate: profile.defeatScrapRate,
+    streakMultiplier: Number(streakMultiplier.toFixed(2)),
+  };
+}
+
+export function settleMatch({
+  outcome = "loss", risk = "standard", difficulty = "medium", kills = 0, wave = 1,
+  score = 0, currentScrap = 0, currentXp = 0, winStreak = 0,
+} = {}) {
+  const won = outcome === "win";
+  const draw = outcome === "draw";
+  const preview = rewardPreview({ risk, difficulty, winStreak });
+  const profile = RISK_PROFILES[preview.risk];
+  const baseXp = Math.max(profile.xpFloor, whole(kills) * 35 + whole(wave) * 45 + Math.floor(whole(score) / 20));
+  const earnedXp = Math.round(baseXp * preview.rewardMultiplier * (won ? 1.25 : draw ? 0.75 : 0.45));
+  const earnedScrap = Math.round((whole(kills) * 2 + whole(wave) * 3) * preview.rewardMultiplier * (won ? 1.2 : draw ? 0.7 : 0.35));
+  const penalty = won || draw ? 0 : Math.min(whole(currentScrap), Math.round(whole(currentScrap) * profile.defeatScrapRate));
+  const nextStreak = won ? whole(winStreak) + 1 : draw ? whole(winStreak) : 0;
+  return {
+    outcome: won ? "win" : draw ? "draw" : "loss",
+    risk: profile.id,
+    xpEarned: earnedXp,
+    scrapEarned: earnedScrap,
+    scrapPenalty: penalty,
+    nextXp: whole(currentXp) + earnedXp,
+    nextScrap: Math.max(0, whole(currentScrap) + earnedScrap - penalty),
+    winStreak: nextStreak,
+    streakBroken: !won && !draw && whole(winStreak) > 0,
+  };
+}

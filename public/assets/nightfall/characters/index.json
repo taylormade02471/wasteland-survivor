@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "master": "../survivor-roster-v1.png",
+  "avatars": [
+    {"id":"scout","name":"Dust Scout","classId":"scout","image":"scout-v1.webp"},
+    {"id":"ranger","name":"Ranger","classId":"ranger","image":"ranger-v1.webp"},
+    {"id":"heavy","name":"Heavy","classId":"heavy","image":"heavy-v1.webp"},
+    {"id":"tech","name":"Tech Runner","classId":"tech","image":"tech-runner-v1.webp"},
+    {"id":"medic","name":"Field Medic","classId":"tech","image":"field-medic-v1.webp"},
+    {"id":"warden","name":"Warden","classId":"heavy","image":"warden-v1.webp"}
+  ]
+}

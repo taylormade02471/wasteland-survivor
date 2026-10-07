@@ -1,0 +1,6 @@
+.vercel
+.data/
+node_modules/
+.worktrees/
+.superpowers/
+*.log

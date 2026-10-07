@@ -1,0 +1,17 @@
+{
+  "name": "Wasteland Survivor",
+  "short_name": "Wasteland Survivor",
+  "description": "A first-person Nightfall survival game.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#061015",
+  "theme_color": "#07161c",
+  "icons": [
+    {
+      "src": "/assets/nightfall/icons/icon-512-v1.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

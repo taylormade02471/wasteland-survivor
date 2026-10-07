@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "master": "../radioactive-enemy-roster-v1.png",
+  "enemies": [
+    {"id":"rusher","name":"Rad Rusher","image":"rusher-v1.webp"},
+    {"id":"shooter","name":"Fallout Shooter","image":"shooter-v1.webp"},
+    {"id":"sniper","name":"Waste Sniper","image":"sniper-v1.webp"},
+    {"id":"shield","name":"Crystal Shield Brute","image":"shield-brute-v1.webp"},
+    {"id":"heavy","name":"Irradiated Heavy","image":"heavy-v1.webp"},
+    {"id":"drone","name":"Contaminated Drone","image":"drone-v1.webp"},
+    {"id":"mutant","name":"Toxic Mutant","image":"mutant-v1.webp"},
+    {"id":"boss","name":"The Left-Behind","image":"boss-v1.webp"}
+  ]
+}

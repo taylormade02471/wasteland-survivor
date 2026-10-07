@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wasteland Survivor Operator</title>
+  <link rel="stylesheet" href="./operator.css">
+</head>
+<body>
+  <header>
+    <div><small>WASTELAND SURVIVOR</small><h1>Operator Console</h1></div>
+    <button id="refreshBtn" type="button" title="Refresh dashboard">Refresh</button>
+  </header>
+  <main>
+    <section class="access">
+      <label>Administrator token<input id="token" type="password" autocomplete="off"></label>
+      <button id="connectBtn" type="button">Open Console</button>
+      <p id="status">The console is locked. Player contact details, birth dates, and PINs are never available here.</p>
+    </section>
+    <section id="dashboard" class="hidden">
+      <div id="totals" class="metrics"></div>
+      <div class="columns">
+        <section><h2>Active Rooms</h2><div id="rooms" class="list"></div></section>
+        <section><h2>Recent Matches</h2><div id="matches" class="list"></div></section>
+      </div>
+      <section><h2>Service Activity</h2><div id="audit" class="list"></div></section>
+    </section>
+  </main>
+  <script src="./operator.js"></script>
+</body>
+</html>
