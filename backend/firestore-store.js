@@ -8,6 +8,7 @@ const {
   findPlayerByDeviceProfileIdInState,
   identityForPlayerInState,
   normalizeBackendState,
+  safePrivatePreferences,
   verifyDeviceCredentialInState,
 } = require("./store");
 
@@ -52,10 +53,14 @@ function mergeFirestoreState(remoteSource, localSource, remoteExists = true) {
   const auditById = new Map();
   for (const entry of [...remote.audit, ...local.audit]) if (entry?.id) auditById.set(entry.id, entry);
   return {
-    version: Math.max(remote.version, local.version, 3),
+    version: Math.max(remote.version, local.version, 4),
     players,
     identities: cloneBackendState(remote.identities),
     phoneTokenUses: {},
+    privatePreferences: Object.fromEntries([...new Set([...Object.keys(remote.privatePreferences || {}), ...Object.keys(local.privatePreferences || {})])].map(playerId => [
+      playerId,
+      safePrivatePreferences(local.privatePreferences?.[playerId], remote.privatePreferences?.[playerId]),
+    ])),
     friendships: { ...remote.friendships, ...local.friendships },
     invites: { ...remote.invites, ...local.invites },
     matches: { ...remote.matches, ...local.matches },
@@ -111,6 +116,44 @@ class FirestoreBackendStore extends BackendStore {
   }
   consumePhoneAuthToken(claim) {
     return consumeFirestorePhoneTokenUse(this.document, claim);
+  }
+  async hasAuthoritativePlayer(playerId) {
+    if (this.state.players[playerId]) return true;
+    const snapshot = await this.document.get();
+    const authoritative = normalizeBackendState(snapshot.data()?.state);
+    const player = authoritative.players[playerId];
+    if (!player) return false;
+    this.state.players[playerId] = player;
+    return true;
+  }
+  async privatePreferencesForPlayer(playerId) {
+    await this.ready;
+    if (!await this.hasAuthoritativePlayer(playerId)) return null;
+    const reference = this.document.collection("privatePlayerPreferences").doc(privateClaimHash("player-preferences", playerId));
+    const snapshot = await reference.get();
+    const preferences = safePrivatePreferences(snapshot.data()?.preferences, this.state.privatePreferences[playerId]);
+    this.state.privatePreferences[playerId] = preferences;
+    return cloneBackendState(preferences);
+  }
+  async setPrivatePreferences(playerId, input = {}) {
+    await this.ready;
+    if (!await this.hasAuthoritativePlayer(playerId)) throw new BackendStoreError("player-not-found", "Unknown player", 404);
+    const reference = this.document.collection("privatePlayerPreferences").doc(privateClaimHash("player-preferences", playerId));
+    try {
+      const preferences = await this.firestore.runTransaction(async transaction => {
+        const snapshot = await transaction.get(reference);
+        const merged = safePrivatePreferences(input, snapshot.data()?.preferences || this.state.privatePreferences[playerId]);
+        transaction.set(reference, { playerId, preferences: merged, updatedAt: new Date().toISOString() }, { merge: false });
+        return merged;
+      });
+      this.state.privatePreferences[playerId] = preferences;
+      this.audit("player.preferences-updated", { playerId });
+      try { BackendStore.prototype.persist.call(this); } catch { /* Firestore is authoritative; local cache is best-effort. */ }
+      return cloneBackendState(preferences);
+    } catch (error) {
+      if (error instanceof BackendStoreError) throw error;
+      throw new BackendStoreError("preferences-storage-unavailable", "Private preferences are temporarily unavailable", 503);
+    }
   }
   async linkVerifiedPhoneAccount(input = {}) {
     try {

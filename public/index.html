@@ -26,6 +26,22 @@
   </video>
   <div id="matchCountdown" class="match-countdown hidden"><span id="countdownLabel">ENTERING NIGHTFALL</span><b id="countdownNumber">15</b></div>
 
+  <section id="controlsTourModal" class="controls-tour-modal hidden" role="dialog" aria-labelledby="controlsTourTitle" aria-describedby="controlsTourInstruction">
+    <div class="controls-tour-card">
+      <p class="eyebrow">Safe Training // No Damage</p>
+      <div class="controls-tour-heading"><div><h2 id="controlsTourTitle">Controls Check</h2><span id="controlsTourFamily">Keyboard and mouse</span></div><b id="controlsTourProgress">1 / 5</b></div>
+      <ol id="controlsTourSteps" aria-live="polite"></ol>
+      <p id="controlsTourInstruction" class="controls-tour-instruction">Use the highlighted control to continue.</p>
+      <button id="closeControlsTourBtn" class="text-button hidden" type="button">Close Practice</button>
+    </div>
+  </section>
+
+  <aside id="controlsMiniTourOffer" class="controls-mini-tour hidden" role="status">
+    <div><b>New controls detected</b><small id="controlsMiniTourText">Practice this input without leaving the match.</small></div>
+    <button id="startControlsMiniTourBtn" type="button">Practice</button>
+    <button id="dismissControlsMiniTourBtn" type="button" aria-label="Dismiss controls practice">&#10005;</button>
+  </aside>
+
   <section id="welcomeScreen" class="welcome-screen">
     <button id="profileBackBtn" class="screen-back-button screen-back-control" type="button" aria-label="Back to saved profiles">&#8592; Back</button>
     <div class="welcome-panel">
@@ -339,6 +355,10 @@
       <div class="device-link-card">
         <div><b>Verified Account</b><small id="verifiedPhoneStatus">Verify a mobile number to restore this Player Tag on another device.</small></div>
         <button id="openPhoneAccountBtn" type="button">Phone Account</button>
+      </div>
+      <div class="settings-block controls-tour-setting">
+        <div><b>Controls Tour</b><small>Replay the safe move, aim, fire, menu, and ability checklist.</small></div>
+        <button id="controlsTourReplayBtn" type="button">Replay Tour</button>
       </div>
       <p class="permission-status network-note">Offline mode blocks lobby and voice connections. A parent can also lock this setting with the device or browser parental controls.</p>
       <div class="permission-status"><span>Microphone: when joining voice</span><span>Storage: game settings only</span><span>Location: off</span></div>

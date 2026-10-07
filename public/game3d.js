@@ -4,6 +4,14 @@ import { selectGraphicsTier } from "./graphics-config.mjs";
 import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
 import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
 import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
+import {
+  createControlsTour,
+  isControlsTourRequired,
+  mergeSeenControlsFamilies,
+  normalizeControlsFamily,
+  recordControlsTourSignal,
+  shouldOfferControlsMiniTour,
+} from "./controls-tour.mjs";
 import { activateAbility, createClassProgress, getClassDefinition, getClassStats, normalizeClassProgress } from "./class-rules.mjs";
 import { composeWave, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
 import { getWeaponProfile } from "./combat-rules.mjs";
@@ -181,6 +189,12 @@ let phoneProviderPromise = null;
 let phoneConfirmation = null;
 let phoneChallenge = null;
 let pendingPhoneAction = null;
+let controlsTourState = null;
+let pendingMatchStart = null;
+let controlsPreferencesPromise = Promise.resolve();
+let miniTourFamily = null;
+const offeredMiniTourFamilies = new Set();
+let loadoutControllerIndex = 1;
 const localPinAttempts = new Map();
 let audioContext = null;
 let musicTimer = null;
@@ -221,10 +235,13 @@ let reloadUntil = 0;
 const ARENA_LIMIT = 68;
 
 function setInputMode(nextMode) {
+  const previousFamily = normalizeControlsFamily(inputMode);
   inputMode = nextMode;
   mouseInputActive = nextMode === "mouse";
   document.body.dataset.inputMode = nextMode;
   $("landscapeHint").classList.toggle("hidden", nextMode !== "touch" || matchMedia("(orientation: landscape)").matches);
+  const nextFamily = normalizeControlsFamily(nextMode);
+  if (previousFamily !== nextFamily) offerControlsMiniTour(nextFamily);
 }
 
 function refreshInputMode() {
@@ -900,6 +917,33 @@ function pollController() {
   return result;
 }
 
+function handleControlsTourController() {
+  const controller = pollController();
+  const signals = [
+    { source: "controller", control: "left-stick", magnitude: Math.hypot(controller.mx, controller.mz) },
+    { source: "controller", control: "right-stick", magnitude: Math.hypot(controller.ax, controller.az) },
+    { source: "controller", control: "right-trigger", value: controller.fire ? 1 : 0 },
+    { source: "controller", control: "menu", pressed: controller.pause },
+    { source: "controller", control: "b", pressed: controller.ability },
+  ];
+  for (const signal of signals) handleControlsTourSignal(signal);
+}
+
+function handleSettingsController() {
+  const controller = pollController();
+  if (controller.pause) { closeSettings(); return; }
+  if (controller.interact) $("controlsTourReplayBtn").click();
+}
+
+function handleLoadoutController() {
+  const controller = pollController();
+  const controls = [$("loadoutArmoryBtn"), $("loadoutReadyBtn")];
+  if (controller.dpadLeft || controller.dpadUp) loadoutControllerIndex = 0;
+  if (controller.dpadRight || controller.dpadDown) loadoutControllerIndex = 1;
+  controls[loadoutControllerIndex]?.focus({ preventScroll: true });
+  if (controller.interact) controls[loadoutControllerIndex]?.click();
+}
+
 function nearest(unit, candidates) {
   return candidates.filter(candidate => candidate.alive).sort((left, right) => left.g.position.distanceToSquared(unit.g.position) - right.g.position.distanceToSquared(unit.g.position))[0];
 }
@@ -1034,6 +1078,7 @@ function finishCtf() {
 
 function update(dt) {
   if (phase === "over" || phase === "menu") return;
+  if (controlsTourState?.status === "active") return;
   if (phase === "countdown") {
     timer = Math.max(0, (countdownDeadline - Date.now()) / 1000);
     const next = Math.max(0, Math.ceil(timer));
@@ -1259,7 +1304,10 @@ function renderHud() {
 
 function render() {
   const dt = Math.min(clock.getDelta(), .04);
-  if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
+  if (controlsTourState?.status === "active") handleControlsTourController();
+  else if (!ui.settings.classList.contains("hidden") && controllerConnected) handleSettingsController();
+  else if (phase === "loadout" && !$("loadoutRoomModal").classList.contains("hidden") && controllerConnected) handleLoadoutController();
+  else if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
   update(dt);
   renderHud();
   player.cooldown = Math.max(0, player.cooldown - dt);
@@ -1558,6 +1606,154 @@ async function syncPublicPlayer() {
   }
 }
 
+function localControlsTourFamilies() {
+  try {
+    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(task4StorageKey("controls-tour-seen")) || "[]"));
+  } catch {
+    return [];
+  }
+}
+
+function controlsTourSeenFamilies() {
+  return mergeSeenControlsFamilies(localControlsTourFamilies(), activeProfile?.controlsTourSeenFamilies);
+}
+
+function saveControlsTourFamilies(families) {
+  const seenFamilies = mergeSeenControlsFamilies(families);
+  localStorage.setItem(task4StorageKey("controls-tour-seen"), JSON.stringify(seenFamilies));
+  if (activeProfile) {
+    activeProfile.controlsTourSeenFamilies = seenFamilies;
+    saveProfile(activeProfile);
+  }
+  return seenFamilies;
+}
+
+async function syncControlsTourPreferences() {
+  const localFamilies = controlsTourSeenFamilies();
+  if (!activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return localFamilies;
+  try {
+    const response = await fetch("/api/account/preferences", {
+      headers: { Authorization: `Bearer ${activeProfile.backendSession}` },
+    });
+    if (!response.ok) return localFamilies;
+    const payload = await response.json();
+    return saveControlsTourFamilies(mergeSeenControlsFamilies(localFamilies, payload.preferences?.controlsTourSeenFamilies));
+  } catch {
+    return localFamilies;
+  }
+}
+
+function persistControlsTourCompletion(families) {
+  const seenFamilies = saveControlsTourFamilies(families);
+  if (!activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return Promise.resolve(seenFamilies);
+  return fetch("/api/account/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeProfile.backendSession}` },
+    body: JSON.stringify({ controlsTourSeenFamilies: seenFamilies }),
+  }).then(response => {
+    if (!response.ok) throw new Error("Private controls preference was not saved");
+    return seenFamilies;
+  }).catch(() => seenFamilies);
+}
+
+function controlsFamilyLabel(family) {
+  return ({ "keyboard-mouse": "Keyboard and mouse", touch: "Touch controls", controller: "Xbox-style controller" })[family] || "Keyboard and mouse";
+}
+
+function renderControlsTour() {
+  if (!controlsTourState) return;
+  $("controlsTourFamily").textContent = controlsFamilyLabel(controlsTourState.family);
+  $("controlsTourProgress").textContent = `${Math.min(controlsTourState.stepIndex + 1, controlsTourState.steps.length)} / ${controlsTourState.steps.length}`;
+  $("controlsTourSteps").replaceChildren(...controlsTourState.steps.map((step, index) => {
+    const item = document.createElement("li");
+    item.className = index < controlsTourState.stepIndex ? "complete" : index === controlsTourState.stepIndex ? "current" : "";
+    if (index < controlsTourState.stepIndex) item.setAttribute("aria-label", `${step.title} complete`);
+    const title = document.createElement("span");
+    title.textContent = step.title;
+    const control = document.createElement("b");
+    control.textContent = index < controlsTourState.stepIndex ? "Complete" : step.control;
+    item.append(title, control);
+    return item;
+  }));
+  const current = controlsTourState.steps[controlsTourState.stepIndex];
+  $("controlsTourInstruction").textContent = current?.instruction || "Controls check complete.";
+  $("closeControlsTourBtn").classList.toggle("hidden", controlsTourState.mode === "required");
+}
+
+function startControlsTour({ family = inputMode, mode: tourMode = "required" } = {}) {
+  controlsTourState = createControlsTour({ family, seenFamilies: controlsTourSeenFamilies(), mode: tourMode });
+  miniTourFamily = null;
+  $("controlsMiniTourOffer").classList.add("hidden");
+  ui.settings.classList.add("hidden");
+  $("controlsTourModal").classList.remove("hidden");
+  document.body.classList.remove("menu-active");
+  document.body.classList.add("controls-tour-active");
+  firing = false;
+  touch.fire = false;
+  clearKeyboardInput();
+  renderControlsTour();
+}
+
+function closeControlsTour() {
+  if (controlsTourState?.mode === "required") return;
+  controlsTourState = null;
+  $("controlsTourModal").classList.add("hidden");
+  document.body.classList.remove("controls-tour-active");
+  restoreVisibleMenuSection();
+}
+
+function completeControlsTour() {
+  const completed = controlsTourState;
+  if (!completed || completed.status !== "complete") return;
+  controlsTourState = null;
+  $("controlsTourModal").classList.add("hidden");
+  document.body.classList.remove("controls-tour-active");
+  persistControlsTourCompletion(completed.seenFamilies);
+  const startMatch = pendingMatchStart;
+  pendingMatchStart = null;
+  if (startMatch) queueMicrotask(startMatch);
+  else restoreVisibleMenuSection();
+}
+
+function handleControlsTourSignal(signal) {
+  if (!controlsTourState || controlsTourState.status !== "active") return false;
+  const next = recordControlsTourSignal(controlsTourState, signal);
+  if (next !== controlsTourState) {
+    controlsTourState = next;
+    renderControlsTour();
+    if (controlsTourState.status === "complete") completeControlsTour();
+  }
+  return true;
+}
+
+function offerControlsMiniTour(family) {
+  const matchActive = phase === "combat" || phase === "prep";
+  if (offeredMiniTourFamilies.has(family) || !shouldOfferControlsMiniTour({
+    family,
+    seenFamilies: controlsTourSeenFamilies(),
+    matchActive,
+    tourActive: Boolean(controlsTourState),
+  })) return;
+  offeredMiniTourFamilies.add(family);
+  miniTourFamily = family;
+  $("controlsMiniTourText").textContent = `${controlsFamilyLabel(family)} detected. Practice now or keep playing.`;
+  $("controlsMiniTourOffer").classList.remove("hidden");
+}
+
+async function requestMatchStart(startMatch) {
+  await controlsPreferencesPromise.catch(() => []);
+  if (phase !== "menu" && phase !== "loadout") {
+    startMatch();
+    return;
+  }
+  if (isControlsTourRequired({ family: inputMode, seenFamilies: controlsTourSeenFamilies() })) {
+    pendingMatchStart = startMatch;
+    startControlsTour({ family: inputMode, mode: "required" });
+    return;
+  }
+  startMatch();
+}
+
 async function claimDeviceLink() {
   const message = $("linkProfileMessage");
   const phoneNumber = $("linkPhone").value;
@@ -1612,6 +1808,7 @@ function openLobby(contact) {
   $("riskLevel").value = riskLevel;
   updateRiskPreview();
   syncPublicPlayer();
+  controlsPreferencesPromise = syncControlsTourPreferences();
   initializeMenuBackdrop().then(updateMenuReplayStatus);
 }
 
@@ -1667,6 +1864,7 @@ function restoreVisibleMenuSection() {
 function openSettings() {
   setMenuSection("settings");
   ui.settings.classList.remove("hidden");
+  if (inputMode === "controller") $("controlsTourReplayBtn").focus({ preventScroll: true });
 }
 
 function closeSettings() {
@@ -1994,6 +2192,7 @@ function bindTouchStick(id, prefix) {
     knob.style.transform = `translate(${x}px,${y}px)`;
     touch[`${prefix}x`] = x / 38;
     touch[`${prefix}z`] = y / 38;
+    handleControlsTourSignal({ source: "touch-stick", control: prefix === "m" ? "move" : "aim", magnitude: cap / 38 });
   };
   element.addEventListener("pointerdown", event => {
     if (phase === "countdown") return;
@@ -2551,13 +2750,19 @@ addEventListener("resize", resize);
 addEventListener("gamepadconnected", () => updateControllerState(true));
 addEventListener("gamepaddisconnected", () => updateControllerState(false));
 addEventListener("keydown", event => {
+  const key = event.key.toLowerCase();
+  if (controlsTourState?.status === "active") {
+    setInputMode("keyboard");
+    handleControlsTourSignal({ source: "keyboard", kind: "down", key: event.key });
+    event.preventDefault();
+    return;
+  }
   if (event.key === "Escape") {
     if (!ui.settings.classList.contains("hidden")) { closeSettings(); return; }
     if (!$("dashboardModal").classList.contains("hidden")) { $("dashboardModal").classList.add("hidden"); restoreVisibleMenuSection(); return; }
     if (!ui.shop.classList.contains("hidden")) { ui.shop.classList.add("hidden"); restoreVisibleMenuSection(); return; }
   }
   if (controllerLocked() || phase === "countdown") return;
-  const key = event.key.toLowerCase();
   if (!lobbyScreen.classList.contains("hidden")) {
     const activeElement = document.activeElement;
     const navigationFocused = Boolean(activeElement?.matches?.("[data-lobby-control]"));
@@ -2585,6 +2790,7 @@ addEventListener("keydown", event => {
   if (key === "r") reloadWeapon(true);
   if (key === "q") cycleWeapon(1);
   if (key === "e") interact();
+  if (key === "f") triggerAbility();
   if (key === "tab") { event.preventDefault(); switchLockedTarget(); }
   keys[key] = true;
   if (key === "arrowleft") keys.a = true;
@@ -2604,6 +2810,11 @@ addEventListener("keyup", event => {
 });
 canvas.addEventListener("pointermove", event => {
   if (controllerLocked()) return;
+  if (controlsTourState?.status === "active") {
+    if (event.pointerType === "mouse") setInputMode("mouse");
+    handleControlsTourSignal({ source: "pointer", kind: "move", movementX: event.movementX, movementY: event.movementY });
+    return;
+  }
   if (event.pointerType === "mouse") {
     setInputMode("mouse");
     if (frontView && phase === "combat" && !menuOpen) {
@@ -2617,8 +2828,13 @@ canvas.addEventListener("pointermove", event => {
   const hit = raycaster.intersectObject(ground)[0];
   if (hit) aim.copy(hit.point);
 });
-canvas.addEventListener("pointerdown", () => {
+canvas.addEventListener("pointerdown", event => {
   if (controllerLocked() || phase === "countdown") return;
+  if (controlsTourState?.status === "active") {
+    if (event.pointerType === "mouse") setInputMode("mouse");
+    handleControlsTourSignal({ source: "pointer", kind: "down", button: event.button });
+    return;
+  }
   firing = true;
   wakeAudio();
   if (frontView && document.pointerLockElement !== canvas && matchMedia("(pointer: fine)").matches) canvas.requestPointerLock?.();
@@ -2642,16 +2858,19 @@ function bindHoldButton(id, onChange) {
   button.addEventListener("pointerleave", change(false));
 }
 
-bindHoldButton("touchFireBtn", active => { touch.fire = active; });
+bindHoldButton("touchFireBtn", active => {
+  if (active && handleControlsTourSignal({ source: "touch-button", control: "fire" })) return;
+  touch.fire = active;
+});
 bindHoldButton("touchAdsBtn", active => { adsActive = active; });
 $("touchReloadBtn").onclick = () => { setInputMode("touch"); reloadWeapon(true); };
 $("touchWeaponBtn").onclick = () => { setInputMode("touch"); cycleWeapon(1); };
 $("touchInteractBtn").onclick = () => { setInputMode("touch"); interact(); };
-$("touchAbilityBtn").onclick = () => { setInputMode("touch"); triggerAbility(); };
-$("touchPauseBtn").onclick = () => { setInputMode("touch"); menuOpen ? closeGameMenu() : openGameMenu(); };
-$("soloMode").onclick = () => { document.body.classList.remove("menu-active"); mode = "solo"; $("soloMode").classList.add("active"); $("teamMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); };
-$("teamMode").onclick = () => { document.body.classList.remove("menu-active"); mode = "teams"; $("teamMode").classList.add("active"); $("soloMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); };
-$("ctfMode").onclick = () => { document.body.classList.remove("menu-active"); mode = "ctf"; $("ctfMode").classList.add("active"); $("soloMode").classList.remove("active"); $("teamMode").classList.remove("active"); $("ctfPlayerControl").classList.remove("hidden"); lobbyChanged(); start(); };
+$("touchAbilityBtn").onclick = () => { setInputMode("touch"); if (!handleControlsTourSignal({ source: "touch-button", control: "ability" })) triggerAbility(); };
+$("touchPauseBtn").onclick = () => { setInputMode("touch"); if (!handleControlsTourSignal({ source: "touch-button", control: "pause" })) menuOpen ? closeGameMenu() : openGameMenu(); };
+$("soloMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "solo"; $("soloMode").classList.add("active"); $("teamMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); });
+$("teamMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "teams"; $("teamMode").classList.add("active"); $("soloMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); });
+$("ctfMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "ctf"; $("ctfMode").classList.add("active"); $("soloMode").classList.remove("active"); $("teamMode").classList.remove("active"); $("ctfPlayerControl").classList.remove("hidden"); lobbyChanged(); start(); });
 document.querySelectorAll("[data-ctf-players]").forEach(button => {
   button.onclick = () => {
     ctfPlayers = Number(button.dataset.ctfPlayers);
@@ -2712,6 +2931,10 @@ $("lobbySettingsBtn").onclick = openSettings;
 $("lobbyConnectionsBtn").onclick = openConnections;
 $("menuSettingsBtn").onclick = openSettings;
 $("closeSettingsBtn").onclick = closeSettings;
+$("controlsTourReplayBtn").onclick = () => startControlsTour({ family: inputMode, mode: "replay" });
+$("closeControlsTourBtn").onclick = closeControlsTour;
+$("startControlsMiniTourBtn").onclick = () => startControlsTour({ family: miniTourFamily || inputMode, mode: "mini" });
+$("dismissControlsMiniTourBtn").onclick = () => { miniTourFamily = null; $("controlsMiniTourOffer").classList.add("hidden"); };
 $("menuToggle").onclick = () => menuOpen ? closeGameMenu() : openGameMenu();
 $("resumeGameBtn").onclick = closeGameMenu;
 $("frontViewBtn").onclick = () => { frontView = !frontView; $("frontViewBtn").textContent = frontView ? "Arena View" : "First Person"; };

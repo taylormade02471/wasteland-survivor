@@ -225,3 +225,41 @@ test("one provider UID cannot atomically claim two legacy players on separate Fi
   assert.equal(results.filter(result => result.status === "rejected").length, 1);
   assert.equal(firestore.recordsContaining("privatePhoneIdentities").length, 1);
 });
+
+test("controls-tour completion is authoritative across already-running Firestore instances", async t => {
+  const firestore = new FakeFirestore();
+  const seed = new BackendStore(cacheFile(t, "wasteland-firestore-tour-seed-"));
+  const player = seed.upsertPlayer({ deviceProfileId: "tour-device", displayName: "Tour Player" });
+  await firestore.collection("testBackend").doc("shared").set({ state: seed.state });
+  const first = createFirestoreBackendStore({ firestore, collection: "testBackend", document: "shared", cacheFile: cacheFile(t, "wasteland-firestore-tour-a-") });
+  const second = createFirestoreBackendStore({ firestore, collection: "testBackend", document: "shared", cacheFile: cacheFile(t, "wasteland-firestore-tour-b-") });
+  await Promise.all([first.ready, second.ready]);
+
+  await first.setPrivatePreferences(player.id, { controlsTourSeenFamilies: ["mouse", "touch"] });
+  assert.deepEqual(await second.privatePreferencesForPlayer(player.id), {
+    controlsTourSeenFamilies: ["keyboard-mouse", "touch"],
+  });
+
+  await Promise.all([
+    first.setPrivatePreferences(player.id, { controlsTourSeenFamilies: ["controller"] }),
+    second.setPrivatePreferences(player.id, { controlsTourSeenFamilies: ["touch"] }),
+  ]);
+  assert.deepEqual(await first.privatePreferencesForPlayer(player.id), {
+    controlsTourSeenFamilies: ["keyboard-mouse", "touch", "controller"],
+  });
+  assert.equal(firestore.recordsContaining("privatePlayerPreferences").length, 1);
+});
+
+test("an already-running Firestore instance accepts private preferences for a newly linked player", async t => {
+  const firestore = new FakeFirestore();
+  const linkingStore = createFirestoreBackendStore({ firestore, collection: "testBackend", document: "shared", cacheFile: cacheFile(t, "wasteland-firestore-new-player-a-") });
+  const staleStore = createFirestoreBackendStore({ firestore, collection: "testBackend", document: "shared", cacheFile: cacheFile(t, "wasteland-firestore-new-player-b-") });
+  await Promise.all([linkingStore.ready, staleStore.ready]);
+
+  const linked = await linkingStore.linkVerifiedPhoneAccount(phoneLink("new-provider", "new-device", "New Player"));
+  await staleStore.setPrivatePreferences(linked.player.id, { controlsTourSeenFamilies: ["controller"] });
+
+  assert.deepEqual(await staleStore.privatePreferencesForPlayer(linked.player.id), {
+    controlsTourSeenFamilies: ["controller"],
+  });
+});

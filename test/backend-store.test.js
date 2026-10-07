@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { BackendStore } = require("../backend/store");
+const { BackendStore, safePrivatePreferences } = require("../backend/store");
 function store() { const directory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-backend-")); return new BackendStore(path.join(directory, "state.json")); }
 test("player records exclude private profile information", () => {
   const backend = store();
@@ -44,6 +44,24 @@ test("verified provider identity restores one permanent player across device pro
   assert.equal(persisted.includes("+16155550123"), false);
   assert.equal(JSON.stringify(backend.findPlayer("Kyle")).includes("firebase-user-1"), false);
   assert.equal(JSON.stringify(backend.dashboard([])).includes("firebase-user-1"), false);
+});
+test("controls tour completion persists privately and merges only known input families", async () => {
+  const backend = store();
+  const player = backend.upsertPlayer({ deviceProfileId: "tour-device", displayName: "Tour Player" });
+
+  await backend.setPrivatePreferences(player.id, { controlsTourSeenFamilies: ["mouse", "touch", "not-private-data"] });
+  await backend.setPrivatePreferences(player.id, { controlsTourSeenFamilies: ["controller"] });
+
+  const reopened = new BackendStore(backend.filePath);
+  assert.deepEqual(reopened.privatePreferencesForPlayer(player.id), {
+    controlsTourSeenFamilies: ["keyboard-mouse", "touch", "controller"],
+  });
+  assert.equal(JSON.stringify(reopened.findPlayer("Tour Player")).includes("controlsTour"), false);
+  assert.equal(JSON.stringify(reopened.dashboard([])).includes("controlsTour"), false);
+});
+test("controls tour preferences tolerate malformed persisted values", () => {
+  assert.deepEqual(safePrivatePreferences(null, null), { controlsTourSeenFamilies: [] });
+  assert.deepEqual(safePrivatePreferences({ controlsTourSeenFamilies: "keyboard" }, {}), { controlsTourSeenFamilies: [] });
 });
 test("a player accepts only one verified phone identity", () => {
   const backend = store();

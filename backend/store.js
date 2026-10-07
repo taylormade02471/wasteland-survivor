@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const EMPTY_STATE = Object.freeze({ version: 3, players: {}, identities: {}, phoneTokenUses: {}, friendships: {}, invites: {}, matches: {}, audit: [] });
+const EMPTY_STATE = Object.freeze({ version: 4, players: {}, identities: {}, phoneTokenUses: {}, privatePreferences: {}, friendships: {}, invites: {}, matches: {}, audit: [] });
 const cleanText = (value, maximum = 40) => typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, maximum) : "";
 const PUBLIC_PLAYER_TAG_PATTERN = /^WS-[A-F0-9]{6,8}$/;
 const proposedPlayerTag = value => typeof value === "string" && PUBLIC_PLAYER_TAG_PATTERN.test(value.trim()) ? value.trim() : "";
@@ -29,6 +29,20 @@ function safeProgress(source = {}, existing = {}) {
   };
 }
 
+const CONTROLS_FAMILY_ALIASES = Object.freeze({ keyboard: "keyboard-mouse", mouse: "keyboard-mouse", "keyboard-mouse": "keyboard-mouse", touch: "touch", controller: "controller" });
+function safePrivatePreferences(source = {}, existing = {}) {
+  const current = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const prior = existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {};
+  const controlsTourSeenFamilies = [];
+  const existingFamilies = Array.isArray(prior.controlsTourSeenFamilies) ? prior.controlsTourSeenFamilies : [];
+  const currentFamilies = Array.isArray(current.controlsTourSeenFamilies) ? current.controlsTourSeenFamilies : [];
+  for (const value of [...existingFamilies, ...currentFamilies]) {
+    const family = CONTROLS_FAMILY_ALIASES[String(value || "").toLowerCase()];
+    if (family && !controlsTourSeenFamilies.includes(family)) controlsTourSeenFamilies.push(family);
+  }
+  return { controlsTourSeenFamilies };
+}
+
 class BackendStoreError extends Error {
   constructor(code, message, status = 409) {
     super(message);
@@ -43,8 +57,8 @@ const cloneBackendState = state => JSON.parse(JSON.stringify(state || EMPTY_STAT
 function normalizeBackendState(source = {}) {
   const state = cloneBackendState(EMPTY_STATE);
   if (!source || typeof source !== "object") return state;
-  state.version = Math.max(3, Math.floor(Number(source.version) || 0));
-  for (const key of ["players", "identities", "phoneTokenUses", "friendships", "invites", "matches"]) {
+  state.version = Math.max(4, Math.floor(Number(source.version) || 0));
+  for (const key of ["players", "identities", "phoneTokenUses", "privatePreferences", "friendships", "invites", "matches"]) {
     state[key] = source[key] && typeof source[key] === "object" && !Array.isArray(source[key]) ? cloneBackendState(source[key]) : {};
   }
   state.audit = Array.isArray(source.audit) ? cloneBackendState(source.audit).slice(-500) : [];
@@ -348,6 +362,25 @@ class BackendStore {
       throw new BackendStoreError("account-storage-unavailable", "Account storage is temporarily unavailable", 503);
     }
   }
+  privatePreferencesForPlayer(playerId) {
+    if (!this.state.players[playerId]) return null;
+    return safePrivatePreferences(this.state.privatePreferences[playerId]);
+  }
+  async setPrivatePreferences(playerId, input = {}) {
+    if (!this.state.players[playerId]) throw new BackendStoreError("player-not-found", "Unknown player", 404);
+    const previous = this.state.privatePreferences[playerId];
+    const preferences = safePrivatePreferences(input, previous);
+    this.state.privatePreferences[playerId] = preferences;
+    this.audit("player.preferences-updated", { playerId });
+    try {
+      await this.persist();
+      return cloneBackendState(preferences);
+    } catch {
+      if (previous) this.state.privatePreferences[playerId] = previous;
+      else delete this.state.privatePreferences[playerId];
+      throw new BackendStoreError("preferences-storage-unavailable", "Private preferences are temporarily unavailable", 503);
+    }
+  }
   addFriend(playerId, friendId) {
     if (!this.state.players[playerId] || !this.state.players[friendId] || playerId === friendId) throw new Error("Invalid friendship");
     const key = [playerId, friendId].sort().join(":");
@@ -395,5 +428,6 @@ module.exports = {
   identityForPlayerInState,
   normalizeBackendState,
   PUBLIC_PLAYER_TAG_PATTERN,
+  safePrivatePreferences,
   verifyDeviceCredentialInState,
 };

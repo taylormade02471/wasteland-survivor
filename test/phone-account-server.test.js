@@ -139,6 +139,48 @@ test("verified phone identity restores the same player tag on a second device wi
   assert.equal((await post(port, "/api/recovery/request", {})).status, 404);
 });
 
+test("linked controls-tour preferences follow the private session and never enter public responses", async t => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-controls-tour-private-"));
+  const dataFile = path.join(tempDirectory, "state.json");
+  const port = await availablePort();
+  const server = await startServer(port, dataFile, { ADMIN_TOKEN: "private-admin-token" });
+  t.after(() => {
+    server.kill();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  });
+
+  const account = await post(port, "/api/account/phone", {
+    idToken: "fictional-token-1",
+    deviceProfileId: "tour-device-one",
+    player: { displayName: "Tour Player", avatarType: "ranger" },
+  });
+  assert.equal(account.status, 200);
+
+  const saved = await fetch(`http://127.0.0.1:${port}/api/account/preferences`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${account.body.session}` },
+    body: JSON.stringify({ controlsTourSeenFamilies: ["mouse", "touch", "secret-value"] }),
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(await saved.json(), { preferences: { controlsTourSeenFamilies: ["keyboard-mouse", "touch"] } });
+
+  const privateResponse = await fetch(`http://127.0.0.1:${port}/api/account/preferences`, {
+    headers: { Authorization: `Bearer ${account.body.session}` },
+  });
+  assert.equal(privateResponse.status, 200);
+  assert.deepEqual(await privateResponse.json(), { preferences: { controlsTourSeenFamilies: ["keyboard-mouse", "touch"] } });
+
+  const unauthorized = await get(port, "/api/account/preferences");
+  assert.equal(unauthorized.status, 401);
+
+  const search = await get(port, "/api/players/search?q=Tour%20Player");
+  assert.equal(JSON.stringify(search.body).includes("controlsTour"), false);
+  const dashboard = await fetch(`http://127.0.0.1:${port}/api/admin/dashboard`, {
+    headers: { Authorization: "Bearer private-admin-token" },
+  });
+  assert.equal(JSON.stringify(await dashboard.json()).includes("controlsTour"), false);
+});
+
 test("production-style server without Firebase configuration fails closed", async t => {
   const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-phone-unconfigured-"));
   const port = await availablePort();

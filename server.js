@@ -241,6 +241,29 @@ function handleApi(request, response, requestUrl) {
     });
     return true;
   }
+  if (requestUrl.pathname === "/api/account/preferences" && request.method === "GET") {
+    const actorId = sessionPlayerId(request);
+    if (!actorId) { json(response, 401, { error: "Player session required" }); return true; }
+    Promise.resolve(store.privatePreferencesForPlayer(actorId))
+      .then(preferences => preferences
+        ? json(response, 200, { preferences })
+        : json(response, 401, { error: "Player session required" }))
+      .catch(error => json(response, Number.isInteger(error?.status) ? error.status : 503, { error: error.message }));
+    return true;
+  }
+  if (requestUrl.pathname === "/api/account/preferences" && request.method === "PUT") {
+    const actorId = sessionPlayerId(request);
+    if (!actorId) { json(response, 401, { error: "Player session required" }); return true; }
+    readJson(request, response, async body => {
+      try {
+        const preferences = await store.setPrivatePreferences(actorId, body);
+        json(response, 200, { preferences });
+      } catch (error) {
+        json(response, Number.isInteger(error?.status) ? error.status : 400, { error: error.message });
+      }
+    });
+    return true;
+  }
   if (request.method === "GET" && requestUrl.pathname === "/api/players/search") {
     json(response, 200, { players: store.findPlayer(requestUrl.searchParams.get("q") || "") });
     return true;
