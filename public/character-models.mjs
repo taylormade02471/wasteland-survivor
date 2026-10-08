@@ -7,69 +7,91 @@ const rawArchetypes = {
     id: "scout",
     displayName: "Dust Scout",
     classId: "scout",
+    referenceImage: "./assets/nightfall/characters/index/scout-v1.webp",
     silhouetteTag: "light-hooded-runner",
     proportions: { height: 1.74, shoulder: 0.78, torso: 0.88, limb: 1.08, bulk: 0.82 },
     palette: { primary: "#5f6f55", secondary: "#202922", accent: "#d8b55a", cloth: "#3d342a", visor: "#8ed4cf" },
     mounts: { shoulder: "left-radio-whip", back: "rolled-bedroll", hip: "small-satchel" },
     weapon: { kind: "compact-smg", grip: "two-hand", length: 0.72 },
-    mobileBudget: { triangles: 980, materials: 5, drawGroups: 22 },
+    mobileBudget: { triangles: 1400, materials: 5, drawGroups: 28 },
   },
   ranger: {
     id: "ranger",
     displayName: "Ranger",
     classId: "ranger",
+    referenceImage: "./assets/nightfall/characters/index/ranger-v1.webp",
     silhouetteTag: "long-coat-marksman",
     proportions: { height: 1.82, shoulder: 0.86, torso: 0.96, limb: 1, bulk: 0.92 },
     palette: { primary: "#596874", secondary: "#1c252b", accent: "#c78d45", cloth: "#302824", visor: "#b7dbe8" },
     mounts: { shoulder: "scope-pack", back: "long-rifle-sling", hip: "ammo-belt" },
     weapon: { kind: "marksman-rifle", grip: "shouldered", length: 1.06 },
-    mobileBudget: { triangles: 1160, materials: 5, drawGroups: 24 },
+    mobileBudget: { triangles: 1400, materials: 5, drawGroups: 28 },
   },
   heavy: {
     id: "heavy",
     displayName: "Heavy",
     classId: "heavy",
+    referenceImage: "./assets/nightfall/characters/index/heavy-v1.webp",
     silhouetteTag: "wide-armored-bruiser",
     proportions: { height: 1.88, shoulder: 1.14, torso: 1.08, limb: 0.9, bulk: 1.24 },
     palette: { primary: "#65615b", secondary: "#252729", accent: "#d36f3d", cloth: "#38332d", visor: "#f1cf7b" },
     mounts: { shoulder: "double-pauldron", back: "shield-tank", hip: "box-magazines" },
     weapon: { kind: "drum-lmg", grip: "braced", length: 1.02 },
-    mobileBudget: { triangles: 1280, materials: 6, drawGroups: 22 },
+    mobileBudget: { triangles: 1400, materials: 5, drawGroups: 28 },
   },
   tech: {
     id: "tech",
     displayName: "Tech Runner",
     classId: "tech",
+    referenceImage: "./assets/nightfall/characters/index/tech-runner-v1.webp",
     silhouetteTag: "antenna-salvage-tech",
     proportions: { height: 1.78, shoulder: 0.82, torso: 0.92, limb: 1.02, bulk: 0.9 },
     palette: { primary: "#3f686a", secondary: "#172426", accent: "#69d6bb", cloth: "#2d3435", visor: "#e2fff3" },
     mounts: { shoulder: "sensor-fin", back: "tool-frame", hip: "repair-pods" },
     weapon: { kind: "coil-carbine", grip: "two-hand", length: 0.84 },
-    mobileBudget: { triangles: 1160, materials: 6, drawGroups: 23 },
+    mobileBudget: { triangles: 1400, materials: 5, drawGroups: 28 },
   },
   medic: {
     id: "medic",
     displayName: "Field Medic",
     classId: "tech",
+    referenceImage: "./assets/nightfall/characters/index/field-medic-v1.webp",
     silhouetteTag: "clean-pack-support",
     proportions: { height: 1.7, shoulder: 0.8, torso: 0.9, limb: 1, bulk: 0.86 },
     palette: { primary: "#6f776f", secondary: "#22312c", accent: "#f2f0da", cloth: "#32413a", visor: "#9be4d4" },
     mounts: { shoulder: "white-cross-pad", back: "medical-pack", hip: "triage-pouch" },
     weapon: { kind: "pulse-pistol", grip: "one-hand", length: 0.46 },
-    mobileBudget: { triangles: 1040, materials: 6, drawGroups: 21 },
+    mobileBudget: { triangles: 1400, materials: 5, drawGroups: 28 },
   },
   warden: {
     id: "warden",
     displayName: "Warden",
     classId: "heavy",
+    referenceImage: "./assets/nightfall/characters/index/warden-v1.webp",
     silhouetteTag: "tall-shield-keeper",
     proportions: { height: 1.94, shoulder: 1.02, torso: 1.14, limb: 0.94, bulk: 1.08 },
     palette: { primary: "#4e5e64", secondary: "#151d21", accent: "#bfc7b5", cloth: "#2c3235", visor: "#d9ede5" },
     mounts: { shoulder: "high-collar-guard", back: "tower-shield", hip: "restraint-cases" },
     weapon: { kind: "riot-shotgun", grip: "guard", length: 0.82 },
-    mobileBudget: { triangles: 1220, materials: 6, drawGroups: 23 },
+    mobileBudget: { triangles: 1400, materials: 5, drawGroups: 28 },
   },
 };
+
+const visualTargetsById = Object.freeze({
+  scout: Object.freeze(["teal hood", "ragged side cloak", "radio whip", "compact survival kit"]),
+  ranger: Object.freeze(["wide brim hat", "rust scarf", "long coat tail", "rifle sling and scope pack"]),
+  heavy: Object.freeze(["sealed helmet", "massive chest armor", "breach slab shield", "drum-fed heavy weapon"]),
+  tech: Object.freeze(["blue diagnostic glow", "antenna backpack", "tool-frame pack", "side repair case"]),
+  medic: Object.freeze(["white field jacket", "red medical harness", "cross-marked med pack", "triage pouch"]),
+  warden: Object.freeze(["high collar", "long split cloak", "tower shield", "guard shotgun stance"]),
+});
+
+const ASSET_CONTRACT = Object.freeze({
+  kind: "procedural-three-runtime",
+  importedRig: false,
+  source: "Six bundled survivor concept images are used as art direction only.",
+  remainingBlocker: "No mesh-generation/import tool is available in this local task; replace procedural parts with skinned GLB meshes when an authored character pipeline is available.",
+});
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -86,7 +108,16 @@ function archetypeId(id) {
 }
 
 export function getCharacterArchetype(id) {
-  return clone(rawArchetypes[archetypeId(id)]);
+  const archetype = rawArchetypes[archetypeId(id)];
+  return clone({
+    ...archetype,
+    sourceReference: {
+      image: archetype.referenceImage,
+      master: "./assets/nightfall/characters/survivor-roster-v1.png",
+    },
+    visualTargets: visualTargetsById[archetype.id],
+    assetContract: ASSET_CONTRACT,
+  });
 }
 
 const REQUIRED_THREE_CONSTRUCTORS = Object.freeze([
@@ -203,6 +234,46 @@ function addKit(THREE, root, materials, archetype) {
   return { backMount, hipMount, shoulderMount, classAttachmentAnchor, shield };
 }
 
+function addConceptDetails(THREE, groups, materials, archetype) {
+  const { torso, head, leftArm, hipMount, backMount } = groups;
+  if (archetype.id === "scout") {
+    head.add(mesh(THREE, "head:hood-cowl", new THREE.BoxGeometry(0.36, 0.1, 0.18), materials.cloth, [0, 1.72, -0.03]));
+    torso.add(mesh(THREE, "torso:torn-teal-cloak-left", new THREE.BoxGeometry(0.12, 0.74, 0.045), materials.visor, [-0.36, 1.02, 0.1]));
+    torso.add(mesh(THREE, "torso:torn-teal-cloak-right", new THREE.BoxGeometry(0.09, 0.58, 0.04), materials.visor, [0.32, 1.0, 0.12]));
+    return;
+  }
+  if (archetype.id === "ranger") {
+    head.add(mesh(THREE, "head:ranger-brim", new THREE.CylinderGeometry(0.31, 0.31, 0.035, 12), materials.cloth, [0, 1.84, 0]));
+    torso.add(mesh(THREE, "torso:rust-scarf", new THREE.BoxGeometry(0.58, 0.1, 0.16), materials.accent, [0, 1.55, -0.04]));
+    return;
+  }
+  if (archetype.id === "heavy") {
+    head.add(mesh(THREE, "head:sealed-faceplate", new THREE.BoxGeometry(0.26, 0.19, 0.06), materials.secondary, [0, 1.76, -0.18]));
+    torso.add(mesh(THREE, "torso:belly-armor", new THREE.BoxGeometry(0.58, 0.34, 0.13), materials.accent, [0, 1.02, -0.19]));
+    const shield = part(THREE, "shield:breach-slab");
+    shield.add(mesh(THREE, "shield:breach-slab", new THREE.BoxGeometry(0.42, 0.84, 0.1), materials.secondary, [-0.62, 0.98, -0.14]));
+    shield.add(mesh(THREE, "shield:breach-window", new THREE.BoxGeometry(0.22, 0.18, 0.04), materials.visor, [-0.62, 1.18, -0.205]));
+    leftArm.add(shield);
+    return;
+  }
+  if (archetype.id === "tech") {
+    backMount.add(mesh(THREE, "backMount:glow-cell-left", new THREE.BoxGeometry(0.08, 0.18, 0.05), materials.visor, [-0.2, 1.34, 0.37]));
+    backMount.add(mesh(THREE, "backMount:glow-cell-right", new THREE.BoxGeometry(0.08, 0.18, 0.05), materials.visor, [0.16, 1.16, 0.37]));
+    hipMount.add(mesh(THREE, "hipMount:blue-tool-case", new THREE.BoxGeometry(0.18, 0.3, 0.12), materials.visor, [0.48, 0.68, -0.02]));
+    return;
+  }
+  if (archetype.id === "medic") {
+    torso.add(mesh(THREE, "torso:white-field-jacket", new THREE.BoxGeometry(0.44, 0.42, 0.08), materials.accent, [0, 1.24, -0.22]));
+    torso.add(mesh(THREE, "torso:red-harness", new THREE.BoxGeometry(0.1, 0.58, 0.05), materials.cloth, [-0.16, 1.22, -0.27]));
+    torso.add(mesh(THREE, "torso:red-harness-cross", new THREE.BoxGeometry(0.42, 0.08, 0.05), materials.cloth, [0, 1.3, -0.28]));
+    return;
+  }
+  if (archetype.id === "warden") {
+    torso.add(mesh(THREE, "torso:long-warden-cloak-left", new THREE.BoxGeometry(0.16, 0.82, 0.06), materials.cloth, [-0.34, 0.84, 0.14]));
+    torso.add(mesh(THREE, "torso:long-warden-cloak-right", new THREE.BoxGeometry(0.16, 0.82, 0.06), materials.cloth, [0.34, 0.84, 0.14]));
+  }
+}
+
 function geometryTriangleCount(geometry) {
   if (!geometry) return 0;
   if (Number.isFinite(geometry.index?.count)) return Math.ceil(geometry.index.count / 3);
@@ -240,6 +311,8 @@ export function createCharacterModel(THREE, id = "scout") {
   const materials = createMaterials(THREE, metadata.palette);
   const root = part(THREE, `character:${metadata.id}`);
   root.userData.characterArchetype = metadata.id;
+  root.userData.sourceReference = metadata.sourceReference.image;
+  root.userData.assetContract = clone(metadata.assetContract);
 
   const hips = part(THREE, `hips:${metadata.id}`);
   const torso = part(THREE, `torso:${metadata.id}`);
@@ -280,6 +353,7 @@ export function createCharacterModel(THREE, id = "scout") {
   setScale(root, 1, p.height / 1.8, 1);
   root.add(hips, torso, head, leftArm, rightArm, leftLeg, rightLeg, weaponAnchor);
   const kit = addKit(THREE, root, materials, metadata);
+  addConceptDetails(THREE, { torso, head, leftArm, hipMount: kit.hipMount, backMount: kit.backMount }, materials, metadata);
   const { weapon, muzzle } = addWeapon(THREE, root, materials, metadata);
   const shield = leftArm.children.find((child) => child.name === "shield:tower") || null;
   const measuredBudget = measureCharacterModelBudget(root);

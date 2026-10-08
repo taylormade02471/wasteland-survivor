@@ -131,6 +131,8 @@ test("exports six normalized survivor archetypes with distinct gameplay-neutral 
     assert.equal(archetype.id, id);
     assert.equal(typeof archetype.displayName, "string");
     assert.ok(archetype.displayName.length > 0);
+    const imageId = id === "tech" ? "tech-runner" : id === "medic" ? "field-medic" : id;
+    assert.match(archetype.referenceImage, new RegExp("/index/" + imageId + "-v1\\.webp$"));
     assert.match(archetype.classId, /^(scout|ranger|heavy|tech)$/);
     assert.ok(archetype.silhouetteTag);
     assert.ok(archetype.palette.primary);
@@ -196,12 +198,12 @@ test("mesh factory builds named rig parts and distinct authored geometry for eve
 test("class-defining equipment is materially modeled as named visible geometry", () => {
   const THREE = createFakeThree();
   const expectedMeshes = {
-    scout: ["head:hood", "shoulderMount:radio-whip"],
-    ranger: ["torso:coat-tail", "backMount:scope-pack", "backMount:rifle-sling"],
-    heavy: ["shoulderMount:left", "shoulderMount:right", "weapon:drum"],
-    tech: ["backMount:antenna", "backMount:tool-frame"],
-    medic: ["backMount:med-cross", "hipMount:triage-pouch"],
-    warden: ["torso:high-collar", "shield:tower"],
+    scout: ["head:hood", "head:hood-cowl", "torso:torn-teal-cloak-left", "shoulderMount:radio-whip"],
+    ranger: ["head:ranger-brim", "torso:rust-scarf", "torso:coat-tail", "backMount:scope-pack", "backMount:rifle-sling"],
+    heavy: ["head:sealed-faceplate", "torso:belly-armor", "shield:breach-slab", "shoulderMount:left", "shoulderMount:right", "weapon:drum"],
+    tech: ["backMount:antenna", "backMount:tool-frame", "backMount:glow-cell-left", "hipMount:blue-tool-case"],
+    medic: ["torso:white-field-jacket", "torso:red-harness", "backMount:med-cross", "hipMount:triage-pouch"],
+    warden: ["torso:high-collar", "torso:long-warden-cloak-left", "torso:long-warden-cloak-right", "shield:tower"],
   };
 
   for (const [id, names] of Object.entries(expectedMeshes)) {
@@ -212,6 +214,20 @@ test("class-defining equipment is materially modeled as named visible geometry",
   const warden = createCharacterModel(THREE, "warden");
   assert.ok(warden.parts.shield, "warden exposes shield anchor/part");
   assert.equal(warden.parts.shield.parent, warden.parts.leftArm);
+});
+
+test("models carry source-reference and asset-contract handoff data without claiming imported meshes", () => {
+  const THREE = createFakeThree();
+
+  for (const id of CHARACTER_ARCHETYPE_IDS) {
+    const model = createCharacterModel(THREE, id);
+    assert.match(model.metadata.sourceReference.image, new RegExp(`${id === "tech" ? "tech-runner" : id === "medic" ? "field-medic" : id}-v1\\.webp$`));
+    assert.equal(model.root.userData.sourceReference, model.metadata.sourceReference.image);
+    assert.equal(model.root.userData.assetContract.kind, "procedural-three-runtime");
+    assert.equal(model.root.userData.assetContract.importedRig, false);
+    assert.match(model.root.userData.assetContract.remainingBlocker, /mesh-generation/i);
+    assert.ok(model.metadata.visualTargets.length >= 4, `${id} documents source-driven visual targets`);
+  }
 });
 
 test("factory rejects incomplete THREE namespaces before building partial models", () => {
