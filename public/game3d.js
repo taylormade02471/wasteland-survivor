@@ -9,6 +9,7 @@ import { kingdomUnlocked as hasKingdom, levelFromXp, unlockedMaps } from "./prog
 import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
+import { createExplorationState, evaluateExploration, explorationProgress } from "./exploration-rules.mjs";
 import { biomeAt, createConnectedWorldLayout, createTerrainGrid, createWorldScatter, resolveWorldMovement, sampleWorldElevation } from "./world-layout.mjs";
 
 const $ = id => document.getElementById(id);
@@ -31,8 +32,9 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const ui = {
   hp: $("hpText"), hpBar: $("hpBar"), shield: $("shieldText"), shieldBar: $("shieldBar"), heat: $("heatText"), heatBar: $("heatBar"),
-  scrap: $("scrapText"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
+  scrap: $("scrapText"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
+  discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"),
   controllerStatus: $("controllerStatus"), controllerOnly: $("controllerOnlyToggle"), soundToggle: $("soundToggle"), volume: $("volumeSlider"), musicToggle: $("musicToggle"), musicVolume: $("musicVolumeSlider"), musicSource: $("musicSource"), musicStatus: $("musicStatus"),
   voiceStatus: $("voiceStatus"), joinVoice: $("joinVoiceBtn"), muteVoice: $("muteVoiceBtn"), leaveVoice: $("leaveVoiceBtn"), offline: $("offlineToggle"), networkStatus: $("networkStatus"),
   aimPreset: $("aimPreset"), aimSensitivity: $("aimSensitivity"), adsSensitivity: $("adsSensitivity"), aimAssistStrength: $("aimAssistStrength"), graphicsTier: $("graphicsTier")
@@ -173,6 +175,8 @@ const magazineSizes = { scout: 30, cannon: 12, inferno: 8 };
 const magazines = { ...magazineSizes };
 let reloadUntil = 0;
 let worldLayout = createConnectedWorldLayout();
+let explorationState = createExplorationState();
+let discoveryToastUntil = 0;
 
 function setInputMode(nextMode) {
   inputMode = nextMode;
@@ -200,6 +204,26 @@ function applyWorldMovement(actor, from = { x: 0, y: 0, z: 0 }) {
   const resolved = resolveWorldMovement(worldLayout, from, actor.g.position);
   actor.g.position.set(resolved.position.x, resolved.position.y, resolved.position.z);
   return resolved;
+}
+
+function applyExplorationDiscovery() {
+  const discovery = evaluateExploration({ layout: worldLayout, state: explorationState, position: player.g.position });
+  if (!discovery.events.length) return;
+  explorationState = discovery.state;
+  score += discovery.reward.score;
+  scrap += discovery.reward.scrap;
+  updateStoryProgress();
+  const completion = discovery.events.find(event => event.kind === "completion");
+  const locations = discovery.events.filter(event => event.kind !== "completion").map(event => event.label);
+  ui.discoveryTitle.textContent = completion?.label || `Discovered: ${locations.join(" + ")}`;
+  ui.discoveryReward.textContent = `+${discovery.reward.score} SCORE / +${discovery.reward.scrap} SCRAP`;
+  ui.discoveryToast.classList.remove("hidden");
+  discoveryToastUntil = performance.now() + 3200;
+  const progress = explorationProgress(worldLayout, explorationState);
+  document.dispatchEvent(new CustomEvent("wasteland:discovery", {
+    detail: { events: discovery.events, reward: discovery.reward, progress },
+  }));
+  playTone(completion ? 760 : 620, .08, "triangle", .035);
 }
 
 scene.add(new THREE.HemisphereLight(0xaed8ff, 0x1a110c, 2));
@@ -701,6 +725,9 @@ function start() {
   blue = red = score = kills = scrap = shieldLevel = 0;
   wave = 1;
   activeGun = "scout";
+  explorationState = createExplorationState();
+  discoveryToastUntil = 0;
+  ui.discoveryToast.classList.add("hidden");
   ui.over.classList.add("hidden");
   ui.shop.classList.add("hidden");
   Object.values(guns).forEach(gun => { gun.level = 0; });
@@ -1251,6 +1278,7 @@ function update(dt) {
   lookDirection.y = 0;
   if (lookDirection.lengthSq() > .01) player.g.rotation.y = Math.atan2(lookDirection.x, lookDirection.z);
   applyWorldMovement(player, playerFrom);
+  applyExplorationDiscovery();
   for (const hazard of hazards) if (player.g.position.distanceTo(hazard) < 4) applyDamage(player, 10 * dt);
   if (!menuOpen && wantsFire) fire(player, aim);
     if (mode === "ctf") updateCtfBots(dt);
@@ -1317,6 +1345,10 @@ function formatTime(seconds) {
 function render() {
   const dt = Math.min(clock.getDelta(), .04);
   update(dt);
+  if (discoveryToastUntil && performance.now() >= discoveryToastUntil) {
+    discoveryToastUntil = 0;
+    ui.discoveryToast.classList.add("hidden");
+  }
   const weapon = weaponProfile();
   ui.hp.textContent = Math.max(0, Math.ceil(player.hp));
   ui.hpBar.style.width = `${Math.max(0, player.hp)}%`;
@@ -1333,6 +1365,8 @@ function render() {
   ui.mission.textContent = `Mission: ${kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex]}`;
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
   ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
+  const exploration = explorationProgress(worldLayout, explorationState);
+  ui.exploration.textContent = `EXPLORE ${exploration.discovered}/${exploration.total}`;
   ui.phase.textContent = mode === "ctf" ? "CAPTURE" : phase.toUpperCase();
   ui.timer.textContent = phase === "loadout" ? "WAITING" : formatTime(timer);
   ui.prep.textContent = ui.timer.textContent;

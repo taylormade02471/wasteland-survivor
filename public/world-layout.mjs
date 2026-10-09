@@ -136,16 +136,16 @@ export function createConnectedWorldLayout() {
     rect("overpass-ramp-south", 0, 74, 13, 36, { from: 7.5, to: 0, axis: "z", kind: "overpass" }),
   ]);
   const landmarks = Object.freeze([
-    rect("burned-forest", -188, 132, 78, 82, { type: "forest", blocks: false, count: 34 }),
-    rect("looted-armory", -86, 184, 34, 24, { type: "armory", blocks: true, enterable: true }),
-    rect("ruined-library", 112, -170, 38, 32, { type: "library", blocks: true, enterable: true }),
-    rect("ash-castle", -202, 18, 58, 52, { type: "castle", blocks: true, enterable: true }),
-    rect("white-house-ruin", 166, -2, 40, 30, { type: "civic", blocks: true, enterable: false }),
-    rect("pentagon-ruin", 178, -90, 54, 46, { type: "civic", sides: 5, blocks: true }),
-    rect("downtown-skyscrapers", 172, -172, 98, 98, { type: "skyscrapers", blocks: false, towers: 9 }),
-    rect("desert-houses", 166, 156, 94, 72, { type: "houses", blocks: false, houses: 12 }),
-    rect("mountain-caves", -162, -112, 58, 24, { type: "caves", blocks: false }),
-    rect("underpass-overpass", 0, 42, 68, 15, { type: "overpass", blocks: false }),
+    rect("burned-forest", -188, 132, 78, 82, { label: "Burned Forest", type: "forest", blocks: false, count: 34 }),
+    rect("looted-armory", -86, 184, 34, 24, { label: "Looted Armory", type: "armory", blocks: true, enterable: true }),
+    rect("ruined-library", 112, -170, 38, 32, { label: "Ruined Library", type: "library", blocks: true, enterable: true }),
+    rect("ash-castle", -202, 18, 58, 52, { label: "Ash Castle", type: "castle", blocks: true, enterable: true }),
+    rect("white-house-ruin", 166, -2, 40, 30, { label: "Executive House Ruin", type: "civic", blocks: true, enterable: false }),
+    rect("pentagon-ruin", 178, -90, 54, 46, { label: "Five-Sided Command Ruin", type: "civic", sides: 5, blocks: true }),
+    rect("downtown-skyscrapers", 172, -172, 98, 98, { label: "Shattered Downtown", type: "skyscrapers", blocks: false, towers: 9 }),
+    rect("desert-houses", 166, 156, 94, 72, { label: "Abandoned Desert Homes", type: "houses", blocks: false, houses: 12 }),
+    rect("mountain-caves", -162, -112, 58, 24, { label: "Mountain Caves", type: "caves", blocks: false }),
+    rect("underpass-overpass", 0, 42, 68, 15, { label: "Broken Overpass", type: "overpass", blocks: false }),
   ]);
   const structures = buildStructures();
   const detail = Object.freeze([
