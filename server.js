@@ -4,21 +4,25 @@ const http = require("http");
 const path = require("path");
 const { WebSocket, WebSocketServer } = require("ws");
 const { createBackendStore } = require("./backend/firestore-store");
-const { DeviceLinkService, RateLimiter, RecoveryService, SessionService, hash } = require("./backend/security");
+const { RateLimiter, SessionService, hash } = require("./backend/security");
+const { PhoneAuthError, createPhoneAuthService } = require("./backend/phone-auth");
 const { ChestAccess } = require("./backend/chest-access");
 
 const port = Number(process.env.PORT || 8080);
 const publicDirectory = path.join(__dirname, "public");
 const rooms = new Map();
 const clients = new Map();
+const roomMatchStates = new Map();
+const matchCountdownMs = 15000;
+let matchmakingRules;
+const matchmakingRulesReady = import("./public/matchmaking-rules.mjs").then(module => { matchmakingRules = module; });
 const chestAccess = new ChestAccess(2);
 const store = createBackendStore({ rootDirectory: __dirname });
 const adminToken = process.env.ADMIN_TOKEN || "";
 const sessionSecret = process.env.SESSION_SECRET || "wasteland-local-session-secret-change-before-production";
 if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required in production");
 const sessions = new SessionService(sessionSecret);
-const recovery = new RecoveryService();
-const deviceLinks = new DeviceLinkService();
+const phoneAuth = createPhoneAuthService(process.env, { consumeTokenUse: claim => store.consumePhoneAuthToken(claim) });
 const sensitiveLimiter = new RateLimiter({ limit: 8, windowMs: 60000, blockMs: 300000 });
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -31,16 +35,42 @@ const mimeTypes = {
   ".svg": "image/svg+xml",
   ".webp": "image/webp"
 };
-const roomPattern = /^(wasteland|toxic|ice|inferno)-(solo|teams|ctf)(?:-(4|6))?$/;
+const roomPattern = /^(wasteland|toxic|ice|inferno)-(?:solo|ctf-(?:4|6)|teams-(?:1v1|2v2|3v3))$/;
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
 function roomCapacity(room) {
+  const teamRoom = matchmakingRules.parseTeamRoomId(room);
+  if (teamRoom) return teamRoom.capacity;
   const parts = room.split("-");
   if (parts[1] === "ctf") return Number(parts[2] || 4);
   return 4;
+}
+
+function matchStateFor(roomName) {
+  if (!matchmakingRules.parseTeamRoomId(roomName)) return null;
+  let state = roomMatchStates.get(roomName);
+  if (!state) {
+    state = { phase: "forming", generation: 0, readyPlayerIds: new Set(), payload: null };
+    roomMatchStates.set(roomName, state);
+  }
+  return state;
+}
+
+function notifyMatchWaiting(roomName, room, reason = "waiting-for-players") {
+  const state = roomMatchStates.get(roomName);
+  if (!state || state.phase !== "awaiting-rematch") return;
+  const payload = {
+    type: "match-waiting",
+    reason,
+    awaitingRematch: true,
+    readyPlayers: state.readyPlayerIds.size,
+    humanPlayers: room.size,
+    capacity: roomCapacity(roomName),
+  };
+  for (const peer of room.values()) send(peer, payload);
 }
 
 function activeRoomSummary() {
@@ -81,22 +111,157 @@ function enforceRateLimit(request, response, suffix) {
   return false;
 }
 
-function sessionPlayer(request) {
+function sessionPlayerId(request) {
   const token = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const payload = sessions.verify(token);
-  return payload ? store.playerById(payload.sub) : null;
+  return payload?.sub || "";
+}
+
+function sessionPlayer(request) {
+  const playerId = sessionPlayerId(request);
+  return playerId ? store.playerById(playerId) : null;
 }
 
 function publicPlayer(player) {
   if (!player) return null;
-  const { deviceProfileId, deviceCredentialHash, deviceCredentialHashes, ...safe } = player;
+  const { deviceProfileId, deviceProfileIds, deviceCredentialHash, deviceCredentialHashes, ...safe } = player;
   return safe;
+}
+
+function configuredFirebaseAuthDomain() {
+  const raw = String(process.env.FIREBASE_AUTH_DOMAIN || "").trim();
+  if (!/^[a-z0-9.-]+(?::\d+)?$/i.test(raw)) return null;
+  try {
+    const parsed = new URL(`https://${raw}`);
+    if (!parsed.hostname || parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.username || parsed.password) return null;
+    return { domain: parsed.host, origin: parsed.origin };
+  } catch {
+    return null;
+  }
+}
+
+function phoneClientConfig() {
+  const authDomain = configuredFirebaseAuthDomain();
+  const enabled = phoneAuth.configured
+    && Boolean(process.env.FIREBASE_WEB_API_KEY)
+    && Boolean(authDomain)
+    && Boolean(process.env.FIREBASE_PROJECT_ID);
+  if (!enabled) return { enabled: false };
+  const result = {
+    enabled: true,
+    sdkVersion: process.env.FIREBASE_WEB_SDK_VERSION || "11.10.0",
+    firebaseConfig: {
+      apiKey: process.env.FIREBASE_WEB_API_KEY,
+      authDomain: authDomain.domain,
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      appId: process.env.FIREBASE_APP_ID || undefined,
+    },
+  };
+  if (process.env.NODE_ENV !== "production" && process.env.FIREBASE_AUTH_EMULATOR_URL) result.authEmulatorUrl = process.env.FIREBASE_AUTH_EMULATOR_URL;
+  return result;
+}
+
+function contentSecurityPolicy() {
+  const config = phoneClientConfig();
+  const scripts = ["'self'", "https://cdn.jsdelivr.net"];
+  const connections = ["'self'", "ws:", "wss:"];
+  const directives = ["default-src 'self'"];
+  if (config.enabled) {
+    const authOrigin = `https://${config.firebaseConfig.authDomain}`;
+    scripts.push("https://www.gstatic.com", "https://www.google.com");
+    connections.push(
+      authOrigin,
+      "https://identitytoolkit.googleapis.com",
+      "https://securetoken.googleapis.com",
+      "https://www.googleapis.com",
+      "https://www.google.com",
+      "https://recaptcha.google.com",
+    );
+    directives.push(`script-src ${scripts.join(" ")}`);
+    directives.push("style-src 'self'");
+    directives.push(`connect-src ${connections.join(" ")}`);
+    directives.push("img-src 'self' data:");
+    directives.push("media-src 'self' blob:");
+    directives.push(`frame-src 'self' ${authOrigin} https://www.google.com https://recaptcha.google.com`);
+    return directives.join("; ");
+  }
+  directives.push(`script-src ${scripts.join(" ")}`);
+  directives.push("style-src 'self'");
+  directives.push(`connect-src ${connections.join(" ")}`);
+  directives.push("img-src 'self' data:");
+  directives.push("media-src 'self' blob:");
+  return directives.join("; ");
 }
 
 function handleApi(request, response, requestUrl) {
   if (!requestUrl.pathname.startsWith("/api/")) return false;
   if (request.method === "GET" && requestUrl.pathname === "/api/status") {
     json(response, 200, { ok: true, rooms: activeRoomSummary(), uptimeSeconds: Math.floor(process.uptime()), persistence: true, storage: store.storageType });
+    return true;
+  }
+  if (request.method === "GET" && requestUrl.pathname === "/api/phone/config") {
+    json(response, 200, phoneClientConfig());
+    return true;
+  }
+  if (request.method === "POST" && requestUrl.pathname === "/api/account/phone") {
+    if (!enforceRateLimit(request, response, "phone-account")) return true;
+    readJson(request, response, async body => {
+      try {
+        const verified = await phoneAuth.verify(body.idToken);
+        const deviceCredential = crypto.randomBytes(32).toString("base64url");
+        const source = body.player && typeof body.player === "object" ? body.player : {};
+        const linked = await store.linkVerifiedPhoneAccount({
+          providerUid: verified.providerUid,
+          phoneHint: verified.phoneHint,
+          deviceProfileId: body.deviceProfileId,
+          ownershipCredentialHash: hash(body.deviceCredential || ""),
+          sessionPlayerId: sessionPlayerId(request),
+          newDeviceCredentialHash: hash(deviceCredential),
+          player: {
+            playerTag: source.playerTag,
+            displayName: source.displayName,
+            avatarType: source.avatarType,
+            level: source.level,
+            online: true,
+            stats: source.stats,
+            progress: source.progress,
+          },
+        });
+        json(response, 200, {
+          restored: linked.restored,
+          player: publicPlayer(linked.player),
+          phoneHint: linked.phoneHint,
+          session: sessions.issue(linked.player.id),
+          deviceCredential,
+        });
+      } catch (error) {
+        if (error instanceof PhoneAuthError || Number.isInteger(error?.status)) json(response, error.status, { error: error.message, code: error.code });
+        else json(response, /required|known player/i.test(error.message) ? 400 : 409, { error: error.message });
+      }
+    });
+    return true;
+  }
+  if (requestUrl.pathname === "/api/account/preferences" && request.method === "GET") {
+    const actorId = sessionPlayerId(request);
+    if (!actorId) { json(response, 401, { error: "Player session required" }); return true; }
+    Promise.resolve(store.privatePreferencesForPlayer(actorId))
+      .then(preferences => preferences
+        ? json(response, 200, { preferences })
+        : json(response, 401, { error: "Player session required" }))
+      .catch(error => json(response, Number.isInteger(error?.status) ? error.status : 503, { error: error.message }));
+    return true;
+  }
+  if (requestUrl.pathname === "/api/account/preferences" && request.method === "PUT") {
+    const actorId = sessionPlayerId(request);
+    if (!actorId) { json(response, 401, { error: "Player session required" }); return true; }
+    readJson(request, response, async body => {
+      try {
+        const preferences = await store.setPrivatePreferences(actorId, body);
+        json(response, 200, { preferences });
+      } catch (error) {
+        json(response, Number.isInteger(error?.status) ? error.status : 400, { error: error.message });
+      }
+    });
     return true;
   }
   if (request.method === "GET" && requestUrl.pathname === "/api/players/search") {
@@ -108,6 +273,9 @@ function handleApi(request, response, requestUrl) {
     readJson(request, response, body => {
       try {
         const existing = store.playerByDeviceProfileId(body.deviceProfileId);
+        if (!existing) {
+          json(response, 401, { error: "Verified phone account required" }); return;
+        }
         if (existing && !store.verifyDeviceCredential(existing.id, hash(body.deviceCredential || ""))) {
           json(response, 401, { error: "Device credential required" }); return;
         }
@@ -132,28 +300,6 @@ function handleApi(request, response, requestUrl) {
     });
     return true;
   }
-  if (request.method === "POST" && requestUrl.pathname === "/api/link/create") {
-    const actor = sessionPlayer(request);
-    if (!actor) { json(response, 401, { error: "Player session required" }); return true; }
-    const link = deviceLinks.create(actor.id);
-    store.audit("device-link.created", { playerId: actor.id }); store.persist();
-    json(response, 201, { playerTag: actor.playerTag, code: link.code, expiresAt: new Date(link.expiresAt).toISOString() });
-    return true;
-  }
-  if (request.method === "POST" && requestUrl.pathname === "/api/link/claim") {
-    if (!enforceRateLimit(request, response, "device-link")) return true;
-    readJson(request, response, body => {
-      const player = store.findPlayer(body.playerTag || "").find(candidate => candidate.playerTag.toLowerCase() === String(body.playerTag || "").trim().toLowerCase());
-      if (!player || !deviceLinks.claim(player.id, body.code)) {
-        json(response, 400, { error: "Invalid or expired link code" }); return;
-      }
-      const deviceCredential = crypto.randomBytes(32).toString("base64url");
-      store.setDeviceCredential(player.id, hash(deviceCredential));
-      store.audit("device-link.claimed", { playerId: player.id }); store.persist();
-      json(response, 200, { player: publicPlayer(store.playerById(player.id)), session: sessions.issue(player.id), deviceCredential });
-    });
-    return true;
-  }
   if (request.method === "POST" && requestUrl.pathname === "/api/invites") {
     const actor = sessionPlayer(request);
     if (!actor) { json(response, 401, { error: "Player session required" }); return true; }
@@ -169,29 +315,6 @@ function handleApi(request, response, requestUrl) {
     readJson(request, response, body => {
       try { json(response, 201, { match: store.recordMatch({ ...body, players: [...new Set([actor.id, ...(body.players || [])])] }) }); }
       catch (error) { json(response, 400, { error: error.message }); }
-    });
-    return true;
-  }
-  if (request.method === "POST" && requestUrl.pathname === "/api/recovery/request") {
-    if (!enforceRateLimit(request, response, "recovery-request")) return true;
-    readJson(request, response, body => {
-      const player = store.findPlayer(body.playerTag || "")[0];
-      const result = { accepted: true, delivery: "not-configured" };
-      if (player) {
-        const challenge = recovery.create(player.id);
-        store.audit("recovery.requested", { playerId: player.id }); store.persist();
-        if (process.env.NODE_ENV !== "production") result.developmentToken = challenge.token;
-      }
-      json(response, 202, result);
-    });
-    return true;
-  }
-  if (request.method === "POST" && requestUrl.pathname === "/api/recovery/verify") {
-    if (!enforceRateLimit(request, response, "recovery-verify")) return true;
-    readJson(request, response, body => {
-      const verified = recovery.consume(body.token);
-      if (!verified) { json(response, 400, { error: "Invalid or expired recovery token" }); return; }
-      json(response, 200, { session: sessions.issue(verified.playerId) });
     });
     return true;
   }
@@ -212,9 +335,48 @@ function removeClient(socket) {
   if (!room) return;
   const chestStatus = chestAccess.leave(client.room, client.id);
   room.delete(client.id);
-  for (const peer of room.values()) send(peer, { type: "peer-left", id: client.id });
+  const capacity = roomCapacity(client.room);
+  const matchState = roomMatchStates.get(client.room);
+  const invalidatedPlan = matchState?.phase === "active" && Boolean(matchState.payload);
+  if (matchState) {
+    matchState.readyPlayerIds.clear();
+    if (invalidatedPlan) {
+      matchState.phase = "awaiting-rematch";
+      matchState.payload = null;
+    }
+  }
+  for (const peer of room.values()) send(peer, { type: "peer-left", id: client.id, capacity });
+  if (invalidatedPlan) {
+    for (const peer of room.values()) {
+      send(peer, { type: "match-reset", reason: "player-left", departedId: client.id, humanPlayers: room.size, capacity, awaitingRematch: true });
+    }
+  } else if (matchState?.phase === "awaiting-rematch") {
+    notifyMatchWaiting(client.room, room, "roster-changed");
+  }
   for (const peer of room.values()) send(peer, { type: "chest-status", ...chestStatus });
-  if (!room.size) rooms.delete(client.room);
+  if (!room.size) {
+    rooms.delete(client.room);
+    roomMatchStates.delete(client.room);
+  }
+}
+
+function emitMatchReady(roomName, room) {
+  const matchState = matchStateFor(roomName);
+  if (!matchState) return null;
+  if (matchState.phase === "active" && matchState.payload) return matchState.payload;
+  const teamRoom = matchmakingRules.parseTeamRoomId(roomName);
+  matchState.generation++;
+  const payload = {
+    type: "match-ready",
+    generation: matchState.generation,
+    ...matchmakingRules.createMatchPlan(teamRoom.teamSize, [...room.keys()]),
+    startsAt: Date.now() + matchCountdownMs,
+  };
+  matchState.phase = "active";
+  matchState.readyPlayerIds.clear();
+  matchState.payload = payload;
+  for (const peer of room.values()) send(peer, payload);
+  return payload;
 }
 
 function joinRoom(socket, roomName) {
@@ -226,14 +388,17 @@ function joinRoom(socket, roomName) {
     rooms.set(roomName, room);
   }
   const capacity = roomCapacity(roomName);
-  if (room.size >= capacity) return send(socket, { type: "room-full" });
+  const matchState = matchStateFor(roomName);
+  if (matchState?.phase === "active" || room.size >= capacity) return send(socket, { type: "room-full" });
   const id = crypto.randomUUID();
   const peers = [...room.keys()];
   room.set(id, socket);
   clients.set(socket, { id, room: roomName });
-  send(socket, { type: "welcome", id, peers, capacity });
-  for (const peer of room.values()) if (peer !== socket) send(peer, { type: "peer-joined", id });
-  if (room.size === capacity) for (const peer of room.values()) send(peer, { type: "match-ready", capacity });
+  if (matchState?.phase === "awaiting-rematch") matchState.readyPlayerIds.clear();
+  send(socket, { type: "welcome", id, peers, capacity, awaitingRematch: matchState?.phase === "awaiting-rematch" });
+  for (const peer of room.values()) if (peer !== socket) send(peer, { type: "peer-joined", id, capacity });
+  if (matchState?.phase === "awaiting-rematch") notifyMatchWaiting(roomName, room, "roster-changed");
+  else if (matchState?.phase === "forming" && room.size === capacity) emitMatchReady(roomName, room);
 }
 
 function handleMessage(socket, raw) {
@@ -246,6 +411,20 @@ function handleMessage(socket, raw) {
   }
   if (message?.type === "join" && typeof message.room === "string") return joinRoom(socket, message.room);
   const sender = clients.get(socket);
+  if (message?.type === "start-match" && sender) {
+    const room = rooms.get(sender.room);
+    if (!room?.has(sender.id)) return;
+    const matchState = matchStateFor(sender.room);
+    if (!matchState || matchState.phase === "active") return;
+    if (matchState.phase === "awaiting-rematch") {
+      matchState.readyPlayerIds.add(sender.id);
+      if (matchState.readyPlayerIds.size === room.size) emitMatchReady(sender.room, room);
+      else notifyMatchWaiting(sender.room, room, "player-ready");
+      return;
+    }
+    emitMatchReady(sender.room, room);
+    return;
+  }
   if (message?.type === "chest-enter" && sender) {
     const result = chestAccess.enter(sender.room, sender.id);
     send(socket, { type: "chest-access", ...result });
@@ -308,7 +487,7 @@ function serveStatic(request, response) {
     response.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; media-src 'self' blob:",
+      "Content-Security-Policy": contentSecurityPolicy(),
       "Permissions-Policy": "microphone=(self), geolocation=(), camera=()",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin"
@@ -340,7 +519,7 @@ websocketServer.on("connection", socket => {
   socket.on("error", () => removeClient(socket));
 });
 
-store.ready
+Promise.all([store.ready, matchmakingRulesReady])
   .then(() => server.listen(port, "0.0.0.0", () => console.log(`Wasteland Survivor listening on ${port} with ${store.storageType} storage`)))
   .catch(error => {
     console.error("Backend storage failed to initialize", error);

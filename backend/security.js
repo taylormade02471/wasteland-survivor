@@ -46,35 +46,4 @@ class RateLimiter {
   }
 }
 
-class RecoveryService {
-  constructor(lifetimeMs = 15 * 60 * 1000) { this.lifetimeMs = lifetimeMs; this.challenges = new Map(); }
-  create(playerId, now = Date.now()) {
-    const token = crypto.randomBytes(24).toString("base64url");
-    this.challenges.set(hash(token), { playerId, expiresAt: now + this.lifetimeMs, used: false });
-    return { token, expiresAt: now + this.lifetimeMs };
-  }
-  consume(token, now = Date.now()) {
-    const key = hash(token), challenge = this.challenges.get(key);
-    if (!challenge || challenge.used || challenge.expiresAt < now) return null;
-    challenge.used = true;
-    return { playerId: challenge.playerId };
-  }
-}
-
-class DeviceLinkService {
-  constructor(lifetimeMs = 5 * 60 * 1000) { this.lifetimeMs = lifetimeMs; this.links = new Map(); }
-  create(playerId, now = Date.now()) {
-    for (const [key, link] of this.links) if (link.playerId === playerId) this.links.delete(key);
-    const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
-    this.links.set(hash(`${playerId}:${code}`), { playerId, expiresAt: now + this.lifetimeMs, used: false });
-    return { code, expiresAt: now + this.lifetimeMs };
-  }
-  claim(playerId, code, now = Date.now()) {
-    const link = this.links.get(hash(`${playerId}:${String(code || "")}`));
-    if (!link || link.used || link.expiresAt < now) return false;
-    link.used = true;
-    return true;
-  }
-}
-
-module.exports = { DeviceLinkService, RateLimiter, RecoveryService, SessionService, hash };
+module.exports = { RateLimiter, SessionService, hash };

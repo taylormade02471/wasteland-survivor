@@ -1,7 +1,33 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
-import { createNightfallBackground, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
+import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
+import { applyCanvasPointerHandoff, bindTransientPointerInterrupts } from "./input-recovery-adapter.mjs";
+import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
+import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
+import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
+import {
+  applyRequiredControlsTourLock,
+  captureControlsTourPreferenceIdentity,
+  syncControlsTourPreferencesForIdentity,
+} from "./controls-tour-adapter.mjs";
+import {
+  cancelPendingMatchSelection,
+  cancelQueuedControlsTour,
+  controlsTourStorageKey,
+  createControlsTour,
+  createPendingMatchGate,
+  mergeSeenControlsFamilies,
+  normalizeControlsFamily,
+  planOptionalControlsTour,
+  queuePendingMatchSelection,
+  recordControlsTourControllerSnapshot,
+  recordControlsTourSignal,
+  releaseQueuedControlsTour,
+  resolvePendingMatchSelection,
+  shouldOfferControlsMiniTour,
+  shouldBlockControlsTourSimulation,
+} from "./controls-tour.mjs";
 import { activateAbility, createClassProgress, getClassDefinition, getClassStats, normalizeClassProgress } from "./class-rules.mjs";
 import { composeWave, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
 import { getWeaponProfile } from "./combat-rules.mjs";
@@ -11,14 +37,48 @@ import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createExplorationState, evaluateExploration, explorationProgress } from "./exploration-rules.mjs";
 import { biomeAt, createConnectedWorldLayout, createTerrainGrid, createWorldScatter, resolveWorldMovement, sampleWorldElevation } from "./world-layout.mjs";
+import { createHudViewModel } from "./hud-view-model.mjs";
+import {
+  LOBBY_CONTROL_ORDER,
+  createMenuNavigator,
+  describeLobbyControl,
+  nextLobbySelectIndex,
+  resolveLobbyControllerAction,
+  resolveMenuKeyAction,
+  visibleLobbyControlDescriptors,
+} from "./menu-navigation.mjs";
+import { reduceClientMatchLifecycle } from "./matchmaking-client.mjs";
+import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
+import {
+  beginLocalPinAttempts,
+  beginPhoneChallenge,
+  buildPhoneLinkRequest,
+  createRestoredLocalProfile,
+  failPhoneChallenge,
+  finishPhoneChallenge,
+  maskPhoneNumber,
+  mayResendPhoneChallenge,
+  mergeVerifiedLocalProfile,
+  normalizePhoneNumber,
+  recordLocalPinAttempt,
+  sanitizeLocalProfile,
+} from "./phone-account.mjs";
+import { loadPhoneAuthProvider } from "./phone-auth-provider.mjs";
+import {
+  applyAuthoritativePlayerIdentity,
+  backfillProfileIdentities,
+  createLobbyProfileView,
+  ensureProfileIdentity,
+  reduceLobbyConnectivity,
+} from "./lobby-profile-view.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
 const canvas = $("game");
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
+const inputRecoveryNotice = $("inputRecoveryNotice");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 3));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.autoUpdate = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -32,6 +92,7 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const ui = {
   hp: $("hpText"), hpBar: $("hpBar"), shield: $("shieldText"), shieldBar: $("shieldBar"), heat: $("heatText"), heatBar: $("heatBar"),
+  ammo: $("ammoText"), ability: $("abilityText"), abilityBar: $("abilityBar"), team: $("teamText"), teamName: $("teamName"), teamHealth: $("teamHealthText"), teamHealthBar: $("teamHealthBar"), objective: $("objectiveText"),
   scrap: $("scrapText"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
   discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"),
@@ -44,18 +105,15 @@ const lobbyScreen = $("lobbyScreen");
 const profileStep = $("profileStep");
 const returnStep = $("returnStep");
 const linkProfileStep = $("linkProfileStep");
-const profileContact = $("profileContact");
+const phoneCodeStep = $("phoneCodeStep");
+const profilePhone = $("profilePhone");
 const profileAvatar = $("profileAvatar");
 const profileName = $("profileName");
 const profileBirthDate = $("profileBirthDate");
 const ageConfirm = $("ageConfirm");
 const parentSetup = $("parentSetup");
-const parentContact = $("parentContact");
-const mathStep = $("mathStep");
-const mathQuestion = $("mathQuestion");
-const mathAnswer = $("mathAnswer");
-const mathTimer = $("mathTimer");
-const mathMessage = $("mathMessage");
+const parentPhone = $("parentPhone");
+const parentPin = $("parentPin");
 const profilePin = $("profilePin");
 const returnPin = $("returnPin");
 const profileMessage = $("profileMessage");
@@ -65,6 +123,7 @@ const lobbyPlayer = $("lobbyPlayer");
 const storyMapSelect = $("storyMapSelect");
 const homeBackdrop = $("homeBackdrop");
 const nightfallBackground = $("nightfallBackground");
+const menuMediaLifecycle = createMenuMediaLifecycle();
 const MAPS = {
   wasteland: { label: "Wasteland", texture: "assets/wasteland-ground-v1.png", fog: 0x554331, hazard: 0x83ff47 },
   toxic: { label: "Toxic Ponds", texture: "assets/wasteland-ground-v1.png", fog: 0x344a2d, hazard: 0x93ff30 },
@@ -89,6 +148,9 @@ let mode = "solo";
 let phase = "combat";
 let timer = 60;
 let menuOpen = false;
+let lobbyNavigator = null;
+let menuSection = "home";
+let menuOpenedFromPrep = false;
 let countdown = 15;
 let countdownDeadline = 0;
 let graceUntil = 0;
@@ -134,12 +196,27 @@ let musicEnabled = localStorage.getItem("wastland-survivor-music") !== "off";
 let musicVolume = Number(localStorage.getItem("wastland-survivor-music-volume") || 36);
 let musicSource = localStorage.getItem("wastland-survivor-music-source") || "builtin";
 let offlineMode = localStorage.getItem("wastland-survivor-offline") === "true";
+let lobbyConnectivity = {
+  offlineMode,
+  playerServiceReachable: false,
+  lobbySocketOpen: false,
+};
 let youthAccount = false;
-let pendingProfile = null;
 let activeProfile = null;
 let editingProfile = false;
-let mathExpected = 0;
-let mathDeadline = 0;
+let phoneProviderPromise = null;
+let phoneConfirmation = null;
+let phoneChallenge = null;
+let pendingPhoneAction = null;
+let controlsTourState = null;
+let pendingMatchGate = createPendingMatchGate();
+let controlsPreferencesPromise = Promise.resolve();
+let miniTourFamily = null;
+let queuedControlsTour = null;
+let guestControlsIdentityActive = false;
+const offeredMiniTourFamilies = new Set();
+let loadoutControllerIndex = 1;
+const localPinAttempts = new Map();
 let audioContext = null;
 let musicTimer = null;
 let musicStep = 0;
@@ -150,21 +227,31 @@ let localStream = null;
 let voiceSocket = null;
 let lobbySocket = null;
 let lobbyId = null;
+let lobbyRoomName = null;
 let lobbyPeers = 0;
+let activeMatchPlan = null;
+let awaitingRematch = false;
 let chestOccupants = 0;
 let chestAccessGranted = false;
 let lobbyRetryTimer = null;
 let voiceMuted = false;
 const voicePeers = new Map();
 const touch = { mx: 0, mz: 0, ax: 0, az: 0, fire: false };
+const touchStickReleases = [];
 const keys = {};
 const coarsePointer = matchMedia("(pointer: coarse)");
+const finePointer = matchMedia("(pointer: fine)");
 let mouseInputActive = false;
 let inputMode = "mouse";
 let viewYaw = 0;
 const mouseAimScreen = { x: innerWidth / 2, y: innerHeight / 2 };
 let lockedTarget = null;
 let graphicsTierOverride = localStorage.getItem(task4StorageKey("graphics-tier")) || "auto";
+let pointerResumeRequired = false;
+let rendererContextLost = false;
+let canvasPointerLocked = false;
+let devicePixelRatioQuery = null;
+let observedDevicePixelRatio = null;
 let aimSettings = normalizeAimSettings({
   sensitivity: localStorage.getItem(task4StorageKey("aim-sensitivity")) || 1,
   adsSensitivity: localStorage.getItem(task4StorageKey("ads-sensitivity")) || 0.75,
@@ -179,14 +266,112 @@ let explorationState = createExplorationState();
 let discoveryToastUntil = 0;
 
 function setInputMode(nextMode) {
+  const previousFamily = normalizeControlsFamily(inputMode);
   inputMode = nextMode;
   mouseInputActive = nextMode === "mouse";
+  if (nextMode !== "mouse" && pointerResumeRequired) {
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+  }
+  if (nextMode !== "mouse" && document.pointerLockElement === canvas) document.exitPointerLock?.();
   document.body.dataset.inputMode = nextMode;
   $("landscapeHint").classList.toggle("hidden", nextMode !== "touch" || matchMedia("(orientation: landscape)").matches);
+  const nextFamily = normalizeControlsFamily(nextMode);
+  if (previousFamily !== nextFamily) offerControlsMiniTour(nextFamily);
 }
 
 function refreshInputMode() {
   setInputMode(resolveInputMode({ coarsePointer: coarsePointer.matches, mouseInputActive, controllerConnected }));
+}
+
+function updateLobbyConnectivity(event) {
+  lobbyConnectivity = reduceLobbyConnectivity(lobbyConnectivity, event);
+  if (!lobbyScreen.classList.contains("hidden")) renderLobbyProfile(activeProfile?.name || "Offline Guest");
+}
+
+function lobbyControlElements() {
+  return LOBBY_CONTROL_ORDER.map(id => $(id)).filter(control => control?.hasAttribute("data-lobby-control"));
+}
+
+function lobbyControlDescriptors() {
+  return visibleLobbyControlDescriptors(lobbyControlElements());
+}
+
+function renderLobbyNavigation(focus = false) {
+  const current = lobbyNavigator?.current();
+  lobbyControlElements().forEach(control => {
+    const selected = control.id === current?.id;
+    control.classList.toggle("is-selected", selected && current?.input !== "programmatic");
+    if (selected) control.setAttribute("aria-current", "true");
+    else control.removeAttribute("aria-current");
+  });
+  applyMenuPresentation("lobby", current?.input === "programmatic" ? null : current?.id);
+  if (focus && current?.id) $(current.id)?.focus({ preventScroll: true });
+}
+
+function refreshLobbyNavigation(initialId) {
+  const previousId = initialId ?? lobbyNavigator?.current().id;
+  lobbyNavigator = createMenuNavigator(lobbyControlDescriptors(), previousId);
+  renderLobbyNavigation();
+}
+
+function moveLobbyFocus(direction, input) {
+  if (!lobbyNavigator) refreshLobbyNavigation();
+  const state = lobbyNavigator.move(direction, input);
+  renderLobbyNavigation(input !== "mouse" && input !== "touch");
+  return state;
+}
+
+function focusLobbyCommand(id, input) {
+  if (!lobbyNavigator) refreshLobbyNavigation(id);
+  const state = lobbyNavigator.focus(id, input);
+  renderLobbyNavigation(input !== "mouse" && input !== "touch");
+  return state;
+}
+
+function activateLobbyCommand() {
+  const command = lobbyNavigator?.activate();
+  if (command?.id) $(command.id)?.click();
+}
+
+function bindLobbyNavigation() {
+  lobbyControlElements().forEach(control => {
+    control.addEventListener("pointerenter", event => {
+      if (event.pointerType !== "mouse") return;
+      setInputMode("mouse");
+      focusLobbyCommand(control.id, "mouse");
+    });
+    control.addEventListener("pointerdown", event => {
+      if (event.pointerType === "touch") setInputMode("touch");
+      focusLobbyCommand(control.id, event.pointerType === "touch" ? "touch" : "mouse");
+    });
+    control.addEventListener("focus", () => {
+      focusLobbyCommand(control.id, inputMode);
+    });
+    control.addEventListener("click", event => {
+      if (event.isTrusted && event.detail === 0) {
+        setInputMode("keyboard");
+        focusLobbyCommand(control.id, "keyboard");
+      }
+    });
+  });
+  $("lobbyGameOptions").addEventListener("toggle", () => refreshLobbyNavigation("lobbyGameOptionsSummary"));
+}
+
+function changeLobbySelect(select, step) {
+  const nextIndex = nextLobbySelectIndex(select?.options, select?.selectedIndex, step);
+  if (!select || nextIndex === select.selectedIndex) return;
+  select.selectedIndex = nextIndex;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function handleLobbyController() {
+  const controller = pollController();
+  const active = $(lobbyNavigator?.current().id);
+  const action = resolveLobbyControllerAction(controller, describeLobbyControl(active));
+  if (action?.type === "move") moveLobbyFocus(action.direction, "controller");
+  if (action?.type === "select") changeLobbySelect(active, action.step);
+  if (action?.type === "activate") activateLobbyCommand();
 }
 
 function persistAimSettings() {
@@ -235,10 +420,36 @@ scene.add(sun);
 const world = new THREE.Group();
 scene.add(world);
 
+function handleDevicePixelRatioChange() {
+  observedDevicePixelRatio = null;
+  resize();
+}
+
+function observeDevicePixelRatio(pixelRatio) {
+  if (observedDevicePixelRatio === pixelRatio) return;
+  if (devicePixelRatioQuery?.removeEventListener) devicePixelRatioQuery.removeEventListener("change", handleDevicePixelRatioChange);
+  else devicePixelRatioQuery?.removeListener?.(handleDevicePixelRatioChange);
+  observedDevicePixelRatio = pixelRatio;
+  devicePixelRatioQuery = matchMedia(`(resolution: ${pixelRatio}dppx)`);
+  if (devicePixelRatioQuery.addEventListener) devicePixelRatioQuery.addEventListener("change", handleDevicePixelRatioChange);
+  else devicePixelRatioQuery.addListener?.(handleDevicePixelRatioChange);
+}
+
 function resize() {
-  renderer.setSize(innerWidth, innerHeight, false);
-  camera.aspect = innerWidth / innerHeight;
+  const pixelRatio = window.devicePixelRatio || 1;
+  const metrics = resolveRendererMetrics({
+    width: innerWidth,
+    height: innerHeight,
+    devicePixelRatio: pixelRatio,
+    graphicsTier: effectiveGraphicsTier(),
+  });
+  if (!rendererContextLost) {
+    renderer.setPixelRatio(metrics.pixelRatio);
+    renderer.setSize(metrics.width, metrics.height, false);
+  }
+  camera.aspect = metrics.aspect;
   camera.updateProjectionMatrix();
+  observeDevicePixelRatio(pixelRatio);
 }
 
 function updateAimReticle() {
@@ -302,7 +513,7 @@ function unit(color, x, z, avatarType = "scout") {
   }
   group.position.set(x, 0, z);
   world.add(group);
-  return { g: group, hp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
+  return { g: group, hp: 100, maxHp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
 }
 
 function addBox({ x, z, w, d, h = 2, color = 0x444444, emissive = 0, y = null, rotation = 0 }) {
@@ -721,7 +932,29 @@ function spawnEnemy(index = enemies.length, requestedType = null) {
   enemies.push(enemy);
 }
 
+function spawnMatchBots(plan = activeMatchPlan) {
+  allies.forEach(bot => world.remove(bot.g));
+  enemies.forEach(bot => world.remove(bot.g));
+  allies = [];
+  enemies = [];
+  ally = null;
+  if (mode !== "teams" || !plan?.slots?.length) return;
+
+  const localSlot = plan.slots.find(slot => slot.playerType === "human" && slot.playerId === lobbyId)
+    || plan.slots.find(slot => slot.playerType === "human");
+  const localTeam = localSlot?.team || "alpha";
+  for (const slot of plan.slots.filter(item => item.playerType === "bot")) {
+    if (slot.team === localTeam) {
+      allies.push(unit(0x3985ff, 2.5 + allies.length * 2, 1.5, allies.length % 2 ? "tech" : "ranger"));
+    } else {
+      spawnEnemy(enemies.length, "shooter");
+    }
+  }
+  ally = allies[0] || null;
+}
+
 function start() {
+  pauseMenuBackdrop();
   blue = red = score = kills = scrap = shieldLevel = 0;
   wave = 1;
   activeGun = "scout";
@@ -732,12 +965,11 @@ function start() {
   ui.shop.classList.add("hidden");
   Object.values(guns).forEach(gun => { gun.level = 0; });
   loadProgress(activeProfile);
+  activeMatchPlan = null;
   resetMap();
   ensureLobbyRoom();
   phase = "loadout";
   timer = 0;
-  ui.phase.textContent = "LOADOUT";
-  ui.timer.textContent = "WAITING";
   $("loadoutMode").textContent = mode === "solo" ? "STORY SURVIVAL" : mode === "teams" ? `${botTeamSize}V${botTeamSize}` : `${ctfPlayers}-PLAYER CTF`;
   $("loadoutMap").textContent = MAPS[mapKey].label.toUpperCase();
   $("loadoutRoomModal").classList.remove("hidden");
@@ -745,22 +977,68 @@ function start() {
   updateArmory();
 }
 
-function beginCountdown() {
+function beginCountdown(startsAt = Date.now() + 15000) {
   document.body.classList.remove("loadout-active");
+  pauseMenuBackdrop();
+  const countdownState = resolveMatchCountdown(startsAt);
   phase = "countdown";
-  countdown = 15;
-  timer = 15;
-  countdownDeadline = Date.now() + 15000;
+  countdown = countdownState.secondsRemaining;
+  timer = countdownState.millisecondsRemaining / 1000;
+  countdownDeadline = countdownState.startsAt;
   firing = false;
   touch.mx = touch.mz = touch.ax = touch.az = 0;
   touch.fire = false;
   clearKeyboardInput();
+  if (countdownState.expired) {
+    $("matchCountdown").classList.add("hidden");
+    nextCombat();
+    return;
+  }
   $("matchCountdown").classList.remove("hidden");
-  $("countdownNumber").textContent = "15";
+  $("countdownNumber").textContent = String(countdownState.secondsRemaining);
   setNightfallScene("countdown");
 }
 
+function applyMatchLifecycleMessage(message = {}) {
+  const transition = reduceClientMatchLifecycle({ phase, activeMatchPlan, awaitingRematch }, message);
+  activeMatchPlan = transition.activeMatchPlan;
+  awaitingRematch = transition.awaitingRematch;
+  if (transition.action === "ignore") return;
+  if (transition.action === "hold-current-view") {
+    updateNetworkStatus("Fresh room plan held until loadout.");
+    return;
+  }
+  if (transition.action === "preserve-current-view") {
+    updateNetworkStatus("Room roster changed. Current round continues; rematch will wait.");
+    return;
+  }
+  if (transition.action === "wait-for-rematch") {
+    const readyPlayers = Number(message.readyPlayers) || 0;
+    const humanPlayers = Number(message.humanPlayers) || lobbyPeers + 1;
+    updateNetworkStatus(`Rematch ready: ${readyPlayers}/${humanPlayers} players`);
+    return;
+  }
+  if (transition.action === "start-countdown") {
+    spawnMatchBots(message);
+    updateNetworkStatus(`Match ready: ${message.humanPlayers} human, ${message.botPlayers} bot${message.botPlayers === 1 ? "" : "s"}`);
+    $("loadoutRoomModal").classList.add("hidden");
+    beginCountdown(message.startsAt);
+    return;
+  }
+  spawnMatchBots(null);
+  phase = "loadout";
+  timer = 0;
+  countdown = 0;
+  countdownDeadline = 0;
+  firing = false;
+  $("matchCountdown").classList.add("hidden");
+  $("loadoutRoomModal").classList.remove("hidden");
+  const reason = message.reason === "connection-lost" ? "Connection reset" : "Room roster changed";
+  updateNetworkStatus(`${reason}: waiting in loadout`);
+}
+
 function nextCombat() {
+  pauseMenuBackdrop();
   phase = "combat";
   setNightfallScene("game");
   timer = mode === "ctf" ? 300 : 60;
@@ -771,17 +1049,25 @@ function nextCombat() {
   player.hp = player.maxHp || 100;
   player.shield = player.shieldMax;
   player.alive = true;
-  allies.forEach(bot => { bot.hp = 100; bot.alive = true; bot.g.visible = true; bot.respawn = 0; });
-  enemies.forEach(enemy => world.remove(enemy.g));
-  enemies = [];
-  enemySpawnTypes = mode === "solo"
-    ? composeWave({ wave, difficulty: difficultyName(), map: mapKey, playerCount: 1 })
-    : Array.from({ length: mode === "teams" ? botTeamSize + wave - 1 : ctfPlayers / 2 }, () => "shooter");
+  if (mode === "teams") {
+    spawnMatchBots();
+    enemySpawnTypes = [];
+  } else {
+    allies.forEach(bot => { bot.hp = 100; bot.alive = true; bot.g.visible = true; bot.respawn = 0; });
+    enemies.forEach(enemy => world.remove(enemy.g));
+    enemies = [];
+    enemySpawnTypes = mode === "solo"
+      ? composeWave({ wave, difficulty: difficultyName(), map: mapKey, playerCount: 1 })
+      : Array.from({ length: ctfPlayers / 2 }, () => "shooter");
+  }
   spawnQueue = enemySpawnTypes.length;
   spawnTimer = 0;
   if (!replayCaptureActive) {
     replayCaptureActive = true;
     captureGameplayClip(canvas, { durationMs: 12000, metadata: { mode, map: mapKey, wave } })
+      .then(saved => {
+        if (saved) markMenuReplayRefresh({ recheckVisible: true });
+      })
       .finally(() => { replayCaptureActive = false; });
   }
 }
@@ -1012,7 +1298,7 @@ function pollController() {
   const debug = new URLSearchParams(location.search).has("debug");
   if (!pad) {
     if (debug) { controllerDebug.classList.remove("hidden"); $("debugPadName").textContent = "No controller detected"; }
-    return { mx: 0, mz: 0, ax: 0, az: 0, fire: false, ads: false };
+    return { mx: 0, mz: 0, ax: 0, az: 0, fire: false, ads: false, menuHeld: false, bHeld: false };
   }
   const pressed = pad.buttons.map(button => button.pressed);
   const justPressed = index => pressed[index] && !lastButtons[index];
@@ -1020,6 +1306,7 @@ function pollController() {
   const result = {
     mx: deadzone(pad.axes[0] || 0), mz: deadzone(pad.axes[1] || 0), ax: deadzone(pad.axes[2] || 0), az: deadzone(pad.axes[3] || 0),
     fire: (pad.buttons[7]?.value || 0) > .2, ads: (pad.buttons[6]?.value || 0) > .2,
+    menuHeld: Boolean(pad.buttons[9]?.pressed), bHeld: Boolean(pad.buttons[1]?.pressed),
     interact: justPressed(0), ability: justPressed(1), reload: justPressed(2), weapon: justPressed(3), pause: justPressed(9), switchTarget: justPressed(11),
     dpadUp: justPressed(12), dpadDown: justPressed(13), dpadLeft: justPressed(14), dpadRight: justPressed(15),
   };
@@ -1032,6 +1319,46 @@ function pollController() {
     $("debugAction").textContent = result.fire ? "Action: FIRE" : result.ads ? "Action: ADS" : result.pause ? "Action: PAUSE" : result.reload ? "Action: RELOAD" : result.weapon ? "Action: WEAPON" : result.ability ? "Action: ABILITY" : result.interact ? "Action: INTERACT" : "Action: movement / aim";
   }
   return result;
+}
+
+function neutralControllerInput() {
+  return {
+    mx: 0, mz: 0, ax: 0, az: 0,
+    fire: false, ads: false, menuHeld: false, bHeld: false,
+    interact: false, ability: false, reload: false, weapon: false,
+    pause: false, switchTarget: false,
+    dpadUp: false, dpadDown: false, dpadLeft: false, dpadRight: false,
+  };
+}
+
+function handleControlsTourController() {
+  const controller = pollController();
+  const next = recordControlsTourControllerSnapshot(controlsTourState, {
+    leftStick: Math.hypot(controller.mx, controller.mz),
+    rightStick: Math.hypot(controller.ax, controller.az),
+    rightTrigger: controller.fire ? 1 : 0,
+    menu: controller.menuHeld,
+    b: controller.bHeld,
+  });
+  if (next === controlsTourState) return;
+  controlsTourState = next;
+  renderControlsTour();
+  if (controlsTourState.status === "complete") completeControlsTour();
+}
+
+function handleSettingsController() {
+  const controller = pollController();
+  if (controller.pause) { closeSettings(); return; }
+  if (controller.interact) $("controlsTourReplayBtn").click();
+}
+
+function handleLoadoutController() {
+  const controller = pollController();
+  const controls = [$("loadoutArmoryBtn"), $("loadoutReadyBtn")];
+  if (controller.dpadLeft || controller.dpadUp) loadoutControllerIndex = 0;
+  if (controller.dpadRight || controller.dpadDown) loadoutControllerIndex = 1;
+  controls[loadoutControllerIndex]?.focus({ preventScroll: true });
+  if (controller.interact) controls[loadoutControllerIndex]?.click();
 }
 
 function nearest(unit, candidates) {
@@ -1174,6 +1501,7 @@ function finishCtf() {
 
 function update(dt) {
   if (phase === "over" || phase === "menu") return;
+  if (shouldBlockControlsTourSimulation({ tour: controlsTourState, phase })) return;
   if (phase === "countdown") {
     timer = Math.max(0, (countdownDeadline - Date.now()) / 1000);
     const next = Math.max(0, Math.ceil(timer));
@@ -1185,7 +1513,9 @@ function update(dt) {
     return;
   }
   if (phase === "loadout") return;
-  const controller = pollController();
+  const sampledController = pollController();
+  const inputPaused = localGameplayInputPaused();
+  const controller = inputPaused ? neutralControllerInput() : sampledController;
   if (controller.pause) menuOpen ? closeGameMenu() : openGameMenu();
   if (phase === "paused" && mode === "solo") return;
   if (controller.interact) interact();
@@ -1228,10 +1558,10 @@ function update(dt) {
       spawnTimer = schedule[1] || Math.max(.75, 4 - wave * .1);
     }
   }
-  let mx = controllerLocked() || menuOpen ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
-  let mz = controllerLocked() || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
-  if (touch.mx || touch.mz) { mx = touch.mx; mz = touch.mz; }
-  if (controller.mx || controller.mz) { mx = controller.mx; mz = controller.mz; }
+  let mx = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+  let mz = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+  if (!inputPaused && (touch.mx || touch.mz)) { mx = touch.mx; mz = touch.mz; }
+  if (!inputPaused && (controller.mx || controller.mz)) { mx = controller.mx; mz = controller.mz; }
   const length = Math.hypot(mx, mz) || 1;
   const playerFrom = player.g.position.clone();
   if (frontView) {
@@ -1245,8 +1575,8 @@ function update(dt) {
     player.g.position.x += mx / length * 10 * classSpeed * dt;
     player.g.position.z += mz / length * 10 * classSpeed * dt;
   }
-  const manualTouchAim = Math.hypot(touch.ax, touch.az) > .08;
-  const manualControllerAim = Math.hypot(controller.ax, controller.az) > .08;
+  const manualTouchAim = !inputPaused && Math.hypot(touch.ax, touch.az) > .08;
+  const manualControllerAim = !inputPaused && Math.hypot(controller.ax, controller.az) > .08;
   if (manualTouchAim) {
     setInputMode("touch");
     aim.copy(player.g.position).add(new THREE.Vector3(touch.ax, 0, touch.az).multiplyScalar(20));
@@ -1256,7 +1586,7 @@ function update(dt) {
     aim.copy(player.g.position).add(new THREE.Vector3(controller.ax, 0, controller.az).multiplyScalar(20));
     viewYaw = Math.atan2(controller.ax, controller.az);
   }
-  const wantsFire = ((!controllerLocked() && firing) || touch.fire || controller.fire);
+  const wantsFire = !inputPaused && ((!controllerLocked() && firing) || touch.fire || controller.fire);
   if (shouldAutoLock({ coarsePointer: coarsePointer.matches, difficultyRatio, preset: aimSettings.preset, manualAim: manualTouchAim || manualControllerAim, mouseInputActive, controllerInputActive: inputMode === "controller" && manualControllerAim }) && wantsFire) {
     const target = lockedTarget?.alive ? lockedTarget : nearest(player, enemies);
     if (target) {
@@ -1342,39 +1672,78 @@ function formatTime(seconds) {
   return `${String(Math.max(0, Math.ceil(seconds) / 60 | 0)).padStart(2, "0")}:${String(Math.max(0, Math.ceil(seconds) % 60)).padStart(2, "0")}`;
 }
 
-function render() {
-  const dt = Math.min(clock.getDelta(), .04);
-  update(dt);
-  if (discoveryToastUntil && performance.now() >= discoveryToastUntil) {
-    discoveryToastUntil = 0;
-    ui.discoveryToast.classList.add("hidden");
-  }
+function renderHud() {
   const weapon = weaponProfile();
-  ui.hp.textContent = Math.max(0, Math.ceil(player.hp));
-  ui.hpBar.style.width = `${Math.max(0, player.hp)}%`;
-  ui.shield.textContent = Math.ceil(player.shield);
-  ui.shieldBar.style.width = `${player.shieldMax ? player.shield / player.shieldMax * 100 : 0}%`;
-  ui.heat.textContent = Date.now() < reloadUntil ? "REL" : magazines[activeGun];
-  ui.heatBar.style.width = `${magazines[activeGun] / magazineSizes[activeGun] * 100}%`;
+  const classDefinition = getClassDefinition(classProgress.classId);
+  const classStats = getClassStats(classProgress);
+  const teamMembers = [player, ...allies];
+  const teamHealth = teamMembers.reduce((total, member) => total + Math.max(0, member?.hp || 0), 0);
+  const teamHealthMax = teamMembers.reduce((total, member) => total + Math.max(0, member?.maxHp || 0), 0);
+  const chapter = soldierStory[Math.min(storyStage - 1, soldierStory.length - 1)];
+  const objective = kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex];
+  const hud = createHudViewModel({
+    health: player.hp,
+    maxHealth: player.maxHp,
+    armor: player.shield,
+    maxArmor: player.shieldMax,
+    ammo: { current: magazines[activeGun], reserve: magazineSizes[activeGun] },
+    ability: { label: classDefinition.ability.label, readyAt: classProgress.abilityReadyAt, cooldownMs: classDefinition.ability.cooldownMs * classStats.abilityCooldownMultiplier, now: Date.now() },
+    mode,
+    playerName: activeProfile?.name,
+    teamHealth,
+    teamHealthMax,
+    mission: `Mission: ${objective}`,
+    round: wave,
+    timer: phase === "loadout" ? "WAITING" : formatTime(timer),
+    objective,
+    score: { blue: mode === "ctf" ? Math.floor(blue) : blue, red: mode === "ctf" ? Math.floor(red) : red },
+  });
+
+  ui.hp.textContent = hud.health.value;
+  ui.hpBar.style.setProperty("--hud-fill", `${hud.health.percentage}%`);
+  ui.shield.textContent = hud.armor.value;
+  ui.shieldBar.style.setProperty("--hud-fill", `${hud.armor.percentage}%`);
+  ui.heat.textContent = Math.round(Math.max(0, player.cooldown / weapon.delay) * 100);
+  ui.heatBar.style.setProperty("--hud-fill", `${Math.round(Math.max(0, player.cooldown / weapon.delay) * 100)}%`);
+  ui.ammo.textContent = hud.ammo.label;
+  ui.ability.textContent = `${hud.ability.label} ${hud.ability.statusLabel}`;
+  ui.abilityBar.style.setProperty("--hud-fill", `${hud.ability.percentage}%`);
+  ui.team.textContent = hud.team.label;
+  ui.teamName.textContent = hud.team.playerName;
+  ui.teamHealth.textContent = hud.team.healthLabel;
+  ui.teamHealthBar.style.setProperty("--hud-fill", `${hud.team.healthPercentage}%`);
+  ui.objective.textContent = hud.objective.label;
   ui.scrap.textContent = scrap;
   ui.kills.textContent = kills;
   ui.wave.textContent = wave;
   ui.level.textContent = playerLevel;
   ui.stage.textContent = storyStage;
-  ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${soldierStory[Math.min(storyStage - 1, soldierStory.length - 1)].title}`;
-  ui.mission.textContent = `Mission: ${kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex]}`;
+  ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${chapter.title}`;
+  ui.mission.textContent = hud.mission.label;
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
   ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
   const exploration = explorationProgress(worldLayout, explorationState);
   ui.exploration.textContent = `EXPLORE ${exploration.discovered}/${exploration.total}`;
   ui.phase.textContent = mode === "ctf" ? "CAPTURE" : phase.toUpperCase();
-  ui.timer.textContent = phase === "loadout" ? "WAITING" : formatTime(timer);
-  ui.prep.textContent = ui.timer.textContent;
-  ui.blue.textContent = mode === "ctf" ? Math.floor(blue) : blue;
-  ui.red.textContent = mode === "ctf" ? Math.floor(red) : red;
+  ui.timer.textContent = hud.timer.label;
+  ui.prep.textContent = hud.timer.label;
+  ui.blue.textContent = hud.score.blue;
+  ui.red.textContent = hud.score.red;
+}
+
+function render() {
+  const dt = Math.min(clock.getDelta(), .04);
+  syncPointerCaptureEligibility();
+  startQueuedControlsTourWhenSafe();
+  if (controlsTourState?.status === "active") handleControlsTourController();
+  else if (!ui.settings.classList.contains("hidden") && controllerConnected) handleSettingsController();
+  else if (phase === "loadout" && !$("loadoutRoomModal").classList.contains("hidden") && controllerConnected) handleLoadoutController();
+  else if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
+  update(dt);
+  renderHud();
   player.cooldown = Math.max(0, player.cooldown - dt);
   allies.forEach(bot => { bot.cooldown = Math.max(0, bot.cooldown - dt); });
-  renderer.render(scene, camera);
+  if (!rendererContextLost) renderer.render(scene, camera);
   updateAimReticle();
   requestAnimationFrame(render);
 }
@@ -1462,6 +1831,128 @@ function clearKeyboardInput() {
   firing = false;
 }
 
+function currentControllerButtons() {
+  const pad = Array.from(navigator.getGamepads?.() || []).find(Boolean);
+  return pad ? Array.from(pad.buttons || [], button => Boolean(button.pressed)) : [];
+}
+
+function clearTransientGameplayInput(reason) {
+  const recovery = resolveTransientInputReset({
+    reason,
+    pointerResumeEligible: pointerRecoveryApplies(),
+    keys,
+    touch,
+    controllerButtons: currentControllerButtons(),
+  });
+  if (!recovery.shouldReset) return recovery;
+  const cleared = recovery.state;
+  Object.keys(keys).forEach(key => delete keys[key]);
+  Object.assign(keys, cleared.keys);
+  Object.assign(touch, cleared.touch);
+  firing = cleared.firing;
+  adsActive = cleared.ads;
+  lastButtons = cleared.controllerButtonLatch;
+  if (recovery.requiresPointerClick) pointerResumeRequired = true;
+  touchStickReleases.forEach(release => release());
+  document.querySelectorAll("#touchControls .active").forEach(control => control.classList.remove("active"));
+  ["moveStick", "aimStick"].forEach(id => {
+    const knob = $(id)?.querySelector("i");
+    if (knob) knob.style.transform = "translate(0,0)";
+  });
+  return recovery;
+}
+
+function pointerCaptureDecision({
+  pointerType = "mouse",
+  deliberateCanvasAction = true,
+  pointerLocked = false,
+  documentVisible = document.visibilityState === "visible",
+  rendererReady = !rendererContextLost,
+} = {}) {
+  return canCaptureGameplayPointer({
+    phase,
+    inputMode,
+    pointerType,
+    deliberateCanvasAction,
+    finePointer: finePointer.matches,
+    firstPerson: frontView,
+    playerAlive: Boolean(player?.alive),
+    menuOpen,
+    controlsTourActive: controlsTourState?.status === "active",
+    controllerOnly,
+    pointerLocked,
+    documentVisible,
+    rendererReady,
+  });
+}
+
+function pointerRecoveryApplies() {
+  return pointerCaptureDecision({
+    pointerLocked: false,
+    documentVisible: true,
+    rendererReady: true,
+  });
+}
+
+function localGameplayInputPaused() {
+  return rendererContextLost || (pointerResumeRequired && inputMode === "mouse");
+}
+
+function updateInputRecoveryNotice() {
+  const active = rendererContextLost || pointerResumeRequired;
+  document.body.classList.toggle("input-recovery-active", active);
+  canvas.setAttribute("aria-busy", String(rendererContextLost));
+  if (!inputRecoveryNotice) return;
+  inputRecoveryNotice.classList.toggle("hidden", !active);
+  if (!active) {
+    inputRecoveryNotice.removeAttribute("data-recovery-kind");
+    return;
+  }
+  const graphicsRecovery = rendererContextLost;
+  inputRecoveryNotice.dataset.recoveryKind = graphicsRecovery ? "graphics" : "pointer";
+  $("inputRecoveryTitle").textContent = graphicsRecovery ? "GRAPHICS RECOVERING" : "AIMING PAUSED";
+  $("inputRecoveryText").textContent = graphicsRecovery
+    ? "Restoring the battlefield view. Local controls are safely released."
+    : "Click the battlefield to resume mouse aim.";
+}
+
+function interruptLocalInput(reason) {
+  const recovery = clearTransientGameplayInput(reason);
+  if (!recovery.shouldReset) return;
+  if (reason !== "pointer-lock-lost" && document.pointerLockElement === canvas) document.exitPointerLock?.();
+  updateInputRecoveryNotice();
+}
+
+function syncPointerCaptureEligibility() {
+  if (pointerResumeRequired && !pointerRecoveryApplies()) {
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+  }
+  if (document.pointerLockElement !== canvas) return;
+  const valid = pointerCaptureDecision({
+    pointerLocked: false,
+    deliberateCanvasAction: true,
+  });
+  if (!valid) document.exitPointerLock?.();
+}
+
+function requestGameplayPointerLock(event) {
+  const eligible = pointerCaptureDecision({
+    pointerType: event.pointerType,
+    deliberateCanvasAction: event.isTrusted && event.button === 0 && event.isPrimary !== false,
+    pointerLocked: document.pointerLockElement === canvas,
+  });
+  if (!eligible || typeof canvas.requestPointerLock !== "function") return false;
+  try {
+    const request = canvas.requestPointerLock();
+    request?.catch?.(() => interruptLocalInput("pointer-lock-lost"));
+    return true;
+  } catch {
+    interruptLocalInput("pointer-lock-lost");
+    return false;
+  }
+}
+
 function deviceId() {
   let id = localStorage.getItem("wastland-survivor-device-id");
   if (!id) {
@@ -1489,148 +1980,440 @@ function ageFromBirthDate(value) {
   return age >= 0 && age <= 120 ? age : null;
 }
 
-function beginMathCheck(profile) {
-  pendingProfile = profile;
-  mathExpected = Math.floor(Math.random() * 40) + 10 + Math.floor(Math.random() * 20);
-  const first = Math.floor(Math.random() * 20) + 10;
-  const second = mathExpected - first;
-  mathQuestion.textContent = `${first} + ${second} = ?`;
-  mathAnswer.value = "";
-  mathMessage.textContent = "";
-  mathDeadline = Date.now() + 120000;
-  profileStep.classList.add("hidden");
-  returnStep.classList.add("hidden");
-  mathStep.classList.remove("hidden");
-  mathAnswer.focus();
+function phoneEnvironment() {
+  return ["localhost", "127.0.0.1", "::1"].includes(location.hostname) ? "development" : "production";
 }
 
-function finishMathCheck() {
-  if (!pendingProfile) return;
-  if (Date.now() > mathDeadline) {
-    mathMessage.textContent = "Time expired. The setup has been restarted.";
-    pendingProfile = null;
-    mathStep.classList.add("hidden");
-    profileStep.classList.remove("hidden");
+function phoneProvider() {
+  if (!phoneProviderPromise) phoneProviderPromise = loadPhoneAuthProvider({ environment: phoneEnvironment() });
+  return phoneProviderPromise;
+}
+
+function hideProfileSteps() {
+  profileStep.classList.add("hidden");
+  returnStep.classList.add("hidden");
+  linkProfileStep.classList.add("hidden");
+  phoneCodeStep.classList.add("hidden");
+}
+
+async function sendPhoneCode({ kind, phoneNumber, profile, pinDigest: localPinDigest }) {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  const message = kind === "restore" ? $("linkProfileMessage") : profileMessage;
+  if (!normalized) {
+    message.textContent = "Enter a valid mobile number.";
+    return false;
+  }
+  message.textContent = "Requesting a secure verification code...";
+  try {
+    phoneConfirmation?.dispose?.();
+    const provider = await phoneProvider();
+    phoneConfirmation = await provider.sendCode({ phoneNumber: normalized, recaptchaContainer: "phoneRecaptcha" });
+    phoneChallenge = beginPhoneChallenge(normalized);
+    pendingPhoneAction = { kind, phoneNumber: normalized, profile, pinDigest: localPinDigest };
+    profilePhone.value = "";
+    $("linkPhone").value = "";
+    $("phoneCode").value = "";
+    $("phoneCodeMessage").textContent = "";
+    $("phoneCodeHeading").textContent = kind === "restore" ? "Restore Linked Player" : "Verify Mobile Number";
+    $("phoneCodeHint").textContent = `A code was sent to ${phoneChallenge.phoneHint}. The number is not shown to other players.`;
+    hideProfileSteps();
+    phoneCodeStep.classList.remove("hidden");
+    $("phoneCode").focus();
+    updatePhoneResendControl();
+    return true;
+  } catch (error) {
+    phoneProviderPromise = null;
+    message.textContent = error?.message || "Verified phone sign-in is unavailable. Offline play still works.";
+    return false;
+  }
+}
+
+function updatePhoneResendControl() {
+  const button = $("resendPhoneCodeBtn");
+  if (!phoneChallenge || !pendingPhoneAction) {
+    button.disabled = true;
+    button.textContent = "Resend code";
     return;
   }
-  if (Number(mathAnswer.value.trim()) !== mathExpected) {
-    mathMessage.textContent = "That answer is not correct.";
+  const remaining = Math.max(0, Math.ceil((phoneChallenge.resendAt - Date.now()) / 1000));
+  const allowed = mayResendPhoneChallenge(phoneChallenge);
+  button.disabled = !allowed;
+  button.textContent = allowed ? "Resend code" : `Resend code in ${remaining}s`;
+}
+
+async function confirmPhoneCode() {
+  const code = $("phoneCode").value.trim();
+  const message = $("phoneCodeMessage");
+  if (!/^\d{6}$/.test(code) || !pendingPhoneAction || !phoneConfirmation) {
+    message.textContent = "Enter the six-digit verification code.";
     return;
   }
-  const profile = pendingProfile;
-  pendingProfile = null;
-  saveProfile(profile);
-  activeProfile = profile;
-  if (profile.youthAccount) {
-    offlineMode = true;
-    localStorage.setItem("wastland-survivor-offline", "true");
+  message.textContent = "Confirming verified account...";
+  try {
+    const idToken = await phoneConfirmation.confirm(code);
+    phoneChallenge = finishPhoneChallenge(phoneChallenge);
+    const action = pendingPhoneAction;
+    const requestBody = action.kind === "create"
+      ? buildPhoneLinkRequest({ idToken, profile: action.profile })
+      : { idToken, deviceProfileId: action.profile.profileId };
+    const response = await fetch("/api/account/phone", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(action.profile.backendSession ? { Authorization: `Bearer ${action.profile.backendSession}` } : {}),
+      },
+      body: JSON.stringify(requestBody),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "The verified account could not be linked");
+    const restored = createRestoredLocalProfile({
+      player: payload.player,
+      pinDigest: action.pinDigest,
+      phoneHint: payload.phoneHint,
+      session: payload.session,
+      deviceCredential: payload.deviceCredential,
+      profileId: action.profile.profileId,
+    });
+    const profile = mergeVerifiedLocalProfile({ draft: action.profile, restored, deviceId: deviceId() });
+    saveProfile(profile);
+    guestControlsIdentityActive = false;
+    activeProfile = profile;
+    loadProgress(profile);
+    offlineMode = false;
+    localStorage.setItem("wastland-survivor-offline", "false");
+    updateLobbyConnectivity({ type: "player-service-success" });
+    phoneConfirmation.dispose?.();
+    phoneConfirmation = null;
+    pendingPhoneAction = null;
+    phoneChallenge = null;
+    $("phoneCode").value = "";
+    openLobby(profile.name);
+  } catch (error) {
+    if (phoneChallenge?.status === "code-sent") phoneChallenge = failPhoneChallenge(phoneChallenge);
+    message.textContent = phoneChallenge?.status === "locked"
+      ? "Too many attempts. Start a new phone verification."
+      : error?.message || "The verification code was not accepted.";
   }
-  mathStep.classList.add("hidden");
-  openLobby(profile.name);
+}
+
+async function resendPhoneCode() {
+  if (!pendingPhoneAction || !mayResendPhoneChallenge(phoneChallenge)) return;
+  const action = pendingPhoneAction;
+  await sendPhoneCode(action);
+}
+
+function cancelPhoneVerification() {
+  const previous = pendingPhoneAction?.kind;
+  phoneConfirmation?.dispose?.();
+  phoneConfirmation = null;
+  phoneChallenge = null;
+  pendingPhoneAction = null;
+  hideProfileSteps();
+  (previous === "restore" ? linkProfileStep : profileStep).classList.remove("hidden");
 }
 
 async function syncPublicPlayer() {
-  if (!activeProfile || activeProfile.youthAccount || offlineMode) return false;
+  if (!activeProfile || activeProfile.youthAccount || offlineMode) {
+    updateLobbyConnectivity(offlineMode
+      ? { type: "offline-changed", offlineMode: true }
+      : { type: "player-service-failure" });
+    return false;
+  }
+  const profile = activeProfile;
+  Object.assign(profile, ensureProfileIdentity(profile));
   try {
     const response = await fetch("/api/players", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        deviceProfileId: activeProfile.profileId,
-        deviceCredential: activeProfile.backendDeviceCredential || "",
-        displayName: activeProfile.name,
-        avatarType: activeProfile.avatarType,
-        level: activeProfile.progress?.playerLevel || 1,
+        deviceProfileId: profile.profileId,
+        deviceCredential: profile.backendDeviceCredential || "",
+        playerTag: profile.playerTag,
+        displayName: profile.name,
+        avatarType: profile.avatarType,
+        level: profile.progress?.playerLevel || 1,
         online: true,
         stats: {
-          kills: activeProfile.progress?.kills || 0,
-          matches: activeProfile.progress?.matches || 0,
-          wins: activeProfile.progress?.wins || 0,
-          deaths: activeProfile.progress?.deaths || 0,
+          kills: profile.progress?.kills || 0,
+          matches: profile.progress?.matches || 0,
+          wins: profile.progress?.wins || 0,
+          deaths: profile.progress?.deaths || 0,
         },
-        progress: activeProfile.progress || {},
+        progress: profile.progress || {},
       }),
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      updateLobbyConnectivity({ type: "player-service-failure" });
+      return false;
+    }
     const { player: publicPlayer, session, deviceCredential } = await response.json();
-    activeProfile.backendPlayerId = publicPlayer.id;
-    activeProfile.playerTag = publicPlayer.playerTag;
-    if (deviceCredential) activeProfile.backendDeviceCredential = deviceCredential;
-    activeProfile.backendSession = session;
-    saveProfile();
-    lobbyPlayer.textContent = `Profile: ${activeProfile.name} · ${publicPlayer.playerTag}`;
+    Object.assign(profile, applyAuthoritativePlayerIdentity(profile, publicPlayer));
+    if (deviceCredential) profile.backendDeviceCredential = deviceCredential;
+    profile.backendSession = session;
+    saveProfile(profile);
+    updateLobbyConnectivity({ type: "player-service-success" });
     return true;
   } catch {
     // Local play remains available when the optional backend is offline.
+    updateLobbyConnectivity({ type: "player-service-failure" });
     return false;
   }
 }
 
-async function createDeviceLink() {
-  const result = $("deviceLinkResult");
-  result.textContent = "Creating secure link code...";
-  if (!activeProfile || activeProfile.youthAccount || offlineMode) {
-    result.textContent = "Device linking requires an adult online profile.";
+function controlsTourIdentityInput() {
+  return { profile: guestControlsIdentityActive ? null : activeProfile, guest: guestControlsIdentityActive };
+}
+
+function storedControlsTourFamilies(storageKey) {
+  try {
+    return mergeSeenControlsFamilies(JSON.parse(localStorage.getItem(storageKey) || "[]"));
+  } catch {
+    return [];
+  }
+}
+
+function localControlsTourFamilies(identityInput = controlsTourIdentityInput()) {
+  return storedControlsTourFamilies(controlsTourStorageKey(identityInput));
+}
+
+function controlsTourSeenFamilies(identityInput = controlsTourIdentityInput()) {
+  return mergeSeenControlsFamilies(
+    localControlsTourFamilies(identityInput),
+    identityInput.guest ? [] : identityInput.profile?.controlsTourSeenFamilies,
+  );
+}
+
+function controlsTourFamiliesForCapturedIdentity(capture) {
+  return mergeSeenControlsFamilies(
+    storedControlsTourFamilies(capture.storageKey),
+    capture.guest ? [] : capture.profileRef?.controlsTourSeenFamilies,
+  );
+}
+
+function saveControlsTourFamiliesForIdentity(capture, families) {
+  const seenFamilies = mergeSeenControlsFamilies(families);
+  localStorage.setItem(capture.storageKey, JSON.stringify(seenFamilies));
+  if (capture.profileRef && !capture.guest) {
+    capture.profileRef.controlsTourSeenFamilies = seenFamilies;
+    saveProfile(capture.profileRef);
+  }
+  return seenFamilies;
+}
+
+function saveControlsTourFamilies(families) {
+  const capture = captureControlsTourPreferenceIdentity(controlsTourIdentityInput());
+  return saveControlsTourFamiliesForIdentity(capture, families);
+}
+
+async function syncControlsTourPreferences() {
+  const identityInput = controlsTourIdentityInput();
+  const localFamilies = controlsTourSeenFamilies(identityInput);
+  if (identityInput.guest || !identityInput.profile?.backendSession || offlineMode || identityInput.profile.youthAccount) return localFamilies;
+  try {
+    const result = await syncControlsTourPreferencesForIdentity({
+      identityInput,
+      getCurrentIdentityInput: controlsTourIdentityInput,
+      localFamilies,
+      requestFamilies: async capture => {
+        const response = await fetch("/api/account/preferences", {
+          headers: { Authorization: `Bearer ${capture.backendSession}` },
+        });
+        if (!response.ok) throw new Error("Private controls preferences were unavailable");
+        const payload = await response.json();
+        return payload.preferences?.controlsTourSeenFamilies;
+      },
+      readCurrentFamilies: controlsTourFamiliesForCapturedIdentity,
+      applyFamilies: ({ capture, families }) => saveControlsTourFamiliesForIdentity(capture, families),
+    });
+    return result.families;
+  } catch {
+    return localFamilies;
+  }
+}
+
+function persistControlsTourCompletion(families) {
+  const seenFamilies = saveControlsTourFamilies(families);
+  if (guestControlsIdentityActive || !activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return Promise.resolve(seenFamilies);
+  return fetch("/api/account/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeProfile.backendSession}` },
+    body: JSON.stringify({ controlsTourSeenFamilies: seenFamilies }),
+  }).then(response => {
+    if (!response.ok) throw new Error("Private controls preference was not saved");
+    return seenFamilies;
+  }).catch(() => seenFamilies);
+}
+
+function controlsFamilyLabel(family) {
+  return ({ "keyboard-mouse": "Keyboard and mouse", touch: "Touch controls", controller: "Xbox-style controller" })[family] || "Keyboard and mouse";
+}
+
+function renderControlsTour() {
+  if (!controlsTourState) return;
+  $("controlsTourFamily").textContent = controlsFamilyLabel(controlsTourState.family);
+  $("controlsTourProgress").textContent = `${Math.min(controlsTourState.stepIndex + 1, controlsTourState.steps.length)} / ${controlsTourState.steps.length}`;
+  $("controlsTourSteps").replaceChildren(...controlsTourState.steps.map((step, index) => {
+    const item = document.createElement("li");
+    item.className = index < controlsTourState.stepIndex ? "complete" : index === controlsTourState.stepIndex ? "current" : "";
+    if (index < controlsTourState.stepIndex) item.setAttribute("aria-label", `${step.title} complete`);
+    const title = document.createElement("span");
+    title.textContent = step.title;
+    const control = document.createElement("b");
+    control.textContent = index < controlsTourState.stepIndex ? "Complete" : step.control;
+    item.append(title, control);
+    return item;
+  }));
+  const current = controlsTourState.steps[controlsTourState.stepIndex];
+  $("controlsTourInstruction").textContent = current?.instruction || "Controls check complete.";
+  $("closeControlsTourBtn").classList.toggle("hidden", controlsTourState.mode === "required");
+}
+
+function setRequiredControlsTourLock(locked) {
+  applyRequiredControlsTourLock({
+    required: locked,
+    bodyClassList: document.body.classList,
+    backgroundTargets: [lobbyScreen, $("gameMenu")],
+  });
+}
+
+function resetMiniTourOfferControls() {
+  $("startControlsMiniTourBtn").disabled = false;
+  $("startControlsMiniTourBtn").textContent = "Practice";
+  $("dismissControlsMiniTourBtn").setAttribute("aria-label", "Dismiss controls practice");
+}
+
+function queueControlsTourPractice(queued) {
+  queuedControlsTour = queued;
+  miniTourFamily = null;
+  $("controlsMiniTourText").textContent = `${controlsFamilyLabel(queued.family)} practice queued for the next safe break. Live play continues.`;
+  $("startControlsMiniTourBtn").disabled = true;
+  $("startControlsMiniTourBtn").textContent = "Queued";
+  $("dismissControlsMiniTourBtn").setAttribute("aria-label", "Cancel queued controls practice");
+  $("controlsMiniTourOffer").classList.remove("hidden");
+}
+
+function requestOptionalControlsTour({ family = inputMode, mode: tourMode = "mini" } = {}) {
+  const decision = planOptionalControlsTour({ family, mode: tourMode, phase });
+  if (decision.action === "queue") {
+    queueControlsTourPractice(decision.queued);
     return;
   }
-  if (!activeProfile.backendSession && !(await syncPublicPlayer())) {
-    result.textContent = "The player service is unavailable. Try again when online.";
+  startControlsTour({ family: decision.queued.family, mode: decision.queued.mode });
+}
+
+function startQueuedControlsTourWhenSafe() {
+  const decision = releaseQueuedControlsTour({ queued: queuedControlsTour, phase, tourActive: Boolean(controlsTourState) });
+  if (decision.action !== "start") return;
+  queuedControlsTour = null;
+  resetMiniTourOfferControls();
+  $("controlsMiniTourOffer").classList.add("hidden");
+  startControlsTour({ family: decision.family, mode: decision.mode });
+}
+
+function startControlsTour({ family = inputMode, mode: tourMode = "required" } = {}) {
+  controlsTourState = createControlsTour({ family, seenFamilies: controlsTourSeenFamilies(), mode: tourMode });
+  miniTourFamily = null;
+  queuedControlsTour = null;
+  resetMiniTourOfferControls();
+  $("controlsMiniTourOffer").classList.add("hidden");
+  ui.settings.classList.add("hidden");
+  $("controlsTourModal").classList.remove("hidden");
+  document.body.classList.remove("menu-active");
+  document.body.classList.add("controls-tour-active");
+  setRequiredControlsTourLock(tourMode === "required");
+  firing = false;
+  touch.fire = false;
+  clearKeyboardInput();
+  renderControlsTour();
+}
+
+function closeControlsTour() {
+  if (controlsTourState?.mode === "required") return;
+  controlsTourState = null;
+  $("controlsTourModal").classList.add("hidden");
+  document.body.classList.remove("controls-tour-active");
+  setRequiredControlsTourLock(false);
+  restoreVisibleMenuSection();
+}
+
+function completeControlsTour() {
+  const completed = controlsTourState;
+  if (!completed || completed.status !== "complete") return;
+  controlsTourState = null;
+  $("controlsTourModal").classList.add("hidden");
+  document.body.classList.remove("controls-tour-active");
+  setRequiredControlsTourLock(false);
+  persistControlsTourCompletion(completed.seenFamilies);
+  if (completed.mode === "required") continuePendingMatchStart();
+  else restoreVisibleMenuSection();
+}
+
+function handleControlsTourSignal(signal) {
+  if (!controlsTourState || controlsTourState.status !== "active") return false;
+  const next = recordControlsTourSignal(controlsTourState, signal);
+  if (next !== controlsTourState) {
+    controlsTourState = next;
+    renderControlsTour();
+    if (controlsTourState.status === "complete") completeControlsTour();
+  }
+  return true;
+}
+
+function offerControlsMiniTour(family) {
+  const matchActive = phase === "countdown" || phase === "combat" || phase === "prep";
+  if (offeredMiniTourFamilies.has(family) || !shouldOfferControlsMiniTour({
+    family,
+    seenFamilies: controlsTourSeenFamilies(),
+    matchActive,
+    tourActive: Boolean(controlsTourState),
+  })) return;
+  offeredMiniTourFamilies.add(family);
+  miniTourFamily = family;
+  resetMiniTourOfferControls();
+  $("controlsMiniTourText").textContent = `${controlsFamilyLabel(family)} detected. Practice now or keep playing.`;
+  $("controlsMiniTourOffer").classList.remove("hidden");
+}
+
+function continuePendingMatchStart() {
+  const resolution = resolvePendingMatchSelection(pendingMatchGate, {
+    family: inputMode,
+    seenFamilies: controlsTourSeenFamilies(),
+  });
+  pendingMatchGate = resolution.gate;
+  if (resolution.action === "tour") {
+    startControlsTour({ family: resolution.family, mode: "required" });
     return;
   }
-  let response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
-  if (response.status === 401 && await syncPublicPlayer()) {
-    response = await fetch("/api/link/create", { method: "POST", headers: { Authorization: `Bearer ${activeProfile.backendSession || ""}` } });
-  }
-  if (!response.ok) {
-    result.textContent = "A link code could not be created right now.";
+  if (resolution.action === "start") queueMicrotask(resolution.selection);
+  else restoreVisibleMenuSection();
+}
+
+async function requestMatchStart(startMatch) {
+  await controlsPreferencesPromise.catch(() => []);
+  if (controlsTourState?.mode === "required" || pendingMatchGate.pending) return;
+  if (phase !== "menu" && phase !== "loadout") {
+    startMatch();
     return;
   }
-  const link = await response.json();
-  result.textContent = `${link.playerTag}  ·  ${link.code}  ·  expires in 5 minutes`;
+  pendingMatchGate = queuePendingMatchSelection(pendingMatchGate, startMatch);
+  continuePendingMatchStart();
 }
 
 async function claimDeviceLink() {
   const message = $("linkProfileMessage");
-  const playerTag = $("linkPlayerTag").value.trim().toUpperCase();
-  const code = $("linkCode").value.trim();
+  const phoneNumber = $("linkPhone").value;
   const pin = $("linkLocalPin").value.trim();
-  if (!playerTag || !/^\d{6}$/.test(code) || !validPin(pin)) {
-    message.textContent = "Enter the Player Tag, six-digit code, and a new four-digit PIN.";
+  if (!normalizePhoneNumber(phoneNumber) || !validPin(pin)) {
+    message.textContent = "Enter the linked mobile number and a new four-digit PIN.";
     return;
   }
-  message.textContent = "Linking player...";
-  try {
-    const response = await fetch("/api/link/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerTag, code }) });
-    const payload = await response.json();
-    if (!response.ok) {
-      message.textContent = payload.error || "The link code is invalid or expired.";
-      return;
-    }
-    const digest = await pinDigest(pin);
-    const profile = {
-      profileId: crypto.randomUUID(), name: payload.player.displayName, birthDate: "", age: null, contact: "",
-      avatarType: payload.player.avatarType || "scout", parentContact: "", youthAccount: false,
-      pinDigest: digest, deviceId: deviceId(), ageVerifiedAt: null, linkedAccount: true,
-      progress: payload.player.progress || null, backendPlayerId: payload.player.id, playerTag: payload.player.playerTag,
-      backendDeviceCredential: payload.deviceCredential, backendSession: payload.session,
-    };
-    saveProfile(profile);
-    activeProfile = profile;
-    loadProgress(profile);
-    offlineMode = false;
-    localStorage.setItem("wastland-survivor-offline", "false");
-    $("linkCode").value = "";
-    $("linkLocalPin").value = "";
-    openLobby(profile.name);
-  } catch {
-    message.textContent = "The player service is unavailable. Your local profiles were not changed.";
-  }
+  const digest = await pinDigest(pin);
+  const profile = { profileId: crypto.randomUUID(), youthAccount: false };
+  if (await sendPhoneCode({ kind: "restore", phoneNumber, profile, pinDigest: digest })) $("linkLocalPin").value = "";
 }
 
 function showDeviceLinkStep() {
-  profileStep.classList.add("hidden");
-  returnStep.classList.add("hidden");
-  mathStep.classList.add("hidden");
+  hideProfileSteps();
   linkProfileStep.classList.remove("hidden");
   $("linkProfileMessage").textContent = "";
 }
@@ -1638,7 +2421,7 @@ function showDeviceLinkStep() {
 async function reportMatch(title) {
   if (!activeProfile?.backendPlayerId || offlineMode) return;
   try {
-    await fetch("/api/matches", {
+    const response = await fetch("/api/matches", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeProfile.backendSession || ""}` },
       body: JSON.stringify({
@@ -1646,46 +2429,101 @@ async function reportMatch(title) {
         players: [activeProfile.backendPlayerId], score: { score: Math.floor(score), blue: Math.floor(blue), red: Math.floor(red), result: title },
       }),
     });
+    updateLobbyConnectivity({ type: response.ok ? "player-service-success" : "player-service-failure" });
   } catch {
     // Match reporting is retriable and never blocks the local result screen.
+    updateLobbyConnectivity({ type: "player-service-failure" });
   }
 }
 
 function openLobby(contact) {
+  lobbyConnectivity = reduceLobbyConnectivity(lobbyConnectivity, { type: "offline-changed", offlineMode });
   welcomeScreen.classList.add("hidden");
-  lobbyPlayer.textContent = `Profile: ${contact}`;
   lobbyScreen.classList.remove("hidden");
-  setNightfallScene("menu");
+  $("teamSizeChoices").classList.add("hidden");
+  $("ctfPlayerChoices").classList.add("hidden");
+  $("teamLobbyBtn").setAttribute("aria-expanded", "false");
+  $("ctf6LobbyBtn").setAttribute("aria-expanded", "false");
+  $("lobbyGameOptions").open = false;
+  renderLobbyProfile(contact);
+  refreshLobbyNavigation();
+  setMenuSection("lobby");
   updateNetworkStatus();
   refreshLobbyAvailability();
   $("riskLevel").value = riskLevel;
   updateRiskPreview();
   syncPublicPlayer();
-  playRandomReplay(homeBackdrop).then(playing => {
-    $("replayStatus").textContent = playing
-      ? "Playing a recent match clip saved on this device."
-      : "Cinematic backdrop active. Your recent match clips will rotate here automatically.";
+  controlsPreferencesPromise = syncControlsTourPreferences();
+  initializeMenuBackdrop().then(updateMenuReplayStatus);
+}
+
+function renderLobbyProfile(fallbackName = "Offline Guest") {
+  const hasProgress = Boolean(activeProfile?.progress);
+  const view = createLobbyProfileView({
+    activeProfile: activeProfile || { name: fallbackName, avatarType: "scout" },
+    progress: hasProgress ? { ...activeProfile.progress, totalXp, shieldLevel } : { totalXp: 0, shieldLevel: 0 },
+    classProgress: hasProgress ? classProgress : { classId: avatarClass(activeProfile?.avatarType || "scout") },
+    activeWeapon: hasProgress ? activeGun : "scout",
+    weaponLevel: hasProgress ? guns[activeGun]?.level : 0,
+    shieldLevel: hasProgress ? shieldLevel : 0,
+    connectivity: { ...lobbyConnectivity, offlineMode },
   });
+
+  lobbyPlayer.textContent = `${view.avatar.name} // ${view.classLabel}`;
+  $("lobbyProfileName").textContent = view.displayName;
+  $("lobbyPlayerTag").textContent = view.playerTag;
+  $("lobbyLevel").textContent = view.level;
+  $("lobbyXpText").textContent = view.xp.label;
+  $("lobbyXpBar").style.width = `${view.xp.percentage}%`;
+  $("lobbyClass").textContent = view.classLabel;
+  $("lobbySkill").textContent = view.skillLabel;
+  $("lobbyAbility").textContent = view.abilityLabel;
+  $("lobbyWeapon").textContent = `${view.weapon.label} L${view.weapon.level}`;
+  $("lobbyShield").textContent = view.shield.label;
+  $("lobbyOnlineState").textContent = view.network.label;
+  $("lobbyOnlineState").dataset.online = String(view.network.online);
+  $("lobbyAvatarImage").src = view.avatar.image;
+  $("lobbyAvatarImage").alt = view.avatar.name;
+  $("lobbyAvatarButton").setAttribute("aria-label", `Open ${view.displayName} loadout`);
+  $("lobbyProfileReadout").setAttribute("aria-label", `Open ${view.displayName} profile and loadout`);
+  $("verifiedPhoneStatus").textContent = activeProfile?.phoneHint
+    ? `Linked privately to ${activeProfile.phoneHint}. Use that number to restore this Player Tag on another device.`
+    : activeProfile?.youthAccount
+      ? "Parent controls are stored only on this device."
+      : "Verify a mobile number to restore this Player Tag on another device.";
+  $("openPhoneAccountBtn").disabled = Boolean(activeProfile?.youthAccount);
+}
+
+function openConnections() {
+  setMenuSection("friends");
+  ui.settings.classList.remove("hidden");
+  $("networkStatus").scrollIntoView?.({ block: "center" });
+  $("offlineToggle").focus({ preventScroll: true });
+}
+
+function restoreVisibleMenuSection() {
+  if (!lobbyScreen.classList.contains("hidden")) setMenuSection("lobby");
+  else if (!welcomeScreen.classList.contains("hidden")) setMenuSection(editingProfile ? "survivor" : "home");
+}
+
+function openSettings() {
+  setMenuSection("settings");
+  ui.settings.classList.remove("hidden");
+  if (inputMode === "controller") $("controlsTourReplayBtn").focus({ preventScroll: true });
+}
+
+function closeSettings() {
+  ui.settings.classList.add("hidden");
+  restoreVisibleMenuSection();
 }
 
 async function refreshLobbyAvailability() {
   const onlineButton = $("onlineSurvivalBtn");
-  const computerButton = $("teamLobbyBtn");
-  if (offlineMode || !activeProfile) {
-    onlineButton.classList.add("hidden");
-    computerButton.classList.remove("hidden");
-    return;
-  }
-  try {
-    const response = await fetch(`/room-status?room=${encodeURIComponent(`${mapKey}-teams`)}`, { cache: "no-store" });
-    const status = await response.json();
-    const playersWaiting = Number(status.players) > 0;
-    onlineButton.classList.toggle("hidden", !playersWaiting);
-    computerButton.classList.toggle("hidden", playersWaiting);
-  } catch {
-    onlineButton.classList.add("hidden");
-    computerButton.classList.remove("hidden");
-  }
+  const multiplayerButton = $("teamLobbyBtn");
+  onlineButton.classList.add("hidden");
+  multiplayerButton.classList.remove("hidden");
+  multiplayerButton.disabled = offlineMode || !activeProfile;
+  refreshLobbyNavigation();
 }
 
 function editActiveProfile() {
@@ -1693,35 +2531,63 @@ function editActiveProfile() {
   editingProfile = true;
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
-  setNightfallScene("menu");
+  setMenuSection("survivor");
   profileStep.classList.remove("hidden");
   returnStep.classList.add("hidden");
-  mathStep.classList.add("hidden");
+  linkProfileStep.classList.add("hidden");
+  phoneCodeStep.classList.add("hidden");
   profileName.value = activeProfile.name || "";
   profileBirthDate.value = activeProfile.birthDate || "";
-  profileContact.value = activeProfile.contact || "";
+  profilePhone.value = "";
   profileAvatar.value = activeProfile.avatarType || "scout";
   updateAvatarCards();
   ageConfirm.checked = true;
-  profilePin.value = "0000";
+  profilePin.value = "";
+  profilePhone.closest("label").classList.add("hidden");
+  profilePin.closest("label").classList.add("hidden");
+  parentPhone.closest("label").classList.toggle("hidden", Boolean(activeProfile.youthAccount));
+  parentSetup.classList.toggle("hidden", !activeProfile.youthAccount);
+  parentPin.value = "";
   $("enterWastlandBtn").textContent = "Save Profile";
   $("guestOfflineBtn").classList.add("hidden");
   profileMessage.textContent = "Update your name or avatar, then save.";
 }
 
 function savedProfiles() {
-  const profiles = JSON.parse(localStorage.getItem("wastland-survivor-profiles") || "[]");
-  if (profiles.length) return profiles;
-  const legacy = JSON.parse(localStorage.getItem("wastland-survivor-profile") || "null");
-  return legacy ? [legacy] : [];
+  let profiles = [];
+  let legacy = null;
+  try {
+    const stored = JSON.parse(localStorage.getItem("wastland-survivor-profiles") || "[]");
+    profiles = Array.isArray(stored) ? stored : [];
+  } catch {
+    profiles = [];
+  }
+  try {
+    legacy = JSON.parse(localStorage.getItem("wastland-survivor-profile") || "null");
+  } catch {
+    legacy = null;
+  }
+  const source = profiles.length ? profiles : legacy ? [legacy] : [];
+  const sanitizedSource = source.map(sanitizeLocalProfile);
+  const privacyChanged = JSON.stringify(source) !== JSON.stringify(sanitizedSource);
+  const backfill = backfillProfileIdentities(sanitizedSource, () => crypto.randomUUID());
+  if (privacyChanged || backfill.changed || (!profiles.length && backfill.profiles.length)) {
+    localStorage.setItem("wastland-survivor-profiles", JSON.stringify(backfill.profiles));
+    const currentId = typeof legacy?.profileId === "string" ? legacy.profileId : "";
+    const current = backfill.profiles.find(profile => profile.profileId === currentId) || backfill.profiles.at(-1);
+    if (current) localStorage.setItem("wastland-survivor-profile", JSON.stringify(current));
+  }
+  return backfill.profiles;
 }
 
 function saveProfile(profile = activeProfile) {
   if (!profile) return;
-  const profiles = savedProfiles().filter(item => item.profileId !== profile.profileId);
-  profiles.push(profile);
+  const stableProfile = ensureProfileIdentity(sanitizeLocalProfile(profile), () => crypto.randomUUID());
+  Object.assign(profile, stableProfile);
+  const profiles = savedProfiles().filter(item => item.profileId !== stableProfile.profileId);
+  profiles.push(stableProfile);
   localStorage.setItem("wastland-survivor-profiles", JSON.stringify(profiles));
-  localStorage.setItem("wastland-survivor-profile", JSON.stringify(profile));
+  localStorage.setItem("wastland-survivor-profile", JSON.stringify(stableProfile));
 }
 
 function saveProgress() {
@@ -1763,10 +2629,10 @@ function updateStoryProgress() {
 function avatarLabel(type) { return ({ scout: "Dust Scout", ranger: "Ranger", heavy: "Heavy", tech: "Tech Runner", medic: "Field Medic", warden: "Warden" })[type] || "Dust Scout"; }
 
 function openDashboard() {
-  if (!activeProfile) return;
-  const progress = activeProfile.progress || {};
-  $("dashboardName").textContent = activeProfile.name || "Survivor";
-  $("dashboardAvatar").textContent = avatarLabel(activeProfile.avatarType);
+  const profile = activeProfile || { name: "Offline Guest", avatarType: "scout", progress: {} };
+  const progress = profile.progress || {};
+  $("dashboardName").textContent = profile.name || "Survivor";
+  $("dashboardAvatar").textContent = avatarLabel(profile.avatarType);
   $("dashboardKingdom").textContent = progress.kingdomUnlocked ? "Kingdom Unlocked" : "Frontier Camp";
   $("dashboardLevel").textContent = progress.playerLevel || 1;
   $("dashboardXp").textContent = `${progress.totalXp || 0} XP`;
@@ -1775,16 +2641,18 @@ function openDashboard() {
   $("dashboardMission").textContent = progress.kingdomUnlocked ? "Kingdom unlocked. Continue the frontier timeline." : storyMissions[progress.missionIndex || 0];
   $("dashboardLoadout").innerHTML = Object.entries(guns).map(([key, gun]) => `<div><b>${gun.label}</b><small>Level ${progress.guns?.[key] || 0}/${gun.max === Infinity ? "∞" : gun.max}</small></div>`).join("") + `<div><b>Scrap Shield</b><small>Level ${progress.shieldLevel || 0}/10</small></div>`;
   $("dashboardTactics").innerHTML = ["Aim Stabilizer", "Quick Recovery", "Scavenger Pack", "Flag Runner"].map((name, index) => `<div><b>${name}</b><small>${(progress.storyStage || 1) > index ? "Unlocked" : "Stage " + (index + 1)}</small></div>`).join("");
+  setMenuSection("survivor");
   $("dashboardModal").classList.remove("hidden");
 }
 
-function enterProfile() {
+async function enterProfile() {
   const name = profileName.value.trim();
   const birthDate = profileBirthDate.value;
   const age = ageFromBirthDate(birthDate);
-  const contact = profileContact.value.trim();
+  const phoneNumber = profilePhone.value;
   const pin = profilePin.value.trim();
-  const parent = parentContact.value.trim();
+  const parentPhoneNumber = parentPhone.value;
+  const parentLocalPin = parentPin.value.trim();
   if (!name) {
     profileMessage.textContent = "Enter a player name.";
     return;
@@ -1792,10 +2660,6 @@ function enterProfile() {
   if (age === null) {
     profileMessage.textContent = "This birth date could not be verified. Parent controls will stay available until it is verified.";
     parentSetup.classList.remove("hidden");
-    return;
-  }
-  if (!contact) {
-    profileMessage.textContent = "Enter an email or phone number.";
     return;
   }
   if (!editingProfile && !validPin(pin)) {
@@ -1807,12 +2671,14 @@ function enterProfile() {
     return;
   }
   youthAccount = age < 14;
-  if (youthAccount && !parent) {
-    profileMessage.textContent = "A parent email or phone is required for players under 14.";
-    parentSetup.classList.remove("hidden");
-    return;
-  }
   if (editingProfile && activeProfile) {
+    if (activeProfile.youthAccount) {
+      if (!validPin(parentLocalPin) || await pinDigest(parentLocalPin) !== activeProfile.parentPinDigest) {
+        profileMessage.textContent = "Enter the parent PIN to edit this youth profile.";
+        parentSetup.classList.remove("hidden");
+        return;
+      }
+    }
     activeProfile.name = name;
     activeProfile.avatarType = profileAvatar.value;
     saveProfile();
@@ -1820,24 +2686,53 @@ function enterProfile() {
     $("enterWastlandBtn").textContent = "Enter Wasteland";
     $("guestOfflineBtn").classList.remove("hidden");
     profilePin.value = "";
+    profilePhone.closest("label").classList.remove("hidden");
+    profilePin.closest("label").classList.remove("hidden");
+    parentPhone.closest("label").classList.remove("hidden");
+    parentPin.value = "";
+    parentSetup.classList.add("hidden");
     profileMessage.textContent = "Profile saved.";
     openLobby(name);
     return;
   }
-  pinDigest(pin).then(digest => {
-    const profile = { profileId: crypto.randomUUID(), name, birthDate, age, contact, avatarType: profileAvatar.value, parentContact: youthAccount ? parent : "", youthAccount, pinDigest: digest, deviceId: deviceId(), ageVerifiedAt: new Date().toISOString(), progress: null };
-    profilePin.value = "";
-    if (age >= 18) beginMathCheck(profile);
-    else {
-      saveProfile(profile);
-      activeProfile = profile;
-      if (youthAccount) {
-        offlineMode = true;
-        localStorage.setItem("wastland-survivor-offline", "true");
-      }
-      openLobby(name);
-    }
+  if (youthAccount && (!normalizePhoneNumber(parentPhoneNumber) || !validPin(parentLocalPin))) {
+    profileMessage.textContent = "A parent mobile number and separate four-digit parent PIN are required for players under 14.";
+    parentSetup.classList.remove("hidden");
+    return;
+  }
+  if (!youthAccount && !normalizePhoneNumber(phoneNumber)) {
+    profileMessage.textContent = "Enter a valid mobile number for secure account recovery.";
+    return;
+  }
+  const digest = await pinDigest(pin);
+  const parentPinDigest = youthAccount ? await pinDigest(parentLocalPin) : "";
+  const profile = sanitizeLocalProfile({
+    profileId: crypto.randomUUID(),
+    name,
+    birthDate,
+    age,
+    avatarType: profileAvatar.value,
+    parentPhoneHint: youthAccount ? maskPhoneNumber(parentPhoneNumber) : "",
+    parentPinDigest,
+    youthAccount,
+    pinDigest: digest,
+    deviceId: deviceId(),
+    ageVerifiedAt: new Date().toISOString(),
+    progress: null,
   });
+  profilePin.value = "";
+  parentPin.value = "";
+  parentPhone.value = "";
+  if (youthAccount) {
+    saveProfile(profile);
+    guestControlsIdentityActive = false;
+    activeProfile = profile;
+    offlineMode = true;
+    localStorage.setItem("wastland-survivor-offline", "true");
+    openLobby(name);
+    return;
+  }
+  await sendPhoneCode({ kind: "create", phoneNumber, profile, pinDigest: digest });
 }
 
 function returnProfile() {
@@ -1848,12 +2743,21 @@ function returnProfile() {
     returnMessage.textContent = "Enter the four-digit PIN for this profile.";
     return;
   }
+  const previousAttempts = localPinAttempts.get(saved.profileId) || beginLocalPinAttempts(saved.profileId);
+  if (previousAttempts.lockedUntil > Date.now()) {
+    returnMessage.textContent = `Too many attempts. Try again in ${Math.ceil((previousAttempts.lockedUntil - Date.now()) / 1000)} seconds.`;
+    return;
+  }
   pinDigest(pin).then(digest => {
-    if (digest !== saved.pinDigest) {
-      returnMessage.textContent = "That PIN did not match this profile.";
+    const matched = digest === saved.pinDigest;
+    const nextAttempts = recordLocalPinAttempt(previousAttempts, matched);
+    localPinAttempts.set(saved.profileId, nextAttempts);
+    if (!matched) {
+      returnMessage.textContent = nextAttempts.lockedUntil ? "Too many attempts. This local profile is locked for 30 seconds." : "That PIN did not match this profile.";
       return;
     }
     returnPin.value = "";
+    guestControlsIdentityActive = false;
     activeProfile = saved;
     loadProgress(saved);
     youthAccount = Boolean(saved.youthAccount);
@@ -1861,18 +2765,17 @@ function returnProfile() {
       offlineMode = true;
       localStorage.setItem("wastland-survivor-offline", "true");
     }
-    openLobby(saved.name || saved.contact);
+    openLobby(saved.name || "Survivor");
   });
 }
 
 function showProfileChoice() {
   const profiles = savedProfiles();
-  const saved = profiles[0];
   profileMessage.textContent = "";
   returnMessage.textContent = "";
-  profileSelector.replaceChildren(...profiles.map(profile => new Option(`${profile.name} · ${profile.birthDate}`, profile.profileId || profile.contact)));
+  profileSelector.replaceChildren(...profiles.map(profile => new Option(`${profile.name} · ${profile.birthDate || profile.phoneHint || "local profile"}`, profile.profileId)));
   linkProfileStep.classList.add("hidden");
-  mathStep.classList.add("hidden");
+  phoneCodeStep.classList.add("hidden");
   if (profiles.length) {
     profileStep.classList.add("hidden");
     returnStep.classList.remove("hidden");
@@ -1885,6 +2788,10 @@ function showProfileChoice() {
 
 function initializeProfileScreen() {
   editingProfile = false;
+  profilePhone.closest("label").classList.remove("hidden");
+  profilePin.closest("label").classList.remove("hidden");
+  parentPhone.closest("label").classList.remove("hidden");
+  parentSetup.classList.add("hidden");
   $("enterWastlandBtn").textContent = "Enter Wasteland";
   $("guestOfflineBtn").classList.remove("hidden");
   showProfileChoice();
@@ -1897,22 +2804,17 @@ function updateRiskPreview() {
 }
 
 function leaveLobby() {
+  pendingMatchGate = cancelPendingMatchSelection(pendingMatchGate);
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
-  setNightfallScene("menu");
+  setMenuSection("home");
   showProfileChoice();
-}
-
-function loadReplayBackdrop() {
-  const replay = localStorage.getItem("wastland-survivor-last-replay");
-  if (!replay) return;
-  homeBackdrop.src = replay;
-  homeBackdrop.play().catch(() => {});
 }
 
 function enterGuestOffline() {
   offlineMode = true;
   youthAccount = false;
+  guestControlsIdentityActive = true;
   localStorage.setItem("wastland-survivor-offline", "true");
   const guestName = "Offline Guest";
   openLobby(guestName);
@@ -1922,7 +2824,8 @@ function bindTouchStick(id, prefix) {
   const element = $(id);
   const knob = element.querySelector("i");
   let pointerId = null;
-  const release = () => {
+  const release = event => {
+    if (event && pointerId !== null && event.pointerId !== pointerId) return;
     pointerId = null;
     touch[`${prefix}x`] = touch[`${prefix}z`] = 0;
     knob.style.transform = "translate(0,0)";
@@ -1939,6 +2842,7 @@ function bindTouchStick(id, prefix) {
     knob.style.transform = `translate(${x}px,${y}px)`;
     touch[`${prefix}x`] = x / 38;
     touch[`${prefix}z`] = y / 38;
+    handleControlsTourSignal({ source: "touch-stick", control: prefix === "m" ? "move" : "aim", magnitude: cap / 38 });
   };
   element.addEventListener("pointerdown", event => {
     if (phase === "countdown") return;
@@ -1951,6 +2855,12 @@ function bindTouchStick(id, prefix) {
   element.addEventListener("pointermove", move);
   element.addEventListener("pointerup", release);
   element.addEventListener("pointercancel", release);
+  element.addEventListener("lostpointercapture", release);
+  element.addEventListener("pointerleave", event => {
+    if (!element.hasPointerCapture?.(event.pointerId)) release(event);
+  });
+  touchStickReleases.push(release);
+  return element;
 }
 
 function setVoiceStatus(status) { ui.voiceStatus.textContent = status; }
@@ -1963,10 +2873,12 @@ function updateVoiceButtons() {
   ui.muteVoice.textContent = voiceMuted ? "Unmute" : "Mute";
 }
 
-function voiceRoom() { return mode === "ctf" ? `${mapKey}-ctf-${ctfPlayers}` : `${mapKey}-${mode}`; }
+function voiceRoom() {
+  return createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
+}
 
 function lobbyRoom() {
-  return mode === "ctf" ? `${mapKey}-ctf-${ctfPlayers}` : `${mapKey}-teams`;
+  return createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
 }
 
 function closeLobbyRoom() {
@@ -1975,19 +2887,31 @@ function closeLobbyRoom() {
     lobbySocket.close();
     lobbySocket = null;
   }
+  updateLobbyConnectivity({ type: "lobby-socket-closed" });
   lobbyId = null;
+  lobbyRoomName = null;
   lobbyPeers = 0;
 }
 
 function ensureLobbyRoom() {
+  const roomName = lobbyRoom();
+  if (awaitingRematch && lobbyRoomName === roomName
+    && (lobbySocket?.readyState === WebSocket.OPEN || lobbySocket?.readyState === WebSocket.CONNECTING)) {
+    updateNetworkStatus("Rematch room open: waiting for Ready");
+    return;
+  }
   closeLobbyRoom();
   if (offlineMode || mode === "solo") {
     updateNetworkStatus();
     return;
   }
   const protocol = location.protocol === "https:" ? "wss" : "ws";
+  lobbyRoomName = roomName;
   lobbySocket = new WebSocket(`${protocol}://${location.host}/signal`);
-  lobbySocket.onopen = () => lobbySocket.send(JSON.stringify({ type: "join", room: lobbyRoom() }));
+  lobbySocket.onopen = () => {
+    updateLobbyConnectivity({ type: "lobby-socket-open" });
+    lobbySocket.send(JSON.stringify({ type: "join", room: roomName }));
+  };
   lobbySocket.onmessage = event => {
     try {
       const message = JSON.parse(event.data);
@@ -2001,8 +2925,8 @@ function ensureLobbyRoom() {
       } else if (message.type === "peer-left") {
         lobbyPeers = Math.max(0, lobbyPeers - 1);
         updateNetworkStatus(`Room open: ${lobbyPeers + 1}/${message.capacity || 4}`);
-      } else if (message.type === "match-ready") {
-        updateNetworkStatus(`Room ready: ${message.capacity} players`);
+      } else if (["match-ready", "match-reset", "match-waiting"].includes(message.type)) {
+        applyMatchLifecycleMessage(message);
       } else if (message.type === "room-full") {
         updateNetworkStatus("Room full: waiting for the next room");
       } else if (message.type === "chest-access") {
@@ -2016,11 +2940,17 @@ function ensureLobbyRoom() {
       }
     } catch { updateNetworkStatus("Lobby connection issue"); }
   };
-  lobbySocket.onerror = () => updateNetworkStatus("Lobby connection issue");
+  lobbySocket.onerror = () => {
+    updateLobbyConnectivity({ type: "lobby-socket-closed" });
+    updateNetworkStatus("Lobby connection issue");
+  };
   lobbySocket.onclose = () => {
+    updateLobbyConnectivity({ type: "lobby-socket-closed" });
     lobbySocket = null;
     lobbyId = null;
-    updateNetworkStatus();
+    lobbyRoomName = null;
+    if (mode === "teams") applyMatchLifecycleMessage({ type: "match-reset", reason: "connection-lost" });
+    else updateNetworkStatus();
     if (!offlineMode && mode !== "solo") {
       clearTimeout(lobbyRetryTimer);
       lobbyRetryTimer = setTimeout(ensureLobbyRoom, 1800);
@@ -2146,6 +3076,8 @@ async function joinVoice() {
 }
 
 function lobbyChanged() {
+  activeMatchPlan = null;
+  awaitingRematch = false;
   if (localStream) closeVoice("Voice left: lobby changed");
 }
 
@@ -2164,6 +3096,7 @@ function pauseGraceSeconds() {
 
 function openGameMenu() {
   if (phase === "menu" || phase === "countdown" || phase === "over") return;
+  menuOpenedFromPrep = phase === "prep";
   menuOpen = true;
   const liveMatch = mode === "teams" || mode === "ctf";
   phase = liveMatch ? "combat" : "paused";
@@ -2171,6 +3104,7 @@ function openGameMenu() {
   $("gameMenu").classList.remove("hidden");
   $("graceStatus").classList.add("hidden");
   $("menuMatchStatus").textContent = liveMatch ? "LIVE MATCH CONTINUES" : "MATCH PAUSED";
+  $("openShopBtn").disabled = !menuOpenedFromPrep;
 }
 
 function closeGameMenu() {
@@ -2189,6 +3123,7 @@ function closeGameMenu() {
 function exitToLobby() {
   saveProgress();
   closeLobbyRoom();
+  pendingMatchGate = cancelPendingMatchSelection(pendingMatchGate);
   menuOpen = false;
   phase = "menu";
   firing = false;
@@ -2204,8 +3139,167 @@ function exitToLobby() {
   ui.over.classList.add("hidden");
   document.body.classList.remove("loadout-active");
   document.body.classList.add("menu-active");
-  setNightfallScene("menu");
+  markMenuReplayRefresh();
+  setMenuSection("lobby");
   openLobby(activeProfile?.name || "Offline Guest");
+}
+
+function reducedMotionEnabled() {
+  return matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function applyMenuPresentation(section = menuSection, focusedCommand = null) {
+  const presentation = resolveMenuPresentation({
+    section,
+    focusedCommand,
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+  });
+  menuSection = presentation.section;
+  document.body.dataset.menuSection = presentation.section;
+  document.body.dataset.menuTier = presentation.tier;
+  document.body.dataset.reducedMotion = String(presentation.reducedMotion);
+  document.body.style.setProperty("--command-buoyancy", `${presentation.surface.buoyancyPx}px`);
+  document.body.style.setProperty("--command-loop-duration", `${presentation.surface.loopDurationMs}ms`);
+  document.body.style.setProperty("--command-ripple-opacity", String(presentation.surface.rippleOpacity));
+  document.body.style.setProperty("--command-vapor-opacity", String(presentation.surface.vaporOpacity));
+  document.body.style.setProperty("--command-vapor-duration", `${presentation.surface.vaporDriftDurationMs}ms`);
+  document.body.style.setProperty("--command-disturbance", String(presentation.surface.localDisturbance));
+  document.body.style.setProperty("--command-focus-forward", `${presentation.focus.selectedForwardPx}px`);
+  document.body.style.setProperty("--command-focus-light", String(presentation.focus.selectedIllumination));
+  setNightfallPresentation(presentation);
+  return presentation;
+}
+
+function setMenuSection(section) {
+  const currentCommand = lobbyNavigator?.current();
+  const focused = section === "lobby" && currentCommand?.input !== "programmatic"
+    ? currentCommand?.id || null
+    : null;
+  const presentation = applyMenuPresentation(section, focused);
+  const menuActive = document.body.classList.contains("menu-active");
+  setNightfallScene(menuActive ? "menu" : "game");
+  const replayRefreshPending = menuMediaLifecycle.replayRefreshPending();
+  if (menuActive && !replayRefreshPending && homeBackdrop.dataset.mediaKind && homeBackdrop.dataset.mediaKind !== "fallback") {
+    homeBackdrop.play().catch(() => retainNightfallFallback("autoplay-failed"));
+  }
+  return presentation;
+}
+
+function retainNightfallFallback(reason = "unavailable") {
+  nightfallBackground.classList.add("nightfall-media-hold");
+  homeBackdrop.classList.remove("is-ready");
+  homeBackdrop.pause();
+  homeBackdrop.dataset.mediaKind = "fallback";
+  homeBackdrop.dataset.mediaReason = reason;
+  return "fallback";
+}
+
+function holdNightfallFallback(reason = "loading") {
+  nightfallBackground.classList.add("nightfall-media-hold");
+  homeBackdrop.classList.remove("is-ready");
+  homeBackdrop.pause();
+  homeBackdrop.dataset.mediaReason = reason;
+}
+
+function revealMenuBackdrop(kind) {
+  const policy = resolveMenuMedia({
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+    saveData: Boolean(navigator.connection?.saveData),
+    playbackState: "playing",
+  });
+  if (policy.kind === "fallback") return retainNightfallFallback("capability-policy");
+  homeBackdrop.dataset.mediaKind = kind;
+  delete homeBackdrop.dataset.mediaReason;
+  delete homeBackdrop.dataset.mediaCandidate;
+  homeBackdrop.classList.add("is-ready");
+  nightfallBackground.classList.remove("nightfall-media-hold");
+  return kind;
+}
+
+async function resumeMenuBackdrop(kind) {
+  homeBackdrop.dataset.mediaCandidate = kind;
+  try {
+    await homeBackdrop.play();
+    return revealMenuBackdrop(kind);
+  } catch {
+    return null;
+  }
+}
+
+async function tryMenuBackdrop(kind, configure) {
+  homeBackdrop.classList.remove("is-ready");
+  homeBackdrop.dataset.mediaCandidate = kind;
+  try {
+    if (configure) configure();
+    await homeBackdrop.play();
+    return revealMenuBackdrop(kind);
+  } catch {
+    homeBackdrop.classList.remove("is-ready");
+    return null;
+  }
+}
+
+function markMenuReplayRefresh({ recheckVisible = false } = {}) {
+  menuMediaLifecycle.markReplayRefresh();
+  if (recheckVisible && document.body.classList.contains("menu-active")) {
+    return initializeMenuBackdrop().then(updateMenuReplayStatus);
+  }
+  return Promise.resolve(null);
+}
+
+async function initializeMenuBackdrop({ force = false } = {}) {
+  const policy = resolveMenuMedia({
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+    saveData: Boolean(navigator.connection?.saveData),
+    playbackState: "loading",
+  });
+  if (policy.kind === "fallback") return retainNightfallFallback("capability-policy");
+  const result = await menuMediaLifecycle.selectOnEntry({
+    force,
+  }, {
+    currentKind: () => homeBackdrop.dataset.mediaKind,
+    isVisible: () => document.body.classList.contains("menu-active"),
+    showFallback: reason => holdNightfallFallback(reason),
+    resumeCurrent: kind => resumeMenuBackdrop(kind),
+    playReplay: async () => {
+      homeBackdrop.dataset.mediaCandidate = "replay";
+      const playing = await playRandomReplay(homeBackdrop);
+      return playing ? Boolean(revealMenuBackdrop("replay")) : false;
+    },
+    playLegacyReplay: async () => {
+      const legacyReplay = localStorage.getItem("wastland-survivor-last-replay");
+      if (!legacyReplay) return false;
+      return Boolean(await tryMenuBackdrop("replay", () => { homeBackdrop.src = legacyReplay; }));
+    },
+    playBundled: async () => {
+      const bundledPolicy = resolveMenuMedia({ tier: effectiveGraphicsTier(), replayFailed: true, playbackState: "loading" });
+      if (bundledPolicy.kind !== "bundled") return false;
+      return Boolean(await tryMenuBackdrop("bundled", () => {
+        homeBackdrop.removeAttribute("src");
+        homeBackdrop.load();
+      }));
+    },
+  });
+  return result.kind === "fallback"
+    ? retainNightfallFallback("autoplay-or-decode-failed")
+    : result.kind;
+}
+
+function updateMenuReplayStatus(kind) {
+  $("replayStatus").textContent = kind === "replay"
+    ? "Playing a recent match clip saved on this device."
+    : kind === "bundled"
+      ? "Cinematic water-walk loop active. Recent match clips take priority when available."
+      : "Nightfall fallback active for this device or motion preference.";
+  return kind;
+}
+
+function pauseMenuBackdrop() {
+  nightfallBackground.classList.remove("nightfall-media-hold");
+  homeBackdrop.pause();
 }
 
 async function initializeNightfallBackground() {
@@ -2216,19 +3310,26 @@ async function initializeNightfallBackground() {
   } catch {
     // CSS fallback keeps the menu readable when optional artwork is unavailable.
   }
+  const presentation = resolveMenuPresentation({
+    section: menuSection,
+    tier: effectiveGraphicsTier(),
+    reducedMotion: reducedMotionEnabled(),
+  });
   createNightfallBackground(nightfallBackground, {
     manifest,
-    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    reducedMotion: reducedMotionEnabled(),
     tier: effectiveGraphicsTier(),
     scene: phase === "countdown" ? "countdown" : phase === "menu" ? "menu" : "game",
+    presentation,
   });
+  applyMenuPresentation(menuSection);
 }
 
 function effectiveGraphicsTier() {
   return selectGraphicsTier({
     deviceMemory: navigator.deviceMemory,
     hardwareConcurrency: navigator.hardwareConcurrency,
-    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    reducedMotion: reducedMotionEnabled(),
     savedTier: graphicsTierOverride === "auto" ? undefined : graphicsTierOverride,
   });
 }
@@ -2236,7 +3337,13 @@ function effectiveGraphicsTier() {
 function applyGraphicsTier() {
   const tier = effectiveGraphicsTier();
   setNightfallTier(tier);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, tier === "low" ? 1 : tier === "medium" ? 1.75 : 3));
+  applyMenuPresentation(menuSection, lobbyNavigator?.current().id || null);
+  if (document.body.classList.contains("menu-active")) initializeMenuBackdrop({ force: true });
+  else pauseMenuBackdrop();
+  applyRendererTier(tier);
+}
+
+function applyRendererTier(tier = effectiveGraphicsTier()) {
   renderer.shadowMap.enabled = tier !== "low";
   renderer.shadowMap.autoUpdate = tier === "high";
   resize();
@@ -2301,21 +3408,84 @@ function equip(gunName) {
 }
 
 addEventListener("resize", resize);
+addEventListener("blur", () => interruptLocalInput("window-blur"));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") interruptLocalInput("document-hidden");
+});
+document.addEventListener("pointerlockchange", () => {
+  const locked = document.pointerLockElement === canvas;
+  if (locked) {
+    canvasPointerLocked = true;
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+    return;
+  }
+  if (!canvasPointerLocked) return;
+  canvasPointerLocked = false;
+  interruptLocalInput("pointer-lock-lost");
+});
+document.addEventListener("pointerlockerror", () => interruptLocalInput("pointer-lock-lost"));
+canvas.addEventListener("pointerleave", () => {
+  if (document.pointerLockElement !== canvas) interruptLocalInput("canvas-exit");
+});
+canvas.addEventListener("lostpointercapture", () => interruptLocalInput("pointer-capture-lost"));
+canvas.addEventListener("pointercancel", () => interruptLocalInput("pointer-capture-lost"));
+canvas.addEventListener("webglcontextlost", event => {
+  event.preventDefault();
+  rendererContextLost = true;
+  interruptLocalInput("webgl-context-lost");
+});
+canvas.addEventListener("webglcontextrestored", () => {
+  rendererContextLost = false;
+  clearTransientGameplayInput("webgl-context-lost");
+  applyRendererTier();
+  updateInputRecoveryNotice();
+});
 addEventListener("gamepadconnected", () => updateControllerState(true));
 addEventListener("gamepaddisconnected", () => updateControllerState(false));
 addEventListener("keydown", event => {
+  const key = event.key.toLowerCase();
+  if (controlsTourState?.status === "active") {
+    setInputMode("keyboard");
+    handleControlsTourSignal({ source: "keyboard", kind: "down", key: event.key });
+    event.preventDefault();
+    return;
+  }
   if (event.key === "Escape") {
-    if (!ui.settings.classList.contains("hidden")) { ui.settings.classList.add("hidden"); return; }
-    if (!$("dashboardModal").classList.contains("hidden")) { $("dashboardModal").classList.add("hidden"); return; }
-    if (!ui.shop.classList.contains("hidden")) { ui.shop.classList.add("hidden"); return; }
+    if (!ui.settings.classList.contains("hidden")) { closeSettings(); return; }
+    if (!$("dashboardModal").classList.contains("hidden")) { $("dashboardModal").classList.add("hidden"); restoreVisibleMenuSection(); return; }
+    if (!ui.shop.classList.contains("hidden")) { ui.shop.classList.add("hidden"); restoreVisibleMenuSection(); return; }
   }
   if (controllerLocked() || phase === "countdown") return;
-  const key = event.key.toLowerCase();
+  if (!lobbyScreen.classList.contains("hidden")) {
+    const activeElement = document.activeElement;
+    const navigationFocused = Boolean(activeElement?.matches?.("[data-lobby-control]"));
+    const selectFocused = activeElement?.tagName === "SELECT";
+    const nativeControlFocused = Boolean(activeElement !== document.body
+      && activeElement !== document.documentElement
+      && activeElement?.matches('a[href], button, input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])'));
+    const action = resolveMenuKeyAction(event.key, { navigationFocused, nativeControlFocused, selectFocused });
+
+    if (action) {
+      event.preventDefault();
+      setInputMode("keyboard");
+      if (navigationFocused) {
+        focusLobbyCommand(activeElement.id, "keyboard");
+      }
+      if (action.type === "move") moveLobbyFocus(action.direction, "keyboard");
+      if (action.type === "activate") activateLobbyCommand();
+      return;
+    }
+
+    if (nativeControlFocused || key === "tab") return;
+  }
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) event.preventDefault();
   if (key === "escape") { menuOpen ? closeGameMenu() : openGameMenu(); return; }
+  if (localGameplayInputPaused()) return;
   if (key === "r") reloadWeapon(true);
   if (key === "q") cycleWeapon(1);
   if (key === "e") interact();
+  if (key === "f") triggerAbility();
   if (key === "tab") { event.preventDefault(); switchLockedTarget(); }
   keys[key] = true;
   if (key === "arrowleft") keys.a = true;
@@ -2335,12 +3505,21 @@ addEventListener("keyup", event => {
 });
 canvas.addEventListener("pointermove", event => {
   if (controllerLocked()) return;
+  if (controlsTourState?.status === "active") {
+    if (event.pointerType === "mouse") setInputMode("mouse");
+    handleControlsTourSignal({ source: "pointer", kind: "move", movementX: event.movementX, movementY: event.movementY });
+    return;
+  }
   mouseAimScreen.x = THREE.MathUtils.clamp(event.clientX, 0, innerWidth);
   mouseAimScreen.y = THREE.MathUtils.clamp(event.clientY, 0, innerHeight);
   if (event.pointerType === "mouse") {
     setInputMode("mouse");
+    if (localGameplayInputPaused()) return;
     if (frontView && phase === "combat" && !menuOpen) {
-      viewYaw -= event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
+      if (document.pointerLockElement !== canvas) return;
+      viewYaw -= event.movementX * .0032 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
+      aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
+      return;
     }
   }
   pointer.set(mouseAimScreen.x / innerWidth * 2 - 1, -(mouseAimScreen.y / innerHeight) * 2 + 1);
@@ -2348,15 +3527,32 @@ canvas.addEventListener("pointermove", event => {
   const hit = raycaster.intersectObject(ground)[0];
   if (hit) aim.copy(hit.point);
 });
-canvas.addEventListener("pointerdown", () => {
+canvas.addEventListener("pointerdown", event => {
   if (controllerLocked() || phase === "countdown") return;
-  firing = true;
+  const pointerHandoff = applyCanvasPointerHandoff(event, {
+    inputMode,
+    pointerResumeRequired,
+    setInputMode,
+  });
+  if (controlsTourState?.status === "active") {
+    handleControlsTourSignal({ source: "pointer", kind: "down", button: event.button });
+    return;
+  }
+  if (pointerHandoff.consumesCanvasAction) {
+    wakeAudio();
+    return;
+  }
+  const resumingPointer = pointerResumeRequired;
+  if (pointerHandoff.pointerLockCandidate && frontView && document.pointerLockElement !== canvas) requestGameplayPointerLock(event);
   wakeAudio();
+  if (resumingPointer || localGameplayInputPaused()) return;
+  if (phase !== "combat" || menuOpen || event.button !== 0 || event.isPrimary === false) return;
+  firing = true;
 });
 addEventListener("pointerup", () => { firing = false; });
 
-bindTouchStick("moveStick", "m");
-bindTouchStick("aimStick", "a");
+const moveStick = bindTouchStick("moveStick", "m");
+const aimStick = bindTouchStick("aimStick", "a");
 
 function bindHoldButton(id, onChange) {
   const button = $(id);
@@ -2370,18 +3566,26 @@ function bindHoldButton(id, onChange) {
   button.addEventListener("pointerup", change(false));
   button.addEventListener("pointercancel", change(false));
   button.addEventListener("pointerleave", change(false));
+  return button;
 }
 
-bindHoldButton("touchFireBtn", active => { touch.fire = active; });
-bindHoldButton("touchAdsBtn", active => { adsActive = active; });
+const touchFireButton = bindHoldButton("touchFireBtn", active => {
+  if (active && handleControlsTourSignal({ source: "touch-button", control: "fire" })) return;
+  touch.fire = active;
+});
+const touchAdsButton = bindHoldButton("touchAdsBtn", active => { adsActive = active; });
+bindTransientPointerInterrupts({
+  targets: [moveStick, aimStick, touchFireButton, touchAdsButton],
+  interrupt: interruptLocalInput,
+});
 $("touchReloadBtn").onclick = () => { setInputMode("touch"); reloadWeapon(true); };
 $("touchWeaponBtn").onclick = () => { setInputMode("touch"); cycleWeapon(1); };
 $("touchInteractBtn").onclick = () => { setInputMode("touch"); interact(); };
-$("touchAbilityBtn").onclick = () => { setInputMode("touch"); triggerAbility(); };
-$("touchPauseBtn").onclick = () => { setInputMode("touch"); menuOpen ? closeGameMenu() : openGameMenu(); };
-$("soloMode").onclick = () => { document.body.classList.remove("menu-active"); mode = "solo"; $("soloMode").classList.add("active"); $("teamMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); };
-$("teamMode").onclick = () => { document.body.classList.remove("menu-active"); mode = "teams"; $("teamMode").classList.add("active"); $("soloMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); };
-$("ctfMode").onclick = () => { document.body.classList.remove("menu-active"); mode = "ctf"; $("ctfMode").classList.add("active"); $("soloMode").classList.remove("active"); $("teamMode").classList.remove("active"); $("ctfPlayerControl").classList.remove("hidden"); lobbyChanged(); start(); };
+$("touchAbilityBtn").onclick = () => { setInputMode("touch"); if (!handleControlsTourSignal({ source: "touch-button", control: "ability" })) triggerAbility(); };
+$("touchPauseBtn").onclick = () => { setInputMode("touch"); if (!handleControlsTourSignal({ source: "touch-button", control: "pause" })) menuOpen ? closeGameMenu() : openGameMenu(); };
+$("soloMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "solo"; $("soloMode").classList.add("active"); $("teamMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); });
+$("teamMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "teams"; $("teamMode").classList.add("active"); $("soloMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); });
+$("ctfMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "ctf"; $("ctfMode").classList.add("active"); $("soloMode").classList.remove("active"); $("teamMode").classList.remove("active"); $("ctfPlayerControl").classList.remove("hidden"); lobbyChanged(); start(); });
 document.querySelectorAll("[data-ctf-players]").forEach(button => {
   button.onclick = () => {
     ctfPlayers = Number(button.dataset.ctfPlayers);
@@ -2400,16 +3604,32 @@ document.querySelectorAll("[data-map]").forEach(button => {
     start();
   };
 });
-$("openShopBtn").onclick = () => { if (phase === "prep") interact(); };
+$("openShopBtn").onclick = () => {
+  if (menuOpenedFromPrep) {
+    phase = "prep";
+    closeGameMenu();
+    interact();
+  }
+};
 $("openChestBtn").onclick = interact;
 $("closeShopBtn").onclick = () => {
   ui.shop.classList.add("hidden");
+  restoreVisibleMenuSection();
   if (chestAccessGranted && lobbySocket?.readyState === WebSocket.OPEN) lobbySocket.send(JSON.stringify({ type: "chest-leave" }));
   chestAccessGranted = false;
 };
-$("loadoutArmoryBtn").onclick = () => ui.shop.classList.remove("hidden");
+$("loadoutArmoryBtn").onclick = () => { setMenuSection("armory"); ui.shop.classList.remove("hidden"); };
 $("loadoutReadyBtn").onclick = () => {
   ui.shop.classList.add("hidden");
+  if (mode === "teams" && !offlineMode) {
+    if (lobbySocket?.readyState === WebSocket.OPEN) {
+      updateNetworkStatus(awaitingRematch ? "Ready. Waiting for every player..." : "Starting match and filling open seats...");
+      lobbySocket.send(JSON.stringify({ type: "start-match" }));
+    } else {
+      updateNetworkStatus("Waiting for the multiplayer room...");
+    }
+    return;
+  }
   $("loadoutRoomModal").classList.add("hidden");
   beginCountdown();
 };
@@ -2421,17 +3641,27 @@ $("upgradeCannonBtn").onclick = () => upgrade("cannon");
 $("upgradeInfernoBtn").onclick = () => upgrade("inferno");
 $("upgradeShieldBtn").onclick = upgradeShield;
 $("restartBtn").onclick = () => { ui.over.classList.add("hidden"); start(); };
-$("settingsBtn").onclick = () => ui.settings.classList.remove("hidden");
-$("lobbySettingsBtn").onclick = () => ui.settings.classList.remove("hidden");
-$("closeSettingsBtn").onclick = () => ui.settings.classList.add("hidden");
+$("settingsBtn").onclick = openSettings;
+$("lobbySettingsBtn").onclick = openSettings;
+$("lobbyConnectionsBtn").onclick = openConnections;
+$("menuSettingsBtn").onclick = openSettings;
+$("closeSettingsBtn").onclick = closeSettings;
+$("controlsTourReplayBtn").onclick = () => requestOptionalControlsTour({ family: inputMode, mode: "replay" });
+$("closeControlsTourBtn").onclick = closeControlsTour;
+$("startControlsMiniTourBtn").onclick = () => requestOptionalControlsTour({ family: miniTourFamily || inputMode, mode: "mini" });
+$("dismissControlsMiniTourBtn").onclick = () => {
+  miniTourFamily = null;
+  queuedControlsTour = cancelQueuedControlsTour(queuedControlsTour);
+  resetMiniTourOfferControls();
+  $("controlsMiniTourOffer").classList.add("hidden");
+};
 $("menuToggle").onclick = () => menuOpen ? closeGameMenu() : openGameMenu();
 $("resumeGameBtn").onclick = closeGameMenu;
 $("frontViewBtn").onclick = () => { frontView = !frontView; $("frontViewBtn").textContent = frontView ? "Arena View" : "First Person"; };
-$("menuSettingsBtn").onclick = () => { ui.settings.classList.remove("hidden"); };
 $("exitGameBtn").onclick = exitToLobby;
 $("mobileMenuSelect").onchange = event => {
   if (event.target.value === "resume") closeGameMenu();
-  if (event.target.value === "settings") ui.settings.classList.remove("hidden");
+  if (event.target.value === "settings") openSettings();
   if (event.target.value === "front") { frontView = true; closeGameMenu(); }
   if (event.target.value === "lobby") exitToLobby();
   event.target.value = "resume";
@@ -2503,9 +3733,13 @@ ui.muteVoice.onclick = () => { voiceMuted = !voiceMuted; localStream?.getAudioTr
 ui.offline.onchange = () => {
   offlineMode = ui.offline.checked;
   localStorage.setItem("wastland-survivor-offline", String(offlineMode));
+  updateLobbyConnectivity({ type: "offline-changed", offlineMode });
   updateNetworkStatus();
   if (offlineMode) closeLobbyRoom();
-  else ensureLobbyRoom();
+  else {
+    syncPublicPlayer();
+    ensureLobbyRoom();
+  }
 };
 $("enterWastlandBtn").onclick = enterProfile;
 $("guestOfflineBtn").onclick = enterGuestOffline;
@@ -2513,7 +3747,14 @@ $("showLinkProfileBtn").onclick = showDeviceLinkStep;
 $("showLinkProfileNewBtn").onclick = showDeviceLinkStep;
 $("linkProfileBackBtn").onclick = initializeProfileScreen;
 $("claimLinkBtn").onclick = claimDeviceLink;
-$("createDeviceLinkBtn").onclick = createDeviceLink;
+$("phoneCodeBackBtn").onclick = cancelPhoneVerification;
+$("confirmPhoneCodeBtn").onclick = confirmPhoneCode;
+$("resendPhoneCodeBtn").onclick = resendPhoneCode;
+$("openPhoneAccountBtn").onclick = () => {
+  $("verifiedPhoneStatus").textContent = activeProfile?.phoneHint
+    ? `Linked privately to ${activeProfile.phoneHint}. On another device, choose Restore Linked Player.`
+    : "Return to the profile screen and choose Restore Linked Player after verification.";
+};
 document.querySelectorAll(".avatar-choice").forEach(card => card.onclick = () => {
   profileAvatar.value = card.dataset.avatar;
   updateAvatarCards(card.dataset.avatar);
@@ -2523,18 +3764,24 @@ profileBirthDate.addEventListener("input", () => {
   const age = ageFromBirthDate(profileBirthDate.value);
   parentSetup.classList.toggle("hidden", !(age > 0 && age < 14));
 });
-$("verifyMathBtn").onclick = finishMathCheck;
-[profilePin, returnPin, mathAnswer].forEach(input => {
+[profilePin, returnPin, parentPin, $("linkLocalPin")].forEach(input => {
   ["copy", "cut", "paste", "contextmenu"].forEach(eventName => input.addEventListener(eventName, event => event.preventDefault()));
 });
 setInterval(() => {
-  if (!pendingProfile) return;
-  const remaining = Math.max(0, mathDeadline - Date.now());
-  mathTimer.textContent = `${String(Math.ceil(remaining / 60000)).padStart(2, "0")}:${String(Math.ceil(remaining / 1000) % 60).padStart(2, "0")}`;
-  if (!remaining) finishMathCheck();
-}, 250);
+  if (!phoneChallenge) return;
+  updatePhoneResendControl();
+  if (phoneChallenge.status === "code-sent" && Date.now() > phoneChallenge.expiresAt) {
+    phoneChallenge = failPhoneChallenge(phoneChallenge, phoneChallenge.expiresAt + 1);
+    $("phoneCodeMessage").textContent = "This code expired. Go back and request a new one.";
+  }
+}, 1000);
 $("returnWastlandBtn").onclick = returnProfile;
-$("storyGuestBtn").onclick = () => { offlineMode = true; localStorage.setItem("wastland-survivor-offline", "true"); openLobby(activeProfile?.name || "Offline Story Player"); };
+$("storyGuestBtn").onclick = () => {
+  offlineMode = true;
+  guestControlsIdentityActive = !activeProfile;
+  localStorage.setItem("wastland-survivor-offline", "true");
+  openLobby(activeProfile?.name || "Offline Story Player");
+};
 $("newProfileBtn").onclick = () => {
   localStorage.removeItem("wastland-survivor-profile");
   showProfileChoice();
@@ -2542,10 +3789,13 @@ $("newProfileBtn").onclick = () => {
 $("signOutProfileBtn").onclick = leaveLobby;
 $("editProfileBtn").onclick = editActiveProfile;
 $("dashboardBtn").onclick = openDashboard;
-$("closeDashboardBtn").onclick = () => $("dashboardModal").classList.add("hidden");
+$("lobbyAvatarButton").onclick = openDashboard;
+$("lobbyProfileReadout").onclick = openDashboard;
+$("closeDashboardBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); restoreVisibleMenuSection(); };
 $("lobbyBackBtn").onclick = () => {
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
+  setMenuSection("home");
   initializeProfileScreen();
 };
 $("profileBackBtn").onclick = () => {
@@ -2553,17 +3803,34 @@ $("profileBackBtn").onclick = () => {
     editingProfile = false;
     welcomeScreen.classList.add("hidden");
     lobbyScreen.classList.remove("hidden");
+    setMenuSection("lobby");
     return;
   }
   initializeProfileScreen();
 };
 $("dashboardEditBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); editActiveProfile(); };
-$("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") ui.shop.classList.remove("hidden"); else openDashboard(); };
+$("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") { setMenuSection("armory"); ui.shop.classList.remove("hidden"); } else openDashboard(); };
 $("survivalLobbyBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("soloMode").click(); };
-$("teamLobbyBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("teamMode").click(); };
-$("onlineSurvivalBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("teamMode").click(); };
+$("teamLobbyBtn").onclick = () => {
+  const choices = $("teamSizeChoices");
+  const expanded = choices.classList.toggle("hidden") === false;
+  $("ctfPlayerChoices").classList.add("hidden");
+  $("ctf6LobbyBtn").setAttribute("aria-expanded", "false");
+  $("teamLobbyBtn").setAttribute("aria-expanded", String(expanded));
+  refreshLobbyNavigation(expanded ? "teamSize2Btn" : "teamLobbyBtn");
+  if (expanded) renderLobbyNavigation(true);
+};
+document.querySelectorAll("[data-team-size]").forEach(button => {
+  button.onclick = () => {
+    botTeamSize = normalizeTeamSize(button.dataset.teamSize);
+    $("botTeamSize").value = String(botTeamSize);
+    lobbyScreen.classList.add("hidden");
+    $("teamMode").click();
+  };
+});
+$("onlineSurvivalBtn").onclick = () => $("teamLobbyBtn").click();
 $("botTeamSize").onchange = event => {
-  botTeamSize = Number(event.target.value);
+  botTeamSize = normalizeTeamSize(event.target.value);
 };
 $("botDifficulty").onchange = event => {
   difficultyRatio = Number(event.target.value);
@@ -2581,10 +3848,35 @@ storyMapSelect.onchange = event => {
   mapKey = event.target.value;
 };
 $("ctf6LobbyBtn").onclick = () => {
-  lobbyScreen.classList.add("hidden");
-  $("ctfMode").click();
-  $("ctfPlayerControl").querySelector('[data-ctf-players="6"]').click();
+  const choices = $("ctfPlayerChoices");
+  const expanded = choices.classList.toggle("hidden") === false;
+  $("teamSizeChoices").classList.add("hidden");
+  $("teamLobbyBtn").setAttribute("aria-expanded", "false");
+  $("ctf6LobbyBtn").setAttribute("aria-expanded", String(expanded));
+  refreshLobbyNavigation(expanded ? "ctf4PlayersLobbyBtn" : "ctf6LobbyBtn");
+  if (expanded) renderLobbyNavigation(true);
 };
+document.querySelectorAll("[data-lobby-ctf-players]").forEach(button => {
+  button.onclick = () => {
+    ctfPlayers = Number(button.dataset.lobbyCtfPlayers) === 6 ? 6 : 4;
+    document.querySelectorAll("[data-ctf-players]").forEach(item => item.classList.toggle("active", Number(item.dataset.ctfPlayers) === ctfPlayers));
+    lobbyScreen.classList.add("hidden");
+    $("ctfMode").click();
+  };
+});
+
+bindLobbyNavigation();
+
+homeBackdrop.addEventListener("playing", () => {
+  revealMenuBackdrop(homeBackdrop.dataset.mediaCandidate || homeBackdrop.dataset.mediaKind || "bundled");
+});
+homeBackdrop.addEventListener("error", () => retainNightfallFallback("decode-failed"));
+homeBackdrop.addEventListener("stalled", () => retainNightfallFallback("stalled"));
+matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", () => {
+  applyMenuPresentation(menuSection, lobbyNavigator?.current().id || null);
+  if (document.body.classList.contains("menu-active")) initializeMenuBackdrop({ force: true });
+  else pauseMenuBackdrop();
+});
 
 resize();
 updateControllerState([...navigator.getGamepads()].some(Boolean));
@@ -2596,8 +3888,9 @@ phase = "menu";
 $("loadoutRoomModal").classList.add("hidden");
 document.body.classList.add("menu-active");
 $("matchCountdown").classList.add("hidden");
-loadReplayBackdrop();
 showProfileChoice();
-initializeNightfallBackground();
-playRandomReplay(homeBackdrop);
+initializeNightfallBackground().then(() => {
+  setMenuSection("home");
+  initializeMenuBackdrop();
+});
 render();
