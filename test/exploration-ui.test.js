@@ -23,3 +23,20 @@ test("live game movement evaluates discoveries and publishes a browser verificat
   assert.match(game, /scrap\s*\+=\s*discovery\.reward\.scrap/);
   assert.match(game, /new CustomEvent\("wasteland:discovery"/);
 });
+
+test("discovery notice expires after its nonblocking display window", () => {
+  assert.match(game, /discoveryToastUntil\s*=\s*performance\.now\(\)\s*\+\s*3200/);
+  assert.match(game, /performance\.now\(\)\s*>=\s*discoveryToastUntil/);
+  assert.match(game, /discoveryToast\.classList\.add\("hidden"\)/);
+});
+
+test("mouse aim remains unlocked, half-speed, and clamped to the browser edge", () => {
+  const pointerMove = game.match(/canvas\.addEventListener\("pointermove", event => \{([\s\S]*?)\n\}\);/)?.[1] || "";
+  const pointerDown = game.match(/canvas\.addEventListener\("pointerdown", event => \{([\s\S]*?)\n\}\);/)?.[1] || "";
+
+  assert.match(pointerMove, /mouseAimScreen\.x\s*=\s*THREE\.MathUtils\.clamp\(event\.clientX, 0, innerWidth\)/);
+  assert.match(pointerMove, /mouseAimScreen\.y\s*=\s*THREE\.MathUtils\.clamp\(event\.clientY, 0, innerHeight\)/);
+  assert.match(pointerMove, /event\.movementX\s*\*\s*\.0016/);
+  assert.doesNotMatch(pointerMove, /document\.pointerLockElement/);
+  assert.doesNotMatch(pointerDown, /requestGameplayPointerLock/);
+});
