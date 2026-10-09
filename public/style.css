@@ -848,7 +848,7 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
 
 @media (pointer: coarse) and (orientation: landscape) {
   .brand { display: none; }
-  .discovery-toast { top: 66px; width: min(320px, calc(100vw - 220px)); padding: 7px 10px; }
+  .discovery-toast { top: 110px; width: min(320px, calc(100vw - 220px)); padding: 7px 10px; }
   .discovery-toast b { font-size: 10px; }
   .discovery-toast span { font-size: 9px; }
   #hud {

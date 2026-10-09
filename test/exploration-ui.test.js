@@ -13,6 +13,7 @@ test("gameplay shell exposes responsive exploration progress and an accessible d
   assert.match(html, /id="discoveryReward"/);
   assert.match(css, /\.discovery-toast\s*\{/);
   assert.match(css, /@media \(pointer: coarse\) and \(orientation: landscape\)[\s\S]*\.discovery-toast\s*\{/);
+  assert.match(css, /@media \(pointer: coarse\) and \(orientation: landscape\)[\s\S]*\.discovery-toast\s*\{[^}]*top:\s*110px/);
 });
 
 test("live game movement evaluates discoveries and publishes a browser verification event", () => {
