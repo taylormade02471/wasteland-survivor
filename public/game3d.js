@@ -1740,6 +1740,10 @@ function render() {
   else if (phase === "loadout" && !$("loadoutRoomModal").classList.contains("hidden") && controllerConnected) handleLoadoutController();
   else if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
   update(dt);
+  if (discoveryToastUntil && performance.now() >= discoveryToastUntil) {
+    discoveryToastUntil = 0;
+    ui.discoveryToast.classList.add("hidden");
+  }
   renderHud();
   player.cooldown = Math.max(0, player.cooldown - dt);
   allies.forEach(bot => { bot.cooldown = Math.max(0, bot.cooldown - dt); });
@@ -3516,10 +3520,8 @@ canvas.addEventListener("pointermove", event => {
     setInputMode("mouse");
     if (localGameplayInputPaused()) return;
     if (frontView && phase === "combat" && !menuOpen) {
-      if (document.pointerLockElement !== canvas) return;
-      viewYaw -= event.movementX * .0032 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
+      viewYaw -= event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
-      return;
     }
   }
   pointer.set(mouseAimScreen.x / innerWidth * 2 - 1, -(mouseAimScreen.y / innerHeight) * 2 + 1);
@@ -3543,7 +3545,6 @@ canvas.addEventListener("pointerdown", event => {
     return;
   }
   const resumingPointer = pointerResumeRequired;
-  if (pointerHandoff.pointerLockCandidate && frontView && document.pointerLockElement !== canvas) requestGameplayPointerLock(event);
   wakeAudio();
   if (resumingPointer || localGameplayInputPaused()) return;
   if (phase !== "combat" || menuOpen || event.button !== 0 || event.isPrimary === false) return;
