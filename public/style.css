@@ -876,3 +876,284 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   .touch-action-grid { grid-template-columns: repeat(4, minmax(54px, 66px)); }
   .touch-action-grid .primary-action { min-height: 42px; }
 }
+
+/* Lobby visual contract: slim rails, combined loadout ribbon, floating modes. */
+@media (min-width: 681px) and (min-height: 521px) {
+  #lobbyScreen {
+    display: grid;
+    grid-template-columns: minmax(210px, 260px) minmax(0, 1fr) minmax(260px, 340px);
+    grid-template-rows: minmax(74px, auto) minmax(0, 1fr) auto;
+    grid-template-areas:
+      "profile title actions"
+      "profile stage actions"
+      "modes modes loadout";
+    gap: 12px 14px;
+    min-height: 100vh;
+    padding: max(64px, calc(env(safe-area-inset-top) + 54px)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+    overflow: hidden;
+  }
+
+  .lobby-title-plate {
+    grid-area: title;
+    position: relative;
+    inset: auto;
+    align-self: start;
+    width: min(470px, 100%);
+    padding: 10px 14px;
+    border-left-width: 2px;
+    background: rgba(4, 10, 13, .68);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .26);
+  }
+
+  .lobby-title-plate h1 {
+    max-width: none;
+    margin-top: 2px;
+    font-size: clamp(26px, 3.2vw, 46px);
+    line-height: .9;
+  }
+
+  .lobby-title-plate .welcome-copy,
+  .lobby-title-plate .replay-status {
+    margin-top: 5px;
+    max-width: 42ch;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .lobby-survivor-hero {
+    grid-area: profile;
+    position: relative;
+    inset: auto;
+    width: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 38vh) auto;
+    align-items: stretch;
+    gap: 8px;
+    pointer-events: auto;
+  }
+
+  .lobby-avatar-button {
+    height: auto;
+    min-height: 220px;
+    border: 1px solid rgba(102, 252, 241, .18);
+    border-radius: 8px;
+    background: rgba(4, 10, 13, .34);
+  }
+
+  .lobby-avatar-action {
+    bottom: 12px;
+    max-width: calc(100% - 22px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lobby-profile-readout {
+    margin: 0;
+    gap: 5px;
+  }
+
+  .lobby-identity-line,
+  .lobby-level-line,
+  .lobby-readout-grid > span {
+    background: rgba(4, 10, 13, .72);
+  }
+
+  .lobby-identity-line {
+    padding: 8px 10px;
+  }
+
+  .lobby-identity-line strong {
+    font-size: 20px;
+  }
+
+  .lobby-readout-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .lobby-readout-grid > span {
+    grid-template-columns: 56px minmax(0, 1fr);
+    align-items: center;
+    padding: 6px 8px;
+  }
+
+  .lobby-readout-grid b {
+    font-size: 10px;
+  }
+
+  #lobbyNavigation {
+    display: contents;
+  }
+
+  #fightCommands {
+    grid-area: modes;
+    grid-column: 2;
+    position: relative;
+    inset: auto;
+    align-self: end;
+    width: min(820px, 100%);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+  }
+
+  #fightCommands .floating-command {
+    min-height: 78px;
+    padding: 11px 12px;
+    border-radius: 8px;
+  }
+
+  #fightCommands .floating-command b {
+    font-size: 14px;
+  }
+
+  #fightCommands .floating-command small {
+    font-size: 10px;
+    line-height: 1.25;
+  }
+
+  .team-size-choices,
+  .ctf-player-choices {
+    grid-area: modes;
+    position: relative;
+    inset: auto;
+    align-self: end;
+    width: min(540px, 100%);
+    margin: 0;
+    transform: translateY(calc(-100% - 10px));
+  }
+
+  .lobby-edge-controls {
+    grid-area: actions;
+    position: relative;
+    inset: auto;
+    align-self: start;
+    justify-self: end;
+    width: min(310px, 100%);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin: 0;
+  }
+
+  .lobby-edge-action {
+    min-height: 40px;
+    padding: 7px 8px;
+    border-radius: 8px;
+  }
+
+  .lobby-game-options {
+    grid-area: loadout;
+    position: relative;
+    inset: auto;
+    align-self: end;
+    justify-self: end;
+    width: min(340px, 100%);
+    max-height: 178px;
+    overflow: auto;
+    border-radius: 8px;
+    background: rgba(4, 10, 13, .74);
+    backdrop-filter: blur(10px);
+  }
+
+  .lobby-game-options summary {
+    min-height: 42px;
+  }
+
+  .lobby-game-options[open] {
+    padding-bottom: 8px;
+  }
+
+  .lobby-game-options .lobby-settings-row {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    margin: 8px 10px 0;
+  }
+
+  .lobby-game-options .risk-preview {
+    margin: 8px 10px 0;
+  }
+
+  .lobby-settings-row label {
+    grid-template-columns: 76px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+  }
+
+  .lobby-settings-row select {
+    min-height: 34px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 680px), (orientation: landscape) and (max-height: 520px) and (max-width: 960px) {
+  #lobbyScreen {
+    gap: 8px;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+
+  .lobby-title-plate {
+    padding: 9px 11px;
+    background: rgba(4, 10, 13, .72);
+  }
+
+  .lobby-title-plate h1 {
+    font-size: clamp(24px, 9vw, 32px);
+  }
+
+  .lobby-title-plate .welcome-copy {
+    margin-top: 4px;
+    font-size: 10px;
+  }
+
+  .lobby-survivor-hero {
+    grid-template-columns: 74px minmax(0, 1fr);
+    height: auto;
+    min-height: 102px;
+    gap: 6px;
+  }
+
+  .lobby-avatar-button,
+  .lobby-avatar-image {
+    height: 104px;
+    min-height: 104px;
+  }
+
+  .lobby-readout-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #fightCommands {
+    gap: 6px;
+  }
+
+  #fightCommands .floating-command {
+    min-height: 54px;
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+
+  #fightCommands .floating-command b {
+    font-size: 12px;
+  }
+
+  .lobby-edge-controls {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .lobby-edge-action {
+    min-height: 38px;
+    padding: 5px;
+    font-size: 8px;
+  }
+
+  .lobby-game-options {
+    max-height: 176px;
+    overflow: auto;
+    border-radius: 8px;
+    background: rgba(4, 10, 13, .78);
+  }
+}
