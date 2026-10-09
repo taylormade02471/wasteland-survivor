@@ -6,6 +6,7 @@ const test = require("node:test");
 const root = path.resolve(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
 const game = fs.readFileSync(path.join(root, "public", "game3d.js"), "utf8");
+const styles = fs.readFileSync(path.join(root, "public", "style.css"), "utf8");
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
 const legacyStorageKeys = [
@@ -59,4 +60,18 @@ test("preserves gameplay-critical DOM ids", () => {
   ];
 
   for (const id of requiredIds) assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
+});
+
+test("touch controls cannot intercept the pre-match loadout", () => {
+  assert.match(game, /classList\.add\("loadout-active"\)/);
+  assert.match(game, /classList\.remove\("loadout-active"\)/);
+  assert.match(styles, /body\.loadout-active #touchControls[^}]*pointer-events:\s*none/);
+});
+
+test("touch landscape HUD reserves space for combat controls without overlapping menus", () => {
+  const landscapeRules = styles.match(/@media \(pointer: coarse\) and \(orientation: landscape\) \{([\s\S]*)\}\s*$/)?.[1] || "";
+  assert.match(landscapeRules, /\.brand\s*\{[^}]*display:\s*none/);
+  assert.match(landscapeRules, /#hud\s*\{[^}]*grid-template-columns/);
+  assert.match(landscapeRules, /#topRightMenu\s+\.mode-control[^}]*display:\s*none/);
+  assert.match(landscapeRules, /#missionText[^}]*display:\s*none/);
 });

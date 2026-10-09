@@ -9,6 +9,7 @@ import { kingdomUnlocked as hasKingdom, levelFromXp, unlockedMaps } from "./prog
 import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
+import { biomeAt, createConnectedWorldLayout, createTerrainGrid, createWorldScatter, resolveWorldMovement, sampleWorldElevation } from "./world-layout.mjs";
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
@@ -24,7 +25,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.16;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(52, 1, .1, 260);
+const camera = new THREE.PerspectiveCamera(52, 1, .1, 620);
 const clock = new THREE.Clock();
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -159,6 +160,7 @@ const coarsePointer = matchMedia("(pointer: coarse)");
 let mouseInputActive = false;
 let inputMode = "mouse";
 let viewYaw = 0;
+const mouseAimScreen = { x: innerWidth / 2, y: innerHeight / 2 };
 let lockedTarget = null;
 let graphicsTierOverride = localStorage.getItem(task4StorageKey("graphics-tier")) || "auto";
 let aimSettings = normalizeAimSettings({
@@ -170,7 +172,7 @@ let aimSettings = normalizeAimSettings({
 const magazineSizes = { scout: 30, cannon: 12, inferno: 8 };
 const magazines = { ...magazineSizes };
 let reloadUntil = 0;
-const ARENA_LIMIT = 68;
+let worldLayout = createConnectedWorldLayout();
 
 function setInputMode(nextMode) {
   inputMode = nextMode;
@@ -194,12 +196,14 @@ function persistAimSettings() {
   $("aimAssistStrengthValue").textContent = `${Math.round(aimSettings.assistStrength * 100)}%`;
 }
 
-function keepInArena(actor) {
-  actor.g.position.x = THREE.MathUtils.clamp(actor.g.position.x, -ARENA_LIMIT, ARENA_LIMIT);
-  actor.g.position.z = THREE.MathUtils.clamp(actor.g.position.z, -ARENA_LIMIT, ARENA_LIMIT);
+function applyWorldMovement(actor, from = { x: 0, y: 0, z: 0 }) {
+  const resolved = resolveWorldMovement(worldLayout, from, actor.g.position);
+  actor.g.position.set(resolved.position.x, resolved.position.y, resolved.position.z);
+  return resolved;
 }
 
 scene.add(new THREE.HemisphereLight(0xaed8ff, 0x1a110c, 2));
+scene.add(new THREE.AmbientLight(0xc8d0c6, .65));
 const sun = new THREE.DirectionalLight(0xffefd1, 3);
 sun.position.set(18, 28, 12);
 sun.castShadow = true;
@@ -215,9 +219,9 @@ function resize() {
 
 function updateAimReticle() {
   if (!aimReticle || !player || phase === "menu" || phase === "over") return;
-  if (frontView) {
-    aimReticle.style.left = "50vw";
-    aimReticle.style.top = "50vh";
+  if (frontView && inputMode === "mouse") {
+    aimReticle.style.left = `${THREE.MathUtils.clamp(mouseAimScreen.x, 20, innerWidth - 20)}px`;
+    aimReticle.style.top = `${THREE.MathUtils.clamp(mouseAimScreen.y, 20, innerHeight - 20)}px`;
     return;
   }
   const screenAim = aim.clone();
@@ -229,8 +233,21 @@ function updateAimReticle() {
   aimReticle.style.top = `${Math.max(20, Math.min(innerHeight - 20, y))}px`;
 }
 
+const materialCache = new Map();
+const boxGeometryCache = new Map();
+
 function material(color, emissive = 0) {
-  return new THREE.MeshStandardMaterial({ color, roughness: .68, metalness: .16, emissive: color, emissiveIntensity: emissive });
+  const key = `${color}:${emissive}`;
+  if (!materialCache.has(key)) {
+    materialCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: .68, metalness: .16, emissive: color, emissiveIntensity: emissive }));
+  }
+  return materialCache.get(key);
+}
+
+function boxGeometry(w, h, d) {
+  const key = `${w}:${h}:${d}`;
+  if (!boxGeometryCache.has(key)) boxGeometryCache.set(key, new THREE.BoxGeometry(w, h, d));
+  return boxGeometryCache.get(key);
 }
 
 function unit(color, x, z, avatarType = "scout") {
@@ -264,23 +281,315 @@ function unit(color, x, z, avatarType = "scout") {
   return { g: group, hp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
 }
 
-function prop(x, z, scale = 1) {
-  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(scale, 0), material(0x49372b));
-  rock.position.set(x, scale * .52, z);
-  rock.rotation.set(Math.random(), Math.random(), 0);
-  rock.castShadow = true;
-  world.add(rock);
+function addBox({ x, z, w, d, h = 2, color = 0x444444, emissive = 0, y = null, rotation = 0 }) {
+  const mesh = new THREE.Mesh(boxGeometry(w, h, d), material(color, emissive));
+  mesh.position.set(x, y ?? sampleWorldElevation(worldLayout, { x, z }) + h / 2, z);
+  mesh.rotation.y = rotation;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  world.add(mesh);
+  return mesh;
+}
+
+function createTerrainMesh(texture) {
+  const tier = effectiveGraphicsTier();
+  const terrain = createTerrainGrid(worldLayout, { segments: tier === "low" ? 40 : tier === "medium" ? 56 : 72 });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(terrain.positions, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(terrain.uvs, 2));
+  geometry.setIndex(terrain.indices);
+  const biomeColors = new Map(worldLayout.biomes.map(zone => [zone.id, new THREE.Color(zone.ground).lerp(new THREE.Color(0xffffff), .34)]));
+  const colors = [];
+  for (let index = 0; index < terrain.positions.length; index += 3) {
+    const color = biomeColors.get(biomeAt(worldLayout, { x: terrain.positions[index], z: terrain.positions[index + 2] }).id);
+    colors.push(color.r, color.g, color.b);
+  }
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ map: texture, vertexColors: true, roughness: 1, metalness: 0 }));
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+function addPlane({ x, z, w, d, color, y = .04, rotation = 0, emissive = 0 }) {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material(color, emissive));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.rotation.z = rotation;
+  mesh.position.set(x, y + sampleWorldElevation(worldLayout, { x, z }), z);
+  mesh.receiveShadow = true;
+  world.add(mesh);
+  return mesh;
+}
+
+function addRoadSegment(segment, color = 0x24272b) {
+  const dx = segment.x2 - segment.x1;
+  const dz = segment.z2 - segment.z1;
+  const length = Math.hypot(dx, dz);
+  const steps = Math.max(1, Math.ceil(length / 8));
+  const sideX = -dz / length * segment.width / 2;
+  const sideZ = dx / length * segment.width / 2;
+  const positions = [];
+  const indices = [];
+  for (let step = 0; step <= steps; step++) {
+    const t = step / steps;
+    const x = segment.x1 + dx * t;
+    const z = segment.z1 + dz * t;
+    const elevation = segment.underpassClearance ? 0 : sampleWorldElevation(worldLayout, { x, z });
+    positions.push(x + sideX, elevation + .065, z + sideZ, x - sideX, elevation + .065, z - sideZ);
+  }
+  for (let step = 0; step < steps; step++) {
+    const left = step * 2;
+    indices.push(left, left + 2, left + 1, left + 1, left + 2, left + 3);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, material(color));
+  mesh.receiveShadow = true;
+  world.add(mesh);
+}
+
+function addRampMesh(ramp) {
+  if (ramp.kind !== "overpass") return;
+  const x0 = ramp.x - ramp.w / 2;
+  const x1 = ramp.x + ramp.w / 2;
+  const z0 = ramp.z - ramp.d / 2;
+  const z1 = ramp.z + ramp.d / 2;
+  const h00 = ramp.axis === "x" ? ramp.from : ramp.from;
+  const h10 = ramp.axis === "x" ? ramp.to : ramp.from;
+  const h11 = ramp.axis === "x" ? ramp.to : ramp.to;
+  const h01 = ramp.axis === "x" ? ramp.from : ramp.to;
+  const positions = [
+    x0, 0, z0, x1, 0, z0, x1, 0, z1, x0, 0, z1,
+    x0, h00, z0, x1, h10, z0, x1, h11, z1, x0, h01, z1,
+  ];
+  const indices = [
+    4, 5, 6, 4, 6, 7,
+    0, 4, 7, 0, 7, 3,
+    1, 2, 6, 1, 6, 5,
+    3, 7, 6, 3, 6, 2,
+    0, 1, 5, 0, 5, 4,
+  ];
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, material(0x454b50));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  world.add(mesh);
+}
+
+function addInstancedRocks(placements) {
+  const mesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), material(0x49372b), placements.length);
+  const transform = new THREE.Object3D();
+  placements.forEach((placement, index) => {
+    transform.position.set(placement.x, sampleWorldElevation(worldLayout, placement) + placement.scale * .52, placement.z);
+    transform.rotation.set(placement.rotation * .17, placement.rotation, placement.rotation * .08);
+    transform.scale.set(placement.scale, placement.scale * .72, placement.scale * .9);
+    transform.updateMatrix();
+    mesh.setMatrixAt(index, transform.matrix);
+  });
+  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  mesh.castShadow = effectiveGraphicsTier() === "high";
+  mesh.receiveShadow = true;
+  world.add(mesh);
+}
+
+function addBurnedForest() {
+  const forest = worldLayout.landmarks.find(item => item.id === "burned-forest");
+  const mesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(.34, .52, 1, 6), material(0x1d1714, .04), forest.count);
+  const transform = new THREE.Object3D();
+  for (let index = 0; index < forest.count; index++) {
+    const x = forest.x - forest.w / 2 + 5 + (index % 9) * 9 + Math.sin(index) * 2;
+    const z = forest.z - forest.d / 2 + 6 + Math.floor(index / 9) * 18 + Math.cos(index * 1.7) * 4;
+    const height = 5 + index % 3;
+    transform.position.set(x, sampleWorldElevation(worldLayout, { x, z }) + height / 2, z);
+    transform.rotation.set(0, index * .71, Math.sin(index) * .18);
+    transform.scale.set(1, height, 1);
+    transform.updateMatrix();
+    mesh.setMatrixAt(index, transform.matrix);
+  }
+  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  mesh.castShadow = effectiveGraphicsTier() !== "low";
+  world.add(mesh);
+}
+
+function addDestroyedCars() {
+  const wheelGeometry = new THREE.CylinderGeometry(.48, .48, .38, 8);
+  const groups = new Map();
+  worldLayout.cars.forEach(car => groups.set(car.color, [...(groups.get(car.color) || []), car]));
+  groups.forEach((cars, color) => {
+    const body = new THREE.InstancedMesh(boxGeometry(3.8, .9, 7.2), material(color, .04), cars.length);
+    const cabin = new THREE.InstancedMesh(boxGeometry(3.05, .86, 3.5), material(0x29363a, .08), cars.length);
+    const wheels = new THREE.InstancedMesh(wheelGeometry, material(0x151718), cars.length * 4);
+    const transform = new THREE.Object3D();
+    let wheelIndex = 0;
+    cars.forEach((car, index) => {
+      const groundY = sampleWorldElevation(worldLayout, car);
+      const crush = car.crushed ? .5 : 1;
+      transform.position.set(car.x, groundY + .45 * crush, car.z);
+      transform.rotation.set((index % 3 - 1) * .06, car.rotation, (index % 2 ? 1 : -1) * .04);
+      transform.scale.set(1, crush, 1);
+      transform.updateMatrix();
+      body.setMatrixAt(index, transform.matrix);
+
+      const cabinOffset = -.4;
+      transform.position.set(car.x + Math.sin(car.rotation) * cabinOffset, groundY + .92 * crush, car.z + Math.cos(car.rotation) * cabinOffset);
+      transform.scale.set(1, crush, 1);
+      transform.updateMatrix();
+      cabin.setMatrixAt(index, transform.matrix);
+
+      for (const localX of [-1.72, 1.72]) {
+        for (const localZ of [-2.25, 2.25]) {
+          transform.position.set(
+            car.x + localX * Math.cos(car.rotation) + localZ * Math.sin(car.rotation),
+            groundY + .34 * crush,
+            car.z - localX * Math.sin(car.rotation) + localZ * Math.cos(car.rotation),
+          );
+          transform.rotation.set(0, car.rotation, Math.PI / 2);
+          transform.scale.set(1, crush, 1);
+          transform.updateMatrix();
+          wheels.setMatrixAt(wheelIndex++, transform.matrix);
+        }
+      }
+    });
+    for (const mesh of [body, cabin, wheels]) {
+      mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      mesh.castShadow = effectiveGraphicsTier() === "high";
+      world.add(mesh);
+    }
+  });
+}
+
+function addStructure(structure) {
+  const groundY = sampleWorldElevation(worldLayout, structure);
+  let mesh;
+  if (structure.kind === "pentagon") {
+    mesh = new THREE.Mesh(new THREE.CylinderGeometry(structure.w * .43, structure.w * .47, structure.h, 5), material(structure.color, .035));
+    mesh.position.set(structure.x, groundY + structure.h / 2, structure.z);
+    mesh.rotation.y = structure.rotation || 0;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    world.add(mesh);
+  } else {
+    mesh = addBox({ ...structure, emissive: structure.kind === "house" ? .1 : .055 });
+  }
+  if (structure.kind === "house") {
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(structure.w * .72, 2.8, 4), material(structure.damaged ? 0x392d26 : 0x554035, .025));
+    roof.position.set(structure.x, groundY + structure.h + 1.2, structure.z);
+    roof.rotation.set(structure.damaged ? .13 : 0, Math.PI / 4 + (structure.rotation || 0), structure.damaged ? -.08 : 0);
+    roof.castShadow = true;
+    world.add(roof);
+    addBox({ x: structure.x, z: structure.z + structure.d / 2 + .08, w: 2.2, d: .3, h: 2.5, color: 0x241b16, y: groundY + 1.25, rotation: structure.rotation || 0 });
+  } else if (structure.kind === "tower") {
+    addBox({
+      x: structure.x,
+      z: structure.z + structure.d / 2 + .08,
+      w: structure.w * .56,
+      d: .24,
+      h: structure.h * .48,
+      color: 0x6b93a0,
+      emissive: .12,
+      y: groundY + structure.h * .58,
+    });
+  }
+  if (structure.damaged) {
+    addBox({
+      x: structure.x + structure.w * .24,
+      z: structure.z + structure.d * .22,
+      w: Math.max(3, structure.w * .28),
+      d: Math.max(3, structure.d * .24),
+      h: .7,
+      color: 0x252525,
+      rotation: (structure.rotation || 0) + .35,
+    });
+  }
+  return mesh;
+}
+
+function addBiomeGateways() {
+  const gateways = [
+    { x: -18, z: 32, color: 0xff4d28 },
+    { x: -18, z: -32, color: 0x8ee9ff },
+    { x: 18, z: 32, color: 0xffcf63 },
+    { x: 18, z: -32, color: 0xd5d9de },
+  ];
+  gateways.forEach(gateway => {
+    for (const offset of [-5, 5]) {
+      const x = gateway.x + offset;
+      const y = sampleWorldElevation(worldLayout, { x, z: gateway.z });
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(.36, .52, 6, 8), material(gateway.color, .45));
+      post.position.set(x, y + 3, gateway.z);
+      post.castShadow = true;
+      world.add(post);
+    }
+  });
+}
+
+function addLandmarkAccents() {
+  for (const offsetX of [-18, 18]) {
+    for (const offsetZ of [-15, 15]) addBox({ x: -202 + offsetX, z: 18 + offsetZ, w: 6, d: 6, h: 13, color: 0x55504a });
+  }
+  for (let index = 0; index < 6; index++) {
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(.55, .68, 5.2, 8), material(0xb7b1a8));
+    column.position.set(152 + index * 5.5, sampleWorldElevation(worldLayout, { x: 152 + index * 5.5, z: -18 }) + 2.6, -18);
+    column.rotation.z = index === 4 ? .18 : 0;
+    column.castShadow = true;
+    world.add(column);
+  }
+  for (let index = 0; index < 5; index++) {
+    addBox({ x: -98 + index * 5.4, z: 176 + (index % 2) * 4, w: 3.2, d: 3.2, h: 2.2, color: 0x332b25, rotation: index * .18 });
+    addBox({ x: 99 + index * 6, z: -178, w: 1.1, d: 10, h: 4.5, color: 0x3d342c, rotation: index % 2 ? .16 : -.12 });
+  }
+}
+
+function addConnectedWorldObjects() {
+  const border = worldLayout.size;
+  const half = worldLayout.size / 2;
+  addBox({ x: 0, z: -half, w: border, d: 2, h: 3.2, color: 0x25282b });
+  addBox({ x: 0, z: half, w: border, d: 2, h: 3.2, color: 0x25282b });
+  addBox({ x: -half, z: 0, w: 2, d: border, h: 3.2, color: 0x25282b });
+  addBox({ x: half, z: 0, w: 2, d: border, h: 3.2, color: 0x25282b });
+  worldLayout.roads.forEach(road => addRoadSegment(road, road.ramp ? 0x384047 : 0x222529));
+  worldLayout.ramps.forEach(addRampMesh);
+  worldLayout.bridges.forEach(bridge => {
+    addBox({ ...bridge, h: .8, color: 0x5d5a53, y: bridge.height - .35 });
+    if (bridge.w >= bridge.d) {
+      addBox({ x: bridge.x, z: bridge.z - bridge.d / 2 + .7, w: bridge.w, d: 1.2, h: 1.2, color: 0x3d4246, y: bridge.height + .55 });
+      addBox({ x: bridge.x, z: bridge.z + bridge.d / 2 - .7, w: bridge.w, d: 1.2, h: 1.2, color: 0x3d4246, y: bridge.height + .55 });
+    } else {
+      addBox({ x: bridge.x - bridge.w / 2 + .7, z: bridge.z, w: 1.2, d: bridge.d, h: 1.2, color: 0x3d4246, y: bridge.height + .55 });
+      addBox({ x: bridge.x + bridge.w / 2 - .7, z: bridge.z, w: 1.2, d: bridge.d, h: 1.2, color: 0x3d4246, y: bridge.height + .55 });
+    }
+  });
+  worldLayout.tunnels.forEach(tunnel => {
+    addBox({ x: tunnel.x, z: tunnel.z - tunnel.d / 2, w: tunnel.w, d: 2, h: tunnel.clearance + 2, color: 0x5f7482 });
+    addBox({ x: tunnel.x, z: tunnel.z + tunnel.d / 2, w: tunnel.w, d: 2, h: tunnel.clearance + 2, color: 0x5f7482 });
+    addBox({ x: tunnel.x, z: tunnel.z, w: tunnel.w, d: tunnel.d + 2, h: 2, color: 0x465966, y: tunnel.clearance + 1 });
+  });
+  const lava = worldLayout.detail.find(item => item.id === "inferno-lava-river");
+  const ravine = worldLayout.detail.find(item => item.id === "ice-ravine");
+  addPlane({ ...lava, color: 0x7e1f12, emissive: .35, rotation: -.18, y: .08 });
+  addPlane({ ...ravine, color: 0x69c8e8, emissive: .12, rotation: .2, y: .07 });
+  addBurnedForest();
+  worldLayout.structures.forEach(addStructure);
+  addLandmarkAccents();
+  addDestroyedCars();
+  addBiomeGateways();
 }
 
 function resetMap() {
   world.clear();
+  worldLayout = createConnectedWorldLayout();
   hazards = [];
   enemies = [];
   bullets = [];
   effects = [];
   flags = [];
   const cfg = MAPS[mapKey];
-  scene.fog = new THREE.FogExp2(cfg.fog, .025);
+  scene.fog = new THREE.FogExp2(cfg.fog, .009);
   scene.background = new THREE.Color(cfg.fog);
   const texture = new THREE.TextureLoader().load(cfg.texture);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
@@ -288,26 +597,27 @@ function resetMap() {
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.colorSpace = THREE.SRGBColorSpace;
   const mapScale = mode === "solo" ? 1 + Math.min(1.5, (storyStage - 1) * .18) : 1;
-  const mapSize = 180 * mapScale;
-  ground = new THREE.Mesh(new THREE.PlaneGeometry(mapSize, mapSize), new THREE.MeshStandardMaterial({ map: texture, roughness: 1 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
+  const mapSize = worldLayout.size;
+  ground = createTerrainMesh(texture);
   world.add(ground);
-  const obstacleSpread = 156 * mapScale;
-  for (let index = 0; index < Math.round(72 * mapScale); index++) prop((Math.random() - .5) * obstacleSpread, (Math.random() - .5) * obstacleSpread, 1 + Math.random() * 1.8);
-  for (let index = 0; index < 4 + Math.floor(storyStage / 2); index++) {
-    const position = new THREE.Vector3((Math.random() - .5) * 136 * mapScale, .05, (Math.random() - .5) * 136 * mapScale);
+  addConnectedWorldObjects();
+  addInstancedRocks(createWorldScatter(worldLayout, { seed: `${mapKey}:${mode}:${storyStage}:rocks`, count: Math.round(72 * mapScale) }));
+  const hazardCount = 4 + Math.floor(storyStage / 2);
+  const hazardPlacements = createWorldScatter(worldLayout, { seed: `${mapKey}:${mode}:${storyStage}:hazards`, count: hazardCount });
+  for (const placement of hazardPlacements) {
+    const position = new THREE.Vector3(placement.x, .05, placement.z);
+    position.y = sampleWorldElevation(worldLayout, position) + .05;
     const hazard = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 4.8, .12, 30), material(cfg.hazard, .7));
     hazard.position.copy(position);
     world.add(hazard);
     hazards.push(position);
   }
-  chestSpawnRadius = mapSize * .38;
+  chestSpawnRadius = mapSize * .42;
   chests = Array.from({ length: 1 }, (_, index) => {
     const group = new THREE.Group();
-    const box = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.1, 1.2), material(0x9d6b1f, .16));
+    const box = new THREE.Mesh(boxGeometry(1.7, 1.1, 1.2), material(0x9d6b1f, .16));
     box.position.y = .7;
-    const glow = new THREE.Mesh(new THREE.BoxGeometry(1.35, .18, 1), material(0xffdf52, 1));
+    const glow = new THREE.Mesh(boxGeometry(1.35, .18, 1), material(0xffdf52, 1));
     glow.position.y = 1.28;
     group.add(box, glow);
     group.visible = false;
@@ -315,6 +625,7 @@ function resetMap() {
     return { id: `chest-${index + 1}`, group, x: 0, z: 0 };
   });
   player = unit(0x55e5ff, 0, 0, activeProfile?.avatarType || "scout");
+  applyWorldMovement(player);
   classProgress = normalizeClassProgress({ ...classProgress, classId: avatarClass(activeProfile?.avatarType || "scout") });
   const classStats = getClassStats(classProgress);
   player.hp = classStats.maxHealth;
@@ -326,7 +637,11 @@ function resetMap() {
   player.shield = player.shieldMax;
   allies = [];
   const botCount = mode === "solo" ? 0 : mode === "ctf" ? ctfPlayers / 2 - 1 : botTeamSize - 1;
-  for (let index = 0; index < botCount; index++) allies.push(unit(0x3985ff, 2.5 + index * 2, 1.5, index % 2 ? "tech" : "ranger"));
+  for (let index = 0; index < botCount; index++) {
+    const bot = unit(0x3985ff, 2.5 + index * 2, 1.5, index % 2 ? "tech" : "ranger");
+    applyWorldMovement(bot);
+    allies.push(bot);
+  }
   ally = allies[0] || null;
   if (mode === "ctf") createCtfFlags();
 }
@@ -334,7 +649,8 @@ function resetMap() {
 function createCtfFlags() {
   const positions = [];
   while (positions.length < 3) {
-    const position = new THREE.Vector3((Math.random() - .5) * 62, 0, (Math.random() - .5) * 62);
+    const position = new THREE.Vector3((Math.random() - .5) * 180, 0, (Math.random() - .5) * 180);
+    position.y = sampleWorldElevation(worldLayout, position);
     if (positions.every(other => other.distanceTo(position) > 20)) positions.push(position);
   }
   positions.forEach((position, index) => {
@@ -362,11 +678,12 @@ function difficultyName() {
 
 function spawnEnemy(index = enemies.length, requestedType = null) {
   const angle = Math.random() * Math.PI * 2;
-  const radius = 20 + Math.random() * 16;
+  const radius = 46 + Math.random() * 92;
   const type = requestedType || enemySpawnTypes.shift() || "rusher";
   const visualClass = ["heavy", "shield", "boss", "mutant"].includes(type) ? "heavy" : type === "sniper" ? "ranger" : type === "drone" ? "tech" : "scout";
   const color = ({ rusher: 0xff5b55, shooter: 0xff8b45, sniper: 0xb97aff, shield: 0x4dbbff, heavy: 0xff3d3d, drone: 0x66fcf1, mutant: 0x8cff4d, boss: 0xffcf40 })[type];
   const enemy = unit(color, Math.cos(angle) * radius, Math.sin(angle) * radius, visualClass);
+  applyWorldMovement(enemy);
   const scaled = scaleEnemy(type, { wave, difficulty: difficultyName(), playerSkill: playerLevel });
   enemy.enemyType = type;
   enemy.maxHp = scaled.health;
@@ -397,10 +714,12 @@ function start() {
   $("loadoutMode").textContent = mode === "solo" ? "STORY SURVIVAL" : mode === "teams" ? `${botTeamSize}V${botTeamSize}` : `${ctfPlayers}-PLAYER CTF`;
   $("loadoutMap").textContent = MAPS[mapKey].label.toUpperCase();
   $("loadoutRoomModal").classList.remove("hidden");
+  document.body.classList.add("loadout-active");
   updateArmory();
 }
 
 function beginCountdown() {
+  document.body.classList.remove("loadout-active");
   phase = "countdown";
   countdown = 15;
   timer = 15;
@@ -446,10 +765,10 @@ function prep() {
   timer = 60;
   const positions = createChestPositions({ mapRadius: chestSpawnRadius, random: seededRandom(`${mapKey}:${mode}:${wave}`) });
   chests.forEach((chest, index) => {
-    const position = positions[index];
-    chest.x = position.x;
-    chest.z = position.z;
-    chest.group.position.set(position.x, 0, position.z);
+    const resolved = resolveWorldMovement(worldLayout, { x: 0, y: 0, z: 0 }, positions[index]);
+    chest.x = resolved.position.x;
+    chest.z = resolved.position.z;
+    chest.group.position.set(resolved.position.x, resolved.position.y, resolved.position.z);
     chest.group.visible = true;
   });
   ui.chest.classList.add("hidden");
@@ -595,8 +914,9 @@ function triggerAbility() {
   }
   if (result.effect.id === "dash") {
     const direction = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
+    const from = player.g.position.clone();
     player.g.position.addScaledVector(direction, 8);
-    keepInArena(player);
+    applyWorldMovement(player, from);
   }
   document.dispatchEvent(new CustomEvent("wasteland:ability", { detail: { inputMode } }));
   playTone(520, .05, "sine", .025);
@@ -705,7 +1025,9 @@ function moveBot(bot, destination, speed, dt) {
   const direction = destination.clone().sub(bot.g.position);
   direction.y = 0;
   if (direction.length() > 1.4) {
+    const from = bot.g.position.clone();
     bot.g.position.addScaledVector(direction.normalize(), speed * dt);
+    applyWorldMovement(bot, from);
     bot.g.rotation.y = Math.atan2(direction.x, direction.z);
   }
   return direction.length();
@@ -754,8 +1076,11 @@ function updateSoloEnemies(dt) {
       .add(tangent.multiplyScalar(intent === "flank" ? 13 : 6));
     const movement = desired.sub(enemy.g.position);
     movement.y = 0;
-    if (movement.length() > .5) enemy.g.position.addScaledVector(movement.normalize(), enemy.speed * dt);
-    keepInArena(enemy);
+    if (movement.length() > .5) {
+      const from = enemy.g.position.clone();
+      enemy.g.position.addScaledVector(movement.normalize(), enemy.speed * dt);
+      applyWorldMovement(enemy, from);
+    }
     const aimAt = player.g.position.clone().add(new THREE.Vector3(0, 0, 0));
     enemy.g.rotation.y = Math.atan2(aimAt.x - enemy.g.position.x, aimAt.z - enemy.g.position.z);
     enemy.orbitAngle += orbitSpeed * dt * enemy.orbitDirection;
@@ -797,7 +1122,8 @@ function updateFlags(dt) {
     flag.group.rotation.y += dt * .6;
     flag.moveTimer -= dt;
     if (flag.moveTimer <= 0 || flag.position.distanceTo(flag.target) < .8) {
-      flag.target = new THREE.Vector3((Math.random() - .5) * 116, 0, (Math.random() - .5) * 116);
+      flag.target = new THREE.Vector3((Math.random() - .5) * 220, 0, (Math.random() - .5) * 220);
+      flag.target.y = sampleWorldElevation(worldLayout, flag.target);
       flag.moveTimer = 18 + Math.random() * 14;
     }
     flag.position.lerp(flag.target, Math.min(1, dt * .22));
@@ -880,6 +1206,7 @@ function update(dt) {
   if (touch.mx || touch.mz) { mx = touch.mx; mz = touch.mz; }
   if (controller.mx || controller.mz) { mx = controller.mx; mz = controller.mz; }
   const length = Math.hypot(mx, mz) || 1;
+  const playerFrom = player.g.position.clone();
   if (frontView) {
     const forward = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
     const right = new THREE.Vector3(Math.cos(viewYaw), 0, -Math.sin(viewYaw));
@@ -917,13 +1244,13 @@ function update(dt) {
       const delta = Math.atan2(Math.sin(targetYaw - viewYaw), Math.cos(targetYaw - viewYaw));
       if (Math.abs(delta) < .32) viewYaw += delta * aimSettings.assistStrength * dt * 2.2;
     }
-  } else if (frontView && mouseInputActive && !manualControllerAim) {
+  } else if (frontView && mouseInputActive && !manualControllerAim && document.pointerLockElement === canvas) {
     aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
   }
   const lookDirection = aim.clone().sub(player.g.position);
   lookDirection.y = 0;
   if (lookDirection.lengthSq() > .01) player.g.rotation.y = Math.atan2(lookDirection.x, lookDirection.z);
-  keepInArena(player);
+  applyWorldMovement(player, playerFrom);
   for (const hazard of hazards) if (player.g.position.distanceTo(hazard) < 4) applyDamage(player, 10 * dt);
   if (!menuOpen && wantsFire) fire(player, aim);
     if (mode === "ctf") updateCtfBots(dt);
@@ -995,8 +1322,8 @@ function render() {
   ui.hpBar.style.width = `${Math.max(0, player.hp)}%`;
   ui.shield.textContent = Math.ceil(player.shield);
   ui.shieldBar.style.width = `${player.shieldMax ? player.shield / player.shieldMax * 100 : 0}%`;
-  ui.heat.textContent = Math.round(Math.max(0, player.cooldown / weapon.delay) * 100);
-  ui.heatBar.style.width = `${Math.round(Math.max(0, player.cooldown / weapon.delay) * 100)}%`;
+  ui.heat.textContent = Date.now() < reloadUntil ? "REL" : magazines[activeGun];
+  ui.heatBar.style.width = `${magazines[activeGun] / magazineSizes[activeGun] * 100}%`;
   ui.scrap.textContent = scrap;
   ui.kills.textContent = kills;
   ui.wave.textContent = wave;
@@ -1005,7 +1332,7 @@ function render() {
   ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${soldierStory[Math.min(storyStage - 1, soldierStory.length - 1)].title}`;
   ui.mission.textContent = `Mission: ${kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex]}`;
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
-  ui.map.textContent = MAPS[mapKey].label.toUpperCase();
+  ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
   ui.phase.textContent = mode === "ctf" ? "CAPTURE" : phase.toUpperCase();
   ui.timer.textContent = phase === "loadout" ? "WAITING" : formatTime(timer);
   ui.prep.textContent = ui.timer.textContent;
@@ -1841,6 +2168,7 @@ function exitToLobby() {
   ui.shop.classList.add("hidden");
   ui.settings.classList.add("hidden");
   ui.over.classList.add("hidden");
+  document.body.classList.remove("loadout-active");
   document.body.classList.add("menu-active");
   setNightfallScene("menu");
   openLobby(activeProfile?.name || "Offline Guest");
@@ -1973,15 +2301,15 @@ addEventListener("keyup", event => {
 });
 canvas.addEventListener("pointermove", event => {
   if (controllerLocked()) return;
+  mouseAimScreen.x = THREE.MathUtils.clamp(event.clientX, 0, innerWidth);
+  mouseAimScreen.y = THREE.MathUtils.clamp(event.clientY, 0, innerHeight);
   if (event.pointerType === "mouse") {
     setInputMode("mouse");
     if (frontView && phase === "combat" && !menuOpen) {
-      viewYaw -= event.movementX * .0032 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
-      aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
-      return;
+      viewYaw -= event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
     }
   }
-  pointer.set(event.clientX / innerWidth * 2 - 1, -(event.clientY / innerHeight) * 2 + 1);
+  pointer.set(mouseAimScreen.x / innerWidth * 2 - 1, -(mouseAimScreen.y / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(ground)[0];
   if (hit) aim.copy(hit.point);
@@ -1990,7 +2318,6 @@ canvas.addEventListener("pointerdown", () => {
   if (controllerLocked() || phase === "countdown") return;
   firing = true;
   wakeAudio();
-  if (frontView && document.pointerLockElement !== canvas && matchMedia("(pointer: fine)").matches) canvas.requestPointerLock?.();
 });
 addEventListener("pointerup", () => { firing = false; });
 

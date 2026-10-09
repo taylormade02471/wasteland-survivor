@@ -291,6 +291,7 @@ button:disabled {
 .touch-action-grid button.active { background: rgba(51,145,151,.9); }
 .landscape-hint { position: fixed; z-index: 55; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); max-width: calc(100vw - 28px); padding: 8px 12px; border: 1px solid rgba(255,223,82,.6); background: rgba(5,10,15,.9); color: #fff2aa; font-size: 11px; font-weight: 800; text-align: center; }
 body[data-input-mode="touch"] #touchControls { display: flex; }
+body.loadout-active #touchControls { display: none !important; visibility: hidden; pointer-events: none; }
 body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, body[data-input-mode="controller"] #touchControls { display: none; }
 @media (pointer: coarse) { .chest-prompt { bottom: 144px; } }
 
@@ -610,6 +611,29 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
 }
 
 @media (pointer: coarse) and (orientation: landscape) {
+  .brand { display: none; }
+  #hud {
+    left: 6px;
+    top: 6px;
+    right: 96px;
+    width: auto;
+    display: grid;
+    grid-template-columns: 136px minmax(164px, 210px) minmax(158px, 1fr);
+    gap: 6px;
+    align-items: start;
+  }
+  .meters { min-width: 0; width: 136px; gap: 2px; font-size: 9px; }
+  .bar { width: 136px; height: 5px; }
+  .stats { display: grid; grid-template-columns: repeat(3, max-content); gap: 3px; max-width: none; margin: 0; font-size: 9px; }
+  .stats span, .match-strip span { padding: 3px 5px; }
+  .match-strip { position: static; display: grid; grid-template-columns: repeat(3, max-content); gap: 3px; max-width: none; font-size: 8px; }
+  #chapterText, #missionText { display: none; }
+  #topRightMenu { top: 6px; right: 6px; max-width: none; }
+  #topRightMenu .mode-control,
+  #topRightMenu .map-control,
+  #topRightMenu #openShopBtn,
+  #topRightMenu #settingsBtn { display: none; }
+  #topRightMenu #menuToggle { min-width: 82px; min-height: 40px; padding: 0 8px; font-size: 10px; }
   .touch-action-grid { grid-template-columns: repeat(4, minmax(54px, 66px)); }
   .touch-action-grid .primary-action { min-height: 42px; }
 }
