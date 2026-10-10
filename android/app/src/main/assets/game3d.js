@@ -353,6 +353,10 @@ let aimSettings = normalizeAimSettings({
 });
 const magazineSizes = { scout: 30, cannon: 12, inferno: 8 };
 const magazines = { ...magazineSizes };
+let mobileHeat = 0;
+let mobileOverheatedUntil = 0;
+const mobilePhoneSession = () => inputMode === "touch" && coarsePointer.matches && (isAndroidApp || document.fullscreenElement || innerWidth <= 700);
+const mobileHeatPerShot = { scout: 13, cannon: 22, inferno: 18 };
 let reloadUntil = 0;
 let worldLayout = createConnectedWorldLayout();
 let explorationState = createExplorationState();
@@ -1184,6 +1188,8 @@ function spawnMatchBots(plan = activeMatchPlan) {
 function start() {
   pauseMenuBackdrop();
   blue = red = score = kills = scrap = shieldLevel = 0;
+  mobileHeat = 0;
+  mobileOverheatedUntil = 0;
   wave = 1;
   activeGun = "scout";
   explorationState = createExplorationState();
@@ -1401,12 +1407,21 @@ function weaponProfile() {
 function fire(actor, target, profile = null) {
   if (actor.cooldown > 0) return;
   if (actor === player && !profile) {
+    if (mobilePhoneSession()) {
+      if (Date.now() < mobileOverheatedUntil) return;
+      if (mobileHeat >= 100) {
+        mobileOverheatedUntil = Date.now() + 3000;
+        return;
+      }
+      mobileHeat = Math.min(100, mobileHeat + (mobileHeatPerShot[activeGun] || 15));
+    } else {
     if (Date.now() < reloadUntil) return;
     if (magazines[activeGun] <= 0) {
       reloadWeapon(false);
       return;
     }
     magazines[activeGun]--;
+    }
   }
   const weapon = profile || weaponProfile();
   actor.cooldown = weapon.delay;
@@ -1867,6 +1882,7 @@ function finishCtf() {
 
 function update(dt) {
   if (phase === "over" || phase === "menu") return;
+  if (mobileHeat > 0) mobileHeat = Math.max(0, mobileHeat - dt * (Date.now() < mobileOverheatedUntil ? 22 : 10));
   if (shouldBlockControlsTourSimulation({ tour: controlsTourState, phase })) return;
   if (phase === "countdown") {
     timer = Math.max(0, (countdownDeadline - Date.now()) / 1000);
@@ -2200,9 +2216,10 @@ function renderHud() {
   ui.hpBar.style.setProperty("--hud-fill", `${hud.health.percentage}%`);
   ui.shield.textContent = hud.armor.value;
   ui.shieldBar.style.setProperty("--hud-fill", `${hud.armor.percentage}%`);
-  ui.heat.textContent = Math.round(Math.max(0, player.cooldown / weapon.delay) * 100);
-  ui.heatBar.style.setProperty("--hud-fill", `${Math.round(Math.max(0, player.cooldown / weapon.delay) * 100)}%`);
-  ui.ammo.textContent = hud.ammo.label;
+  const displayedHeat = mobilePhoneSession() ? mobileHeat : Math.max(0, player.cooldown / weapon.delay) * 100;
+  ui.heat.textContent = Math.round(displayedHeat);
+  ui.heatBar.style.setProperty("--hud-fill", `${Math.round(displayedHeat)}%`);
+  ui.ammo.textContent = mobilePhoneSession() ? (Date.now() < mobileOverheatedUntil ? "COOLING" : "AUTO") : hud.ammo.label;
   ui.ability.textContent = `${hud.ability.label} ${hud.ability.statusLabel}`;
   ui.abilityBar.style.setProperty("--hud-fill", `${hud.ability.percentage}%`);
   ui.team.textContent = hud.team.label;
@@ -4290,7 +4307,7 @@ function updateMobileContextAction() {
   const button = $("touchInteractBtn");
   if (!button || !player) return;
   const nearChest = phase === "prep" && canAccessChest(player.g.position, chests);
-  const label = nearChest ? "Open Chest" : phase === "dialogue" ? "Continue" : "Reload";
+  const label = nearChest ? "Open Chest" : phase === "dialogue" ? "Continue" : mobilePhoneSession() ? "Heat" : "Reload";
   button.textContent = label;
   button.setAttribute("aria-label", label === "Open Chest" ? "Open nearby upgrade chest" : label);
 }
@@ -4300,6 +4317,7 @@ function performMobileContextAction() {
   const nearChest = phase === "prep" && canAccessChest(player.g.position, chests);
   if (nearChest) return interact();
   if (phase === "dialogue") return;
+  if (mobilePhoneSession()) return;
   reloadWeapon(true);
 }
 
