@@ -2988,6 +2988,7 @@ function openLobby(contact) {
   lobbyConnectivity = reduceLobbyConnectivity(lobbyConnectivity, { type: "offline-changed", offlineMode });
   welcomeScreen.classList.add("hidden");
   lobbyScreen.classList.remove("hidden");
+  document.body.classList.add("lobby-active");
   $("teamSizeChoices").classList.add("hidden");
   $("ctfPlayerChoices").classList.add("hidden");
   $("teamLobbyBtn").setAttribute("aria-expanded", "false");
@@ -3355,8 +3356,9 @@ async function enterProfile() {
   saveProfile(profile);
   guestControlsIdentityActive = false;
   activeProfile = profile;
-  offlineMode = true;
-  localStorage.setItem("wastland-survivor-offline", "true");
+  // Online is the normal path for a new profile; Offline mode remains an explicit setting.
+  offlineMode = false;
+  localStorage.setItem("wastland-survivor-offline", "false");
   profileMessage.textContent = "Local profile created.";
   openLobby(name);
 }
@@ -3431,6 +3433,7 @@ function leaveLobby() {
   pendingMatchGate = cancelPendingMatchSelection(pendingMatchGate);
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
+  document.body.classList.remove("lobby-active");
   setMenuSection("home");
   showProfileChoice();
 }
@@ -4259,6 +4262,20 @@ canvas.addEventListener("pointerdown", event => {
   if (pointerHandoff.consumesCanvasAction) {
     wakeAudio();
     return;
+  }
+  if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (!welcomeScreen.classList.contains("hidden")) {
+      event.preventDefault();
+      if (!returnStep.classList.contains("hidden")) returnProfile();
+      else if (!$("termsModal").classList.contains("hidden")) $("termsAcceptBtn").click();
+      else enterProfile();
+      return;
+    }
+    if (!lobbyScreen.classList.contains("hidden") && event.target?.matches?.("[data-lobby-control]")) {
+      event.preventDefault();
+      activateLobbyCommand();
+      return;
+    }
   }
   const resumingPointer = pointerResumeRequired;
   wakeAudio();
