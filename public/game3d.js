@@ -1368,6 +1368,12 @@ function prep() {
   timer = 60;
   touch.ax = touch.az = 0;
   touch.aiming = false;
+  // Supply breaks remain live exploration: release stale menu/input recovery
+  // state so a prior pointer or canvas interruption cannot freeze movement.
+  menuOpen = false;
+  menuOpenedFromPrep = false;
+  pointerResumeRequired = false;
+  firing = false;
   lockedTarget = null;
   viewYaw = normalizeYaw(viewYaw);
   virtualMouseLook = centerVirtualMouseLook();
