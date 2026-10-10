@@ -15,6 +15,7 @@ import {
   syncControlsTourPreferencesForIdentity,
 } from "./controls-tour-adapter.mjs";
 import {
+  acknowledgeControlsTour,
   cancelPendingMatchSelection,
   cancelQueuedControlsTour,
   controlsTourStorageKey,
@@ -2798,11 +2799,14 @@ function controlsFamilyLabel(family) {
 
 function renderControlsTour() {
   if (!controlsTourState) return;
+  const informational = controlsTourState.mode === "required";
   $("controlsTourFamily").textContent = controlsFamilyLabel(controlsTourState.family);
-  $("controlsTourProgress").textContent = `${Math.min(controlsTourState.stepIndex + 1, controlsTourState.steps.length)} / ${controlsTourState.steps.length}`;
+  $("controlsTourProgress").textContent = informational
+    ? "QUICK GUIDE"
+    : `${Math.min(controlsTourState.stepIndex + 1, controlsTourState.steps.length)} / ${controlsTourState.steps.length}`;
   $("controlsTourSteps").replaceChildren(...controlsTourState.steps.map((step, index) => {
     const item = document.createElement("li");
-    item.className = index < controlsTourState.stepIndex ? "complete" : index === controlsTourState.stepIndex ? "current" : "";
+    item.className = informational ? "" : index < controlsTourState.stepIndex ? "complete" : index === controlsTourState.stepIndex ? "current" : "";
     if (index < controlsTourState.stepIndex) item.setAttribute("aria-label", `${step.title} complete`);
     const title = document.createElement("span");
     title.textContent = step.title;
@@ -2812,8 +2816,11 @@ function renderControlsTour() {
     return item;
   }));
   const current = controlsTourState.steps[controlsTourState.stepIndex];
-  $("controlsTourInstruction").textContent = current?.instruction || "Controls check complete.";
-  $("closeControlsTourBtn").classList.toggle("hidden", controlsTourState.mode === "required");
+  $("controlsTourInstruction").textContent = informational
+    ? "These controls match this device. Continue when you are ready."
+    : current?.instruction || "Controls check complete.";
+  $("closeControlsTourBtn").textContent = informational ? "Continue" : "Close Practice";
+  $("closeControlsTourBtn").classList.remove("hidden");
 }
 
 function setRequiredControlsTourLock(locked) {
@@ -2873,10 +2880,15 @@ function startControlsTour({ family = inputMode, mode: tourMode = "required" } =
   touch.fire = touch.aiming = false;
   clearKeyboardInput();
   renderControlsTour();
+  queueMicrotask(() => $("closeControlsTourBtn").focus({ preventScroll: true }));
 }
 
 function closeControlsTour() {
-  if (controlsTourState?.mode === "required") return;
+  if (controlsTourState?.mode === "required") {
+    controlsTourState = acknowledgeControlsTour(controlsTourState);
+    completeControlsTour();
+    return;
+  }
   controlsTourState = null;
   $("controlsTourModal").classList.add("hidden");
   document.body.classList.remove("controls-tour-active");
@@ -4146,6 +4158,11 @@ addEventListener("gamepaddisconnected", () => updateControllerState(false));
 addEventListener("keydown", event => {
   const key = event.key.toLowerCase();
   if (controlsTourState?.status === "active") {
+    if (controlsTourState.mode === "required" && ["enter", " ", "escape"].includes(key)) {
+      event.preventDefault();
+      closeControlsTour();
+      return;
+    }
     setInputMode("keyboard");
     handleControlsTourSignal({ source: "keyboard", kind: "down", key: event.key });
     event.preventDefault();

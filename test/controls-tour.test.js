@@ -38,6 +38,21 @@ test("requires an unseen family and advances only through its ordered demonstrat
   assert.equal(isControlsTourRequired({ family: "keyboard", seenFamilies: state.seenFamilies }), false);
 });
 
+test("required first-run help completes from one acknowledgment while preserving device-specific controls", async () => {
+  const { acknowledgeControlsTour, createControlsTour } = await controlsTour();
+
+  for (const family of ["keyboard-mouse", "touch", "controller"]) {
+    const state = createControlsTour({ family, seenFamilies: [], mode: "required" });
+    assert.equal(state.status, "active");
+    assert.equal(state.steps.length, 5);
+
+    const acknowledged = acknowledgeControlsTour(state);
+    assert.equal(acknowledged.status, "complete");
+    assert.equal(acknowledged.stepIndex, acknowledged.steps.length);
+    assert.deepEqual(acknowledged.seenFamilies, [family]);
+  }
+});
+
 test("shows only touch controls and recognizes real touch control signals", async () => {
   const { createControlsTour, recordControlsTourSignal } = await controlsTour();
   let state = createControlsTour({ family: "touch", seenFamilies: [] });

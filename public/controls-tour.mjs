@@ -186,6 +186,16 @@ export function recordControlsTourSignal(state, signal) {
   });
 }
 
+export function acknowledgeControlsTour(state) {
+  if (!state || state.status !== "active") return state;
+  return Object.freeze({
+    ...state,
+    status: "complete",
+    stepIndex: state.steps.length,
+    seenFamilies: mergeSeenControlsFamilies(state.seenFamilies, [state.family]),
+  });
+}
+
 function controllerSnapshotNeutral(snapshot = {}) {
   return Number(snapshot.leftStick || 0) < 0.2
     && Number(snapshot.rightStick || 0) < 0.2
