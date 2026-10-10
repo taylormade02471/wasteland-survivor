@@ -11,7 +11,8 @@ import {
   predictAimPoint,
   scaleEnemy,
   spawnSchedule,
-  tacticalIntent
+  tacticalIntent,
+  waveStrengthMultiplier
 } from "../public/enemy-rules.mjs";
 
 test("defines eight distinct enemy archetypes", () => {
@@ -33,6 +34,21 @@ test("scales enemies by wave and difficulty without mutating base stats", () => 
   assert.ok(insane.health > easy.health);
   assert.ok(insane.damage > easy.damage);
   assert.equal(easy.type, "shooter");
+});
+
+test("raises solo wave strength by exactly twenty percent per cleared wave", () => {
+  assert.equal(waveStrengthMultiplier(1), 1);
+  assert.equal(waveStrengthMultiplier(2), 1.2);
+  assert.equal(waveStrengthMultiplier(3), 1.44);
+
+  const first = scaleEnemy("shooter", { wave: 1, difficulty: "easy", playerSkill: 0 });
+  const second = scaleEnemy("shooter", { wave: 2, difficulty: "easy", playerSkill: 0 });
+  assert.equal(second.health, first.health * 1.2);
+  assert.equal(second.damage, first.damage * 1.2);
+
+  const upgraded = scaleEnemy("shooter", { wave: 2, difficulty: "easy", playerSkill: 3 });
+  assert.ok(upgraded.health > second.health);
+  assert.ok(upgraded.damage > second.damage);
 });
 
 test("builds deterministic wave compositions with progression and bosses", () => {

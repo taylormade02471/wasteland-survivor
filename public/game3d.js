@@ -4,7 +4,7 @@ import { selectGraphicsTier } from "./graphics-config.mjs";
 import { shouldProcessRenderFrame } from "./graphics-lod-rules.mjs";
 import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
 import { applyCanvasPointerHandoff, bindTransientPointerInterrupts } from "./input-recovery-adapter.mjs";
-import { advanceControllerLook, cameraDirectionFromView, chooseGamepad, sampleGamepad } from "./controller-rules.mjs";
+import { advanceControllerLook, cameraDirectionFromView, chooseGamepad, normalizeYaw, sampleGamepad } from "./controller-rules.mjs";
 import { advanceVirtualMouseLook, centerVirtualMouseLook, mouseLookRates, virtualMouseLookFromPoint } from "./mouse-look-rules.mjs";
 import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
 import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
@@ -1287,7 +1287,7 @@ function nextCombat() {
   pauseMenuBackdrop();
   phase = "combat";
   setNightfallScene("game");
-  timer = mode === "ctf" ? 300 : 60;
+  timer = mode === "ctf" ? 300 : mode === "teams" ? 60 : null;
   ui.chest.classList.add("hidden");
   $("chestLocator").classList.add("hidden");
   chestAccessGranted = false;
@@ -1323,6 +1323,11 @@ function prep() {
   saveProgress();
   phase = "prep";
   timer = 60;
+  touch.ax = touch.az = 0;
+  touch.aiming = false;
+  lockedTarget = null;
+  viewYaw = normalizeYaw(viewYaw);
+  virtualMouseLook = centerVirtualMouseLook();
   const positions = createChestPositions({ mapRadius: chestSpawnRadius, random: seededRandom(`${mapKey}:${mode}:${wave}`) });
   chests.forEach((chest, index) => {
     const resolved = resolveWorldMovement(worldLayout, { x: 0, y: 0, z: 0 }, positions[index]);
@@ -1919,7 +1924,7 @@ function update(dt) {
   if (controller.dpadLeft || controller.dpadDown) cycleWeapon(-1);
   if (controller.dpadRight || controller.dpadUp) cycleWeapon(1);
   adsActive = controller.ads || adsActive && inputMode === "touch";
-  timer -= dt;
+  if (Number.isFinite(timer)) timer -= dt;
   const prepActive = phase === "prep";
   if (prepActive) {
     chests.forEach(chest => { chest.group.rotation.y += dt; });
@@ -1936,7 +1941,7 @@ function update(dt) {
       nextCombat();
       return;
     }
-  } else if (timer <= 0) {
+  } else if (mode !== "solo" && Number.isFinite(timer) && timer <= 0) {
     if (mode === "ctf") finishCtf();
     else prep();
     return;
@@ -1970,7 +1975,7 @@ function update(dt) {
     })
     : null;
   if (androidSingleStick) {
-    viewYaw += androidSingleStick.turnRate * dt;
+    viewYaw = normalizeYaw(viewYaw + androidSingleStick.turnRate * dt);
     viewPitch = androidSingleStick.pitch;
     mz = -androidSingleStick.forward;
     mx = 0;
@@ -1996,7 +2001,7 @@ function update(dt) {
   if (manualTouchAim) {
     setInputMode("touch");
     aim.copy(player.g.position).add(new THREE.Vector3(touch.ax, 0, touch.az).multiplyScalar(20));
-    viewYaw = Math.atan2(touch.ax, touch.az);
+    viewYaw = normalizeYaw(Math.atan2(touch.ax, touch.az));
   }
   if (manualControllerAim) {
     const nextView = advanceControllerLook(
@@ -2017,7 +2022,7 @@ function update(dt) {
       maxYawRate: 3.2 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity),
       maxPitchRate: 2.4 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity),
     });
-    viewYaw += rates.yawRate * dt;
+    viewYaw = normalizeYaw(viewYaw + rates.yawRate * dt);
     viewPitch = THREE.MathUtils.clamp(viewPitch + rates.pitchRate * dt, -.75, .75);
     const direction = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
     aim.copy(player.g.position).add(new THREE.Vector3(direction.x, direction.y, direction.z).multiplyScalar(35));
@@ -2052,7 +2057,7 @@ function update(dt) {
     if (target) {
       lockedTarget = target;
       aim.lerp(target.g.position, Math.min(1, dt * 8));
-      viewYaw = Math.atan2(aim.x - player.g.position.x, aim.z - player.g.position.z);
+      viewYaw = normalizeYaw(Math.atan2(aim.x - player.g.position.x, aim.z - player.g.position.z));
       const horizontalDistance = Math.max(.001, Math.hypot(aim.x - player.g.position.x, aim.z - player.g.position.z));
       const targetPitch = THREE.MathUtils.clamp(Math.atan2((aim.y + 1.05) - (player.g.position.y + 1.55), horizontalDistance), -.75, .75);
       const pitchStep = Math.max(.1, 2.1 * dt);
@@ -2063,7 +2068,7 @@ function update(dt) {
     if (target) {
       const targetYaw = Math.atan2(target.g.position.x - player.g.position.x, target.g.position.z - player.g.position.z);
       const delta = Math.atan2(Math.sin(targetYaw - viewYaw), Math.cos(targetYaw - viewYaw));
-      if (Math.abs(delta) < .32) viewYaw += delta * aimSettings.assistStrength * dt * 2.2;
+      if (Math.abs(delta) < .32) viewYaw = normalizeYaw(viewYaw + delta * aimSettings.assistStrength * dt * 2.2);
     }
   } else if (frontView && mouseInputActive && !manualControllerAim) {
     const direction = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
@@ -2214,7 +2219,7 @@ function renderHud() {
     teamHealthMax,
     mission: `Mission: ${objective}`,
     round: wave,
-    timer: phase === "loadout" ? "WAITING" : formatTime(timer),
+    timer: phase === "loadout" ? "WAITING" : mode === "solo" && ["combat", "paused", "dialogue"].includes(phase) ? "CLEAR WAVE" : formatTime(timer),
     objective,
     score: { blue: mode === "ctf" ? Math.floor(blue) : blue, red: mode === "ctf" ? Math.floor(red) : red },
   });
@@ -4277,7 +4282,7 @@ canvas.addEventListener("pointermove", event => {
         width: canvasRect.width || canvas.clientWidth,
         height: canvasRect.height || canvas.clientHeight,
       });
-      viewYaw -= event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
+      viewYaw = normalizeYaw(viewYaw - event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity));
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }
     if (localGameplayInputPaused()) return;

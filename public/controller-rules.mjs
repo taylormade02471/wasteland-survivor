@@ -3,6 +3,11 @@ const TRIGGER_THRESHOLD = 0.2;
 
 const numberOrZero = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 
+export function normalizeYaw(value = 0) {
+  const turn = Math.PI * 2;
+  return ((numberOrZero(value) + Math.PI) % turn + turn) % turn - Math.PI;
+}
+
 export function normalizeStick(x = 0, y = 0, deadzone = DEFAULT_DEADZONE) {
   const rawX = numberOrZero(x);
   const rawY = numberOrZero(y);
@@ -120,7 +125,7 @@ export function advanceControllerLook(
   const horizontal = numberOrZero(look.x);
   const vertical = numberOrZero(look.y) * (invertY ? 1 : -1);
   return {
-    yaw: numberOrZero(view.yaw) - horizontal * speed * dt,
+    yaw: normalizeYaw(numberOrZero(view.yaw) - horizontal * speed * dt),
     pitch: Math.max(-pitchLimit, Math.min(pitchLimit, numberOrZero(view.pitch) + vertical * speed * dt)),
   };
 }

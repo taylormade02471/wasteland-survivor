@@ -38,6 +38,11 @@ function difficultyRules(name) {
   return DIFFICULTY[name] || DIFFICULTY.medium;
 }
 
+export function waveStrengthMultiplier(wave) {
+  positiveInteger(wave, "wave");
+  return Number((1.2 ** (wave - 1)).toFixed(6));
+}
+
 export function enemyCombatProfile(type, {
   wave = 1,
   difficulty = "medium",
@@ -90,13 +95,13 @@ export function scaleEnemy(type, { wave = 1, difficulty = "medium", playerSkill 
 
   const skill = Math.max(0, Number(playerSkill) || 0);
   const growth = difficultyRules(difficulty).growth;
-  const multiplier = 1 + ((wave - 1) * growth * 0.12) + (skill * growth * 0.1);
+  const multiplier = waveStrengthMultiplier(wave) * (1 + (skill * growth * 0.1));
 
   return Object.freeze({
     type,
     role: profile.role,
     health: Math.round(profile.health * multiplier),
-    damage: Math.round(profile.damage * (1 + (multiplier - 1) * 0.8) * 100) / 100,
+    damage: Math.round(profile.damage * multiplier * 100) / 100,
     speed: Math.round(profile.speed * Math.min(1.35, 1 + (multiplier - 1) * 0.18) * 100) / 100,
     range: profile.range
   });

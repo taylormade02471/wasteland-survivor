@@ -114,7 +114,7 @@ test("menu media handoff forces the Nightfall fallback visible until playback is
   assert.match(pauseBackdrop, /nightfallBackground\.classList\.remove\("nightfall-media-hold"\)/);
 });
 
-test("match opening uses exactly fifteen seconds without changing round timers", async () => {
+test("match opening uses exactly fifteen seconds without changing non-solo round timers", async () => {
   const game = fs.readFileSync(path.resolve(__dirname, "../public/game3d.js"), "utf8");
   const rules = await import(new URL("../public/matchmaking-rules.mjs", `file://${__filename.replace(/\\/g, "/")}`));
   const countdown = rules.resolveMatchCountdown(25_000, 10_000);
@@ -125,6 +125,6 @@ test("match opening uses exactly fifteen seconds without changing round timers",
   assert.match(countdownFunction, /resolveMatchCountdown\(startsAt\)/);
   assert.match(countdownFunction, /clearKeyboardInput\(\)/);
   assert.match(countdownFunction, /touch\.mx = touch\.mz = touch\.ax = touch\.az = 0/);
-  assert.match(game, /timer = mode === "ctf" \? 300 : 60;/);
+  assert.match(game, /timer = mode === "ctf" \? 300 : mode === "teams" \? 60 : null;/);
   assert.match(game, /timer = Math\.max\(0, \(countdownDeadline - Date\.now\(\)\) \/ 1000\);/);
 });

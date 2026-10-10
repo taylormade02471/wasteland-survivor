@@ -91,6 +91,14 @@ test("relative look follows standard first-person directions and clamps pitch", 
   assert.notEqual(first.yaw, Math.atan2(0.5, -0.5));
 });
 
+test("controller yaw stays bounded while look input remains deterministic", async () => {
+  const { advanceControllerLook, normalizeYaw } = await rules();
+  const advanced = advanceControllerLook({ yaw: Math.PI - 0.01, pitch: 0 }, { x: -1, y: 0 }, 1, { sensitivity: 4 });
+
+  assert.equal(normalizeYaw(advanced.yaw), advanced.yaw);
+  assert.ok(advanced.yaw >= -Math.PI && advanced.yaw <= Math.PI);
+});
+
 test("camera direction includes both horizontal turn and vertical pitch", async () => {
   const { cameraDirectionFromView } = await rules();
   const lookingRight = cameraDirectionFromView({ yaw: -Math.PI / 2, pitch: 0 });
