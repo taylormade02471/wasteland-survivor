@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { canAccessChest, createChestPositions, nearestChest, seededRandom } from "../public/chest-rules.mjs";
 
@@ -23,4 +25,16 @@ test("generates matching shared chest positions from the same room seed", () => 
   const different = createChestPositions({ random: seededRandom("wasteland:round-3") });
   assert.deepEqual(first, second);
   assert.notDeepEqual(first, different);
+});
+
+test("the one-minute supply phase keeps player movement live while combat stays gated", () => {
+  const game = fs.readFileSync(path.join(import.meta.dirname, "..", "public", "game3d.js"), "utf8");
+  const updateStart = game.indexOf("function update(dt)");
+  const updateEnd = game.indexOf("function formatTime", updateStart);
+  const update = game.slice(updateStart, updateEnd);
+
+  assert.ok(update.includes('const prepActive = phase === "prep"'));
+  assert.ok(update.indexOf('const prepActive = phase === "prep"') < update.indexOf("let mx ="));
+  assert.match(update, /if \(!prepActive\) \{[\s\S]*updateSoloEnemies/);
+  assert.match(update, /player\.g\.position\.addScaledVector\(forward/);
 });

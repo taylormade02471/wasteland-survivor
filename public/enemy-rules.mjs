@@ -12,10 +12,21 @@ export const ENEMY_ARCHETYPES = Object.freeze({
 });
 
 const DIFFICULTY = Object.freeze({
-  easy: Object.freeze({ growth: 0.1, pacing: 4 }),
-  medium: Object.freeze({ growth: 0.22, pacing: 3 }),
-  expert: Object.freeze({ growth: 0.35, pacing: 2.25 }),
-  insane: Object.freeze({ growth: 0.75, pacing: 1.5 })
+  easy: Object.freeze({ growth: 0.1, pacing: 4, reaction: 1.8, fireInterval: 4.8, accuracy: 0.52 }),
+  medium: Object.freeze({ growth: 0.22, pacing: 3, reaction: 1.25, fireInterval: 3.4, accuracy: 0.65 }),
+  expert: Object.freeze({ growth: 0.35, pacing: 2.25, reaction: 0.8, fireInterval: 2.35, accuracy: 0.78 }),
+  insane: Object.freeze({ growth: 0.75, pacing: 1.5, reaction: 0.45, fireInterval: 1.45, accuracy: 0.9 })
+});
+
+const ARCHETYPE_FIRE_MULTIPLIER = Object.freeze({
+  rusher: 1.1,
+  shooter: 1,
+  sniper: 1.55,
+  shield: 1.2,
+  heavy: 0.82,
+  drone: 0.78,
+  mutant: 1.15,
+  boss: 0.68
 });
 
 function positiveInteger(value, name) {
@@ -25,6 +36,45 @@ function positiveInteger(value, name) {
 
 function difficultyRules(name) {
   return DIFFICULTY[name] || DIFFICULTY.medium;
+}
+
+export function enemyCombatProfile(type, {
+  wave = 1,
+  difficulty = "medium",
+  botIndex = 0
+} = {}) {
+  const archetype = ENEMY_ARCHETYPES[type];
+  if (!archetype) throw new RangeError(`Unknown enemy archetype: ${type}`);
+  const safeWave = Math.max(1, Math.floor(Number(wave) || 1));
+  const safeIndex = Math.max(0, Math.floor(Number(botIndex) || 0));
+  const rules = difficultyRules(difficulty);
+  const waveAcceleration = Math.max(0.52, 1 - ((safeWave - 1) * rules.growth * 0.055));
+  const accuracy = Math.min(0.96, rules.accuracy + ((safeWave - 1) * rules.growth * 0.012));
+
+  return Object.freeze({
+    initialDelay: Math.round((rules.reaction + Math.min(1.8, safeIndex * 0.55)) * 100) / 100,
+    fireInterval: Math.round(Math.max(0.65, rules.fireInterval * ARCHETYPE_FIRE_MULTIPLIER[type] * waveAcceleration) * 100) / 100,
+    engagementRange: Math.max(22, archetype.range),
+    accuracy: Math.round(accuracy * 1000) / 1000,
+    spreadRadians: Math.max(0.012, (1 - accuracy) * 0.2)
+  });
+}
+
+export function predictAimPoint({
+  target = {},
+  velocity = {},
+  distance = 0,
+  projectileSpeed = 35,
+  accuracy = 0.5
+} = {}) {
+  const speed = Math.max(1, Number(projectileSpeed) || 35);
+  const leadSeconds = Math.min(0.85, Math.max(0, Number(distance) || 0) / speed)
+    * Math.max(0, Math.min(1, Number(accuracy) || 0));
+  return Object.freeze({
+    x: (Number(target.x) || 0) + (Number(velocity.x) || 0) * leadSeconds,
+    y: (Number(target.y) || 0) + (Number(velocity.y) || 0) * leadSeconds,
+    z: (Number(target.z) || 0) + (Number(velocity.z) || 0) * leadSeconds
+  });
 }
 
 export function mapAffinity(type, map = "wasteland") {

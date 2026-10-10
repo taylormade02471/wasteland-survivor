@@ -11,6 +11,7 @@ import {
   isMenuCommandDisabled,
   nextLobbySelectIndex,
   resolveLobbyControllerAction,
+  resolveMenuStickNavigation,
   resolveMenuKeyAction,
   visibleLobbyControlDescriptors,
 } from "../public/menu-navigation.mjs";
@@ -185,6 +186,24 @@ test("uses horizontal controller input to change selects and vertical input to l
   assert.equal(nextLobbySelectIndex(options, 2, 1), 0);
   assert.equal(nextLobbySelectIndex(options, 0, -1), 2);
   assert.match(game, /dispatchEvent\(new Event\("change", \{ bubbles: true \}\)\)/);
+});
+
+test("left-stick menu navigation moves once per deliberate tilt and resets after release", () => {
+  const first = resolveMenuStickNavigation({ x: 0.82, y: 0.12 }, null);
+  const held = resolveMenuStickNavigation({ x: 0.9, y: 0.08 }, first.heldDirection);
+  const released = resolveMenuStickNavigation({ x: 0.1, y: 0.05 }, held.heldDirection);
+  const upward = resolveMenuStickNavigation({ x: 0.1, y: -0.9 }, released.heldDirection);
+
+  assert.deepEqual(first, { direction: "right", heldDirection: "right" });
+  assert.deepEqual(held, { direction: null, heldDirection: "right" });
+  assert.deepEqual(released, { direction: null, heldDirection: null });
+  assert.deepEqual(upward, { direction: "up", heldDirection: "up" });
+});
+
+test("lobby controller wiring accepts the left stick, A activation, and B back", () => {
+  assert.match(game, /resolveMenuStickNavigation\(\{ x: controller\.mx, y: controller\.mz \}, lobbyStickDirection\)/);
+  assert.match(game, /if \(controller\.ability\) \{ \$\("lobbyBackBtn"\)\.click\(\); return; \}/);
+  assert.match(css, /body\[data-input-mode="controller"\][^\{]*\.is-selected/);
 });
 
 test("keeps lobby actions as independent floating semantic commands", () => {

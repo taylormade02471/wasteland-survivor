@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
   ENEMY_ARCHETYPES,
   composeWave,
+  enemyCombatProfile,
   mapAffinity,
+  predictAimPoint,
   scaleEnemy,
   spawnSchedule,
   tacticalIntent
@@ -58,6 +62,40 @@ test("schedules one enemy at a time with difficulty-based pacing", () => {
   assert.equal(easy[0], 2);
   assert.ok(easy.every((time, index) => index === 0 || time > easy[index - 1]));
   assert.ok(insane[1] - insane[0] < easy[1] - easy[0]);
+});
+
+test("combat profiles fire early, stagger squads, and accelerate fairly", () => {
+  const easyFirst = enemyCombatProfile("rusher", { wave: 1, difficulty: "easy", botIndex: 0 });
+  const easySecond = enemyCombatProfile("rusher", { wave: 1, difficulty: "easy", botIndex: 1 });
+  const expertLater = enemyCombatProfile("shooter", { wave: 7, difficulty: "expert", botIndex: 0 });
+
+  assert.ok(easyFirst.initialDelay <= 2.5);
+  assert.ok(easySecond.initialDelay > easyFirst.initialDelay);
+  assert.ok(easyFirst.engagementRange >= 22);
+  assert.ok(expertLater.fireInterval < easyFirst.fireInterval);
+  assert.ok(expertLater.accuracy > easyFirst.accuracy);
+});
+
+test("bots lead a moving player instead of only firing at an old position", () => {
+  const predicted = predictAimPoint({
+    target: { x: 10, y: 0, z: 5 },
+    velocity: { x: 4, y: 0, z: -2 },
+    distance: 28,
+    projectileSpeed: 35,
+    accuracy: 0.75,
+  });
+
+  assert.ok(predicted.x > 10);
+  assert.ok(predicted.z < 5);
+  assert.equal(predicted.y, 0);
+});
+
+test("the live game uses enemy combat profiles and lets enemy rounds damage human or allied targets", () => {
+  const game = fs.readFileSync(path.join(import.meta.dirname, "..", "public", "game3d.js"), "utf8");
+
+  assert.match(game, /enemyCombatProfile\(/);
+  assert.match(game, /predictAimPoint\(/);
+  assert.match(game, /for \(const target of \[player, \.\.\.allies\]\)/);
 });
 
 test("applies map affinity to composition weights", () => {

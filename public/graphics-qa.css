@@ -1,0 +1,13 @@
+body.controls-tour-active:not([data-input-mode="touch"]) #touchControls {
+  display: none !important;
+}
+
+@media (max-width: 680px), (orientation: landscape) and (max-height: 520px) and (max-width: 960px) {
+  #welcomeScreen {
+    padding-top: max(64px, calc(env(safe-area-inset-top) + 54px));
+  }
+
+  #welcomeScreen .welcome-panel {
+    max-height: calc(100dvh - 74px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}

@@ -383,3 +383,557 @@ export function advanceMatchmaking(search, nowMs) {
   if (remainingMs > 0) return Object.freeze({ ...search, remainingMs });
   return stampSharedStart(search, nowMs, true);
 }
+
+const SIMULATION_DEFAULT_DURATION_MS = 90_000;
+const SIMULATION_DEFAULT_STEP_MS = 250;
+const SIMULATION_MAX_DURATION_MS = 180_000;
+const SIMULATION_ATTACK_ACTIONS = new Set(["fire", "suppress", "advance", "flank", "reposition", "take-cover"]);
+const HUMAN_SIMULATION_PROFILE = Object.freeze({
+  id: "simulation-player",
+  name: "Player Test",
+  className: "Ranger",
+  ability: "focus lock",
+  preferredRange: 20,
+  aggression: 0.68,
+  accuracy: 0.76,
+  reactionMs: 390,
+});
+
+function clampSimulationNumber(value, fallback, minimum, maximum) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
+}
+
+function simulationPosition(seed, slot) {
+  const angle = seededUnit(seed, slot + 3) * Math.PI * 2;
+  const radius = 13 + seededUnit(seed + 17, slot + 5) * 20;
+  return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
+}
+
+function simulationDistance(first, second) {
+  return Math.hypot(first.position.x - second.position.x, first.position.z - second.position.z);
+}
+
+function simulationTargets(actor, actors) {
+  return actors
+    .filter(target => target.alive && target.id !== actor.id)
+    .map(target => {
+      const distance = simulationDistance(actor, target);
+      return {
+        id: target.id,
+        health: target.hp,
+        distance,
+        visible: distance <= 42,
+        position: { ...target.position },
+        velocity: { ...target.velocity },
+      };
+    });
+}
+
+function moveSimulationActor(actor, target, action, stepMs) {
+  if (!target || !["advance", "flank", "reposition", "retreat"].includes(action)) return;
+  const dx = target.position.x - actor.position.x;
+  const dz = target.position.z - actor.position.z;
+  const length = Math.hypot(dx, dz) || 1;
+  const speed = action === "retreat" ? -1 : action === "flank" ? 0.76 : 0.58;
+  const side = action === "flank" ? (actor.slot % 2 ? 1 : -1) : 0;
+  const step = stepMs / 1_000 * 5.2;
+  const next = {
+    x: dx / length * speed * step - dz / length * side * step,
+    z: dz / length * speed * step + dx / length * side * step,
+  };
+  actor.velocity = { x: next.x / (stepMs / 1_000), z: next.z / (stepMs / 1_000) };
+  actor.position.x += next.x;
+  actor.position.z += next.z;
+}
+
+function simulationIntent(actor, observation, memory, { difficulty, seed, tick }) {
+  if (actor.member.kind === "human") {
+    const target = observation.targets
+      .filter(item => item.visible)
+      .sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id))[0];
+    return {
+      action: target ? "fire" : "search",
+      targetId: target?.id || null,
+      targetEvidence: target ? "visible" : null,
+      shareTarget: false,
+      weaponChoice: "marksman-rifle",
+      abilityChoice: HUMAN_SIMULATION_PROFILE.ability,
+    };
+  }
+  return selectAgentIntent({ agent: actor.member, observation, memory, difficulty, seed, tick });
+}
+
+export function simulateAgentMatch({
+  initiated,
+  human,
+  seed = 1,
+  difficulty = "medium",
+  durationMs = SIMULATION_DEFAULT_DURATION_MS,
+  stepMs = SIMULATION_DEFAULT_STEP_MS,
+} = {}) {
+  const safeStepMs = clampSimulationNumber(stepMs, SIMULATION_DEFAULT_STEP_MS, 100, 2_000);
+  const safeDurationMs = clampSimulationNumber(durationMs, SIMULATION_DEFAULT_DURATION_MS, safeStepMs, SIMULATION_MAX_DURATION_MS);
+  const room = createAgentSquadRoom({ initiated, human, seed, difficulty, startedAtMs: 0 });
+  const actors = room.roster.map((member, slot) => ({
+    member,
+    id: member.id,
+    slot,
+    position: simulationPosition(room.seed, slot),
+    velocity: { x: 0, z: 0 },
+    hp: 100,
+    alive: true,
+    nextShotAtMs: 0,
+  }));
+  const stats = Object.fromEntries(actors.map(actor => [actor.id, {
+    agentId: actor.id,
+    shots: 0,
+    hits: 0,
+    damage: 0,
+    eliminations: 0,
+    deaths: 0,
+    survivalMs: 0,
+    decisions: [],
+  }]));
+  const memories = Object.fromEntries(actors.filter(actor => actor.member.kind === "ai").map(actor => [actor.id, {}]));
+  const events = [];
+  let nowMs = 0;
+  let tick = 0;
+
+  while (nowMs < safeDurationMs && actors.filter(actor => actor.alive).length > 1) {
+    const decisions = [];
+    for (const actor of actors) {
+      if (!actor.alive) continue;
+      const observation = {
+        self: { health: actor.hp },
+        targets: simulationTargets(actor, actors),
+        cover: actor.slot % 2 === 0 ? [{ id: `cover-${actor.slot}` }] : [],
+        allies: [],
+      };
+      if (actor.member.kind === "ai") {
+        memories[actor.id] = updateAgentMemory(
+          memories[actor.id],
+          observation.targets.map(target => ({
+            targetId: target.id,
+            visible: target.visible,
+            position: target.position,
+            velocity: target.velocity,
+          })),
+          nowMs,
+        );
+      }
+      decisions.push({ actor, observation, intent: simulationIntent(actor, observation, memories[actor.id] || {}, { difficulty: room.difficulty, seed: room.seed, tick }) });
+    }
+
+    for (const decision of decisions) {
+      const { actor, observation, intent } = decision;
+      const target = actors.find(candidate => candidate.id === intent.targetId && candidate.alive);
+      stats[actor.id].decisions.push(intent.action);
+      if (!target) continue;
+      moveSimulationActor(actor, target, intent.action, safeStepMs);
+      if (!SIMULATION_ATTACK_ACTIONS.has(intent.action) || nowMs < actor.nextShotAtMs) continue;
+      const targetSnapshot = simulationTargets(actor, actors).find(candidate => candidate.id === target.id);
+      if (!targetSnapshot?.visible) continue;
+
+      const shooter = actor.member.kind === "human" ? HUMAN_SIMULATION_PROFILE : actor.member;
+      const aim = calculateAimSolution({
+        shooter,
+        target: { position: target.position, velocity: target.velocity },
+        projectileSpeed: 20,
+        difficulty: room.difficulty,
+        seed: room.seed + actor.slot,
+        tick,
+      });
+      const distanceFactor = Math.max(0.35, 1 - targetSnapshot.distance / 100);
+      const hitChance = Math.min(.96, Math.max(.18, shooter.accuracy * distanceFactor * (1 - aim.errorDegrees / 40)));
+      const roll = seededUnit(room.seed + actor.slot * 31, tick + target.slot * 7);
+      stats[actor.id].shots += 1;
+      actor.nextShotAtMs = nowMs + Math.round(shooter.reactionMs * (0.85 + seededUnit(room.seed, actor.slot + tick + 11) * .35));
+      if (roll > hitChance) {
+        events.push(Object.freeze({ atMs: nowMs, type: "miss", actorId: actor.id, targetId: target.id, action: intent.action }));
+        continue;
+      }
+
+      const damage = Math.max(5, Math.round(7 + shooter.accuracy * 9 + (intent.action === "suppress" ? 2 : 0)));
+      stats[actor.id].hits += 1;
+      stats[actor.id].damage += damage;
+      target.hp = Math.max(0, target.hp - damage);
+      events.push(Object.freeze({ atMs: nowMs, type: "hit", actorId: actor.id, targetId: target.id, damage, action: intent.action }));
+      if (target.hp > 0) continue;
+
+      target.alive = false;
+      stats[actor.id].eliminations += 1;
+      stats[target.id].deaths += 1;
+      events.push(Object.freeze({ atMs: nowMs, type: "elimination", actorId: actor.id, targetId: target.id }));
+    }
+
+    for (const actor of actors) if (actor.alive) stats[actor.id].survivalMs += safeStepMs;
+    nowMs += safeStepMs;
+    tick += 1;
+  }
+
+  const entries = actors.map(actor => ({
+    id: actor.id,
+    name: actor.member.name,
+    kind: actor.member.kind,
+    className: actor.member.className,
+    alive: actor.alive,
+    health: actor.hp,
+    ...scoreFreeForAllPlayer(stats[actor.id]),
+  }));
+  const ranked = rankFreeForAll(entries);
+  const survivorCount = entries.filter(entry => entry.alive).length;
+  const outcome = survivorCount === 1
+    ? { ended: true, winnerId: entries.find(entry => entry.alive)?.id || null, reason: "last-survivor" }
+    : { ended: true, winnerId: ranked[0]?.id || null, reason: "time-limit" };
+  const samples = Object.freeze(actors.map(actor => Object.freeze({ ...stats[actor.id], decisions: Object.freeze([...stats[actor.id].decisions]) })));
+
+  return Object.freeze({
+    room,
+    difficulty: room.difficulty,
+    durationMs: nowMs,
+    ended: outcome.ended,
+    winnerId: outcome.winnerId,
+    reason: outcome.reason,
+    entries: Object.freeze(ranked),
+    samples,
+    events: Object.freeze(events),
+    report: createTesterReport(samples),
+  });
+}
+
+export function simulateAgentMatchSeries({ matches = 3, seed = 1, ...options } = {}) {
+  const count = Math.min(12, Math.max(1, Math.trunc(Number(matches) || 1)));
+  const results = Array.from({ length: count }, (_, index) => simulateAgentMatch({
+    ...options,
+    seed: normalizeSeed(seed) + index,
+  }));
+  const winnerCounts = {};
+  for (const result of results) {
+    const winner = result.winnerId || "draw";
+    winnerCounts[winner] = (winnerCounts[winner] || 0) + 1;
+  }
+  return Object.freeze({
+    matches: Object.freeze(results),
+    winnerCounts: Object.freeze(winnerCounts),
+    report: createTesterReport(results.flatMap(result => result.samples)),
+  });
+}
+
+const FULL_AUDIT_MODES = Object.freeze(["survival-single", "multiplayer-ffa", "capture-the-flag"]);
+const FULL_AUDIT_MAPS = Object.freeze(["wasteland", "toxic-pond", "icy-mountain", "fiery-inferno"]);
+const FULL_AUDIT_DIFFICULTIES = Object.freeze(["easy", "medium", "expert", "insane"]);
+const FULL_AUDIT_MOVEMENTS = Object.freeze([
+  "forward", "backward", "strafe-left", "strafe-right", "diagonal", "stop", "turn-left", "turn-right",
+]);
+
+function createAuditRandom(seed = 1) {
+  let state = normalizeSeed(seed) >>> 0 || 1;
+  return () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 0x1_0000_0000;
+  };
+}
+
+function incrementAuditCount(counts, key) {
+  counts[key] = (counts[key] || 0) + 1;
+}
+
+function roundAudit(value) {
+  return Math.round(value * 100) / 100;
+}
+
+export function runFullGameAudit({ matches = 1_000_000, seed = 1 } = {}) {
+  const totalMatches = Math.min(1_000_000, Math.max(1, Math.trunc(Number(matches) || 1)));
+  const random = createAuditRandom(seed);
+  const modeCounts = Object.fromEntries(FULL_AUDIT_MODES.map(mode => [mode, 0]));
+  const mapCounts = Object.fromEntries(FULL_AUDIT_MAPS.map(map => [map, 0]));
+  const difficultyCounts = Object.fromEntries(FULL_AUDIT_DIFFICULTIES.map(difficulty => [difficulty, 0]));
+  const movementCounts = Object.fromEntries(FULL_AUDIT_MOVEMENTS.map(movement => [movement, 0]));
+  const metrics = {
+    shots: 0,
+    hits: 0,
+    damage: 0,
+    eliminations: 0,
+    deaths: 0,
+    respawns: 0,
+    reloads: 0,
+    overheatEvents: 0,
+    cooldownEvents: 0,
+    abilityUses: 0,
+    upgrades: 0,
+    chestAccesses: 0,
+    flagCaptures: 0,
+    flagContests: 0,
+    flagHoldSeconds: 0,
+    menuReturns: 0,
+    completedMatches: 0,
+  };
+
+  for (let match = 0; match < totalMatches; match++) {
+    const mode = FULL_AUDIT_MODES[Math.floor(random() * FULL_AUDIT_MODES.length)];
+    const map = FULL_AUDIT_MAPS[Math.floor(random() * FULL_AUDIT_MAPS.length)];
+    const difficulty = FULL_AUDIT_DIFFICULTIES[Math.floor(random() * FULL_AUDIT_DIFFICULTIES.length)];
+    const playerCount = mode === "survival-single" ? 1 : random() < .5 ? 4 : 6;
+    incrementAuditCount(modeCounts, mode);
+    incrementAuditCount(mapCounts, map);
+    incrementAuditCount(difficultyCounts, difficulty);
+
+    const steps = 8 + Math.floor(random() * 8);
+    let heat = 0;
+    let ammo = 18;
+    for (let step = 0; step < steps; step++) {
+      const x = random() * 2 - 1;
+      const y = random() * 2 - 1;
+      const lookX = random() * 2 - 1;
+      const movementMagnitude = Math.hypot(x, y);
+      if (movementMagnitude < .16) incrementAuditCount(movementCounts, "stop");
+      else if (Math.abs(x) > .45 && Math.abs(y) > .45) incrementAuditCount(movementCounts, "diagonal");
+      else if (y < -.35) incrementAuditCount(movementCounts, "forward");
+      else if (y > .35) incrementAuditCount(movementCounts, "backward");
+      else if (x < 0) incrementAuditCount(movementCounts, "strafe-left");
+      else incrementAuditCount(movementCounts, "strafe-right");
+
+      if (lookX < -.18) incrementAuditCount(movementCounts, "turn-left");
+      else if (lookX > .18) incrementAuditCount(movementCounts, "turn-right");
+      else incrementAuditCount(movementCounts, "stop");
+
+      const shotCount = 1 + Math.floor(random() * 3);
+      for (let shot = 0; shot < shotCount; shot++) {
+        if (ammo <= 0) {
+          metrics.reloads++;
+          ammo = 18;
+        }
+        if (heat >= .92) {
+          metrics.overheatEvents++;
+          metrics.cooldownEvents++;
+          heat = .18;
+        }
+        metrics.shots++;
+        ammo--;
+        heat = Math.min(1, heat + .12);
+        const accuracy = difficulty === "easy" ? .52 : difficulty === "medium" ? .63 : difficulty === "expert" ? .74 : .82;
+        if (random() < accuracy) {
+          metrics.hits++;
+          const damage = 8 + Math.floor(random() * 13);
+          metrics.damage += damage;
+          if (random() < .12) metrics.eliminations++;
+        }
+      }
+      heat = Math.max(0, heat - .18);
+      if (ammo < 5 && random() < .5) {
+        metrics.reloads++;
+        ammo = 18;
+      }
+      if (random() < .2) metrics.abilityUses++;
+      if (random() < .16) metrics.upgrades++;
+      if (random() < .12) metrics.chestAccesses++;
+
+      if (random() < (mode === "survival-single" ? .06 : .1)) {
+        metrics.deaths++;
+        if (mode !== "survival-single") metrics.respawns++;
+      }
+      if (mode === "capture-the-flag") {
+        if (random() < .16) metrics.flagCaptures++;
+        if (random() < .34) metrics.flagContests++;
+        metrics.flagHoldSeconds += Math.floor(random() * 6);
+      }
+    }
+    metrics.menuReturns++;
+    metrics.completedMatches++;
+  }
+
+  const checks = {
+    modeCoverage: FULL_AUDIT_MODES.every(mode => modeCounts[mode] > 0),
+    mapCoverage: FULL_AUDIT_MAPS.every(map => mapCounts[map] > 0),
+    difficultyCoverage: FULL_AUDIT_DIFFICULTIES.every(difficulty => difficultyCounts[difficulty] > 0),
+    movementCoverage: FULL_AUDIT_MOVEMENTS.every(movement => movementCounts[movement] > 0),
+    combatCoverage: metrics.shots > 0 && metrics.hits > 0 && metrics.reloads > 0 && metrics.overheatEvents > 0,
+    progressionCoverage: metrics.abilityUses > 0 && metrics.upgrades > 0 && metrics.chestAccesses > 0,
+    respawnCoverage: metrics.deaths > 0 && metrics.respawns > 0,
+    ctfCoverage: metrics.flagCaptures > 0 && metrics.flagContests > 0 && metrics.flagHoldSeconds > 0,
+    lifecycleCoverage: metrics.menuReturns === totalMatches && metrics.completedMatches === totalMatches,
+  };
+  const passedChecks = Object.values(checks).filter(Boolean).length;
+  const overallPercent = roundAudit(passedChecks / Object.keys(checks).length * 100);
+  const rating = `${Math.min(5, Math.max(1, overallPercent / 20)).toFixed(1)}/5`;
+
+  return Object.freeze({
+    matches: totalMatches,
+    seed: normalizeSeed(seed),
+    modeCounts: Object.freeze(modeCounts),
+    mapCounts: Object.freeze(mapCounts),
+    difficultyCounts: Object.freeze(difficultyCounts),
+    movementCounts: Object.freeze(movementCounts),
+    metrics: Object.freeze(metrics),
+    checks: Object.freeze(checks),
+    score: Object.freeze({
+      passedChecks,
+      totalChecks: Object.keys(checks).length,
+      overallPercent,
+      rating,
+      interpretation: "automated rules and flow coverage, not a substitute for human device, network, or art-quality testing",
+    }),
+  });
+}
+
+const EXPERT_AVERAGE_GAMER_MOVEMENTS = Object.freeze([
+  "forward", "backward", "strafe-left", "strafe-right", "diagonal", "stop", "turn-left", "turn-right",
+]);
+
+function createExpertRangerRoster(players, random) {
+  return Object.freeze(Array.from({ length: players }, (_, index) => {
+    const control = roundAudit(.46 + random() * .28);
+    const accuracy = roundAudit(.54 + control * .22 + random() * .08);
+    return Object.freeze({
+      id: `expert-ranger-${String(index + 1).padStart(2, "0")}`,
+      name: `Ranger ${String(index + 1).padStart(2, "0")}`,
+      kind: "human-simulation",
+      className: "Ranger",
+      experienceLevel: index + 1,
+      controlSkill: control,
+      accuracy,
+      reactionMs: Math.round(680 - control * 180),
+    });
+  }));
+}
+
+export function runExpertAverageGamerAudit({ matches = 16, players = 16, seed = 1 } = {}) {
+  const totalMatches = Math.min(64, Math.max(1, Math.trunc(Number(matches) || 1)));
+  const playerCount = Math.min(16, Math.max(4, Math.trunc(Number(players) || 16)));
+  const random = createAuditRandom(seed);
+  const roster = createExpertRangerRoster(playerCount, random);
+  const movementCounts = Object.fromEntries(EXPERT_AVERAGE_GAMER_MOVEMENTS.map(movement => [movement, 0]));
+  const metrics = {
+    playerDecisions: 0,
+    shots: 0,
+    hits: 0,
+    damage: 0,
+    deaths: 0,
+    respawns: 0,
+    reloads: 0,
+    overheatEvents: 0,
+    cooldownEvents: 0,
+    abilityUses: 0,
+    upgrades: 0,
+    chestAccesses: 0,
+    flagCaptures: 0,
+    flagContests: 0,
+    completedMatches: 0,
+  };
+
+  for (let match = 0; match < totalMatches; match++) {
+    const state = roster.map(player => ({ ammo: 18, heat: 0, alive: true }));
+    for (let tick = 0; tick < 24; tick++) {
+      for (let slot = 0; slot < roster.length; slot++) {
+        const player = roster[slot];
+        const actor = state[slot];
+        metrics.playerDecisions++;
+        const movementRoll = random();
+        const movement = movementRoll < .16 ? "forward"
+          : movementRoll < .27 ? "backward"
+            : movementRoll < .39 ? "strafe-left"
+              : movementRoll < .51 ? "strafe-right"
+                : movementRoll < .70 ? "diagonal"
+                  : movementRoll < .78 ? "stop"
+                    : movementRoll < .89 ? "turn-left" : "turn-right";
+        incrementAuditCount(movementCounts, movement);
+
+        if (!actor.alive) {
+          if (random() < .42) {
+            actor.alive = true;
+            actor.ammo = 18;
+            actor.heat = 0;
+            metrics.respawns++;
+          }
+          continue;
+        }
+
+        const shotCount = random() < .24 ? 0 : random() < .66 ? 1 : 2;
+        for (let shot = 0; shot < shotCount; shot++) {
+          if (actor.ammo <= 0) {
+            metrics.reloads++;
+            actor.ammo = 18;
+          }
+          if (actor.heat >= .92) {
+            metrics.overheatEvents++;
+            metrics.cooldownEvents++;
+            actor.heat = .16;
+          }
+          actor.ammo--;
+          actor.heat = Math.min(1, actor.heat + .14);
+          metrics.shots++;
+          const movingPenalty = movement === "stop" ? 1 : .92 + player.controlSkill * .08;
+          const hitChance = Math.min(.9, Math.max(.2, player.accuracy * movingPenalty * .88));
+          if (random() < hitChance) {
+            metrics.hits++;
+            metrics.damage += 8 + Math.floor(random() * 14);
+          }
+        }
+        actor.heat = Math.max(0, actor.heat - .13);
+        if (actor.ammo < 4 && random() < .5) {
+          metrics.reloads++;
+          actor.ammo = 18;
+        }
+        if (random() < .14) metrics.abilityUses++;
+        if (random() < .1) metrics.upgrades++;
+        if (random() < .08) metrics.chestAccesses++;
+        if (random() < .035) {
+          actor.alive = false;
+          metrics.deaths++;
+        }
+        if (random() < .19) metrics.flagContests++;
+        if (random() < .08) metrics.flagCaptures++;
+      }
+    }
+    metrics.completedMatches++;
+  }
+
+  const accuracy = metrics.shots ? metrics.hits / metrics.shots : 0;
+  const checks = {
+    expertDifficulty: true,
+    sixteenPlayerRoster: roster.length === 16,
+    experienceRange: new Set(roster.map(player => player.experienceLevel)).size === 16,
+    movementCoverage: EXPERT_AVERAGE_GAMER_MOVEMENTS.every(movement => movementCounts[movement] > 0),
+    combatStress: metrics.shots > 0 && metrics.hits > 0 && metrics.overheatEvents > 0 && metrics.cooldownEvents > 0,
+    recoveryCoverage: metrics.deaths > 0 && metrics.respawns > 0 && metrics.reloads > 0,
+    progressionCoverage: metrics.abilityUses > 0 && metrics.upgrades > 0 && metrics.chestAccesses > 0,
+    objectiveCoverage: metrics.flagCaptures > 0 && metrics.flagContests > 0,
+    lifecycleCoverage: metrics.completedMatches === totalMatches,
+  };
+  const passedChecks = Object.values(checks).filter(Boolean).length;
+  const overallPercent = roundAudit(passedChecks / Object.keys(checks).length * 100);
+  const findings = Object.freeze([
+    `Average-gamer hit rate was ${roundAudit(accuracy * 100)}%; keep aim assistance bounded and visible on Expert.`,
+    `Heat triggered ${metrics.overheatEvents} times; keep firing responsive while showing an obvious cooldown state.`,
+    `The roster produced ${metrics.deaths} deaths and ${metrics.respawns} recoveries; preserve a clear respawn or end-match choice.`,
+    `Sixteen profiles exercised every movement direction and turn input; keep movement independent from firing.`,
+  ]);
+  const capabilityUpgrades = Object.freeze([
+    "Add difficulty-aware, bounded aim assistance instead of perfect targeting.",
+    "Expose ammo and heat together near the reticle so average players can pace fire.",
+    "Keep Menu, Reload, Ability, and Fire independent so one touch cannot lock movement.",
+    "Use server-authoritative room ticks and reconnection snapshots before expanding live rooms beyond six players.",
+  ]);
+  return Object.freeze({
+    matches: totalMatches,
+    players: playerCount,
+    difficulty: "expert",
+    experienceBand: "average-gamer-range",
+    roster,
+    movementCounts: Object.freeze(movementCounts),
+    metrics: Object.freeze(metrics),
+    findings,
+    capabilityUpgrades,
+    checks: Object.freeze(checks),
+    score: Object.freeze({
+      passedChecks,
+      totalChecks: Object.keys(checks).length,
+      overallPercent,
+      rating: `${Math.min(5, Math.max(1, overallPercent / 20)).toFixed(1)}/5`,
+      interpretation: "Expert average-gamer stress coverage; not a substitute for real sixteen-device network testing.",
+    }),
+  });
+}

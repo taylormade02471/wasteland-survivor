@@ -133,14 +133,13 @@ test("saved replay has priority and fallback stays visible until playback is con
   assert.equal(playing.fallbackVisible, false);
 });
 
-test("bundled loop uses semantic WebM then MP4 source fallback when no replay plays", async () => {
+test("bundled loop uses the shipped water-walk MP4 when no replay plays", async () => {
   const { resolveMenuMedia } = await import(modulePath);
   const result = resolveMenuMedia({ tier: "high", playbackState: "loading" });
 
   assert.equal(result.kind, "bundled");
   assert.deepEqual(result.sources, [
-    { src: "./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.webm", type: "video/webm" },
-    { src: "./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4", type: "video/mp4" },
+    { src: "./assets/nightfall/video/nightfall-water-walk-v1.mp4", type: "video/mp4" },
   ]);
   assert.equal(result.fallbackVisible, true);
 });
@@ -154,17 +153,16 @@ test("replay failure falls through to the bundled loop", async () => {
   });
 
   assert.equal(result.kind, "bundled");
-  assert.equal(result.sources.length, 2);
+  assert.equal(result.sources.length, 1);
 });
 
-test("autoplay decode data saver reduced motion and low tier retain the fallback with no blank frame", async () => {
+test("autoplay decode data saver and reduced motion retain the fallback with no blank frame", async () => {
   const { resolveMenuMedia } = await import(modulePath);
   const blockedCases = [
     { tier: "high", autoplayFailed: true },
     { tier: "high", decodeFailed: true },
     { tier: "high", saveData: true },
     { tier: "high", reducedMotion: true },
-    { tier: "low" },
   ];
 
   for (const input of blockedCases) {
@@ -174,4 +172,15 @@ test("autoplay decode data saver reduced motion and low tier retain the fallback
     assert.equal(result.autoplay, false);
     assert.deepEqual(result.sources, []);
   }
+});
+
+test("low graphics tier still uses the bundled water-walk loop", async () => {
+  const { resolveMenuMedia } = await import(modulePath);
+  const result = resolveMenuMedia({ tier: "low", playbackState: "loading" });
+
+  assert.equal(result.kind, "bundled");
+  assert.equal(result.autoplay, true);
+  assert.deepEqual(result.sources, [
+    { src: "./assets/nightfall/video/nightfall-water-walk-v1.mp4", type: "video/mp4" },
+  ]);
 });

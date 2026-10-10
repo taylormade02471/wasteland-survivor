@@ -21,8 +21,7 @@ const TIER_EFFECTS = Object.freeze({
 });
 
 const BUNDLED_SOURCES = Object.freeze([
-  Object.freeze({ src: "./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.webm", type: "video/webm" }),
-  Object.freeze({ src: "./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4", type: "video/mp4" }),
+  Object.freeze({ src: "./assets/nightfall/video/nightfall-water-walk-v1.mp4", type: "video/mp4" }),
 ]);
 
 function normalizeSection(section) {
@@ -88,8 +87,7 @@ export function resolveMenuPresentation(input = {}) {
 
 export function resolveMenuMedia(input = {}) {
   const tier = normalizeTier(input.tier);
-  const blocked = tier === "low"
-    || Boolean(input.reducedMotion)
+  const blocked = Boolean(input.reducedMotion)
     || Boolean(input.saveData)
     || Boolean(input.autoplayFailed)
     || Boolean(input.decodeFailed);

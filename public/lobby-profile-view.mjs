@@ -3,12 +3,12 @@ import { WEAPON_FAMILIES, getWeaponProfile } from "./combat-rules.mjs";
 import { normalizeProfile, xpForLevel } from "./progression-rules.mjs";
 
 export const LOBBY_AVATARS = Object.freeze([
-  Object.freeze({ id: "scout", name: "Dust Scout", classId: "scout", image: "./assets/nightfall/characters/index/scout-v1.webp" }),
-  Object.freeze({ id: "ranger", name: "Ranger", classId: "ranger", image: "./assets/nightfall/characters/index/ranger-v1.webp" }),
-  Object.freeze({ id: "heavy", name: "Heavy", classId: "heavy", image: "./assets/nightfall/characters/index/heavy-v1.webp" }),
-  Object.freeze({ id: "tech", name: "Tech Runner", classId: "tech", image: "./assets/nightfall/characters/index/tech-runner-v1.webp" }),
-  Object.freeze({ id: "medic", name: "Field Medic", classId: "tech", image: "./assets/nightfall/characters/index/field-medic-v1.webp" }),
-  Object.freeze({ id: "warden", name: "Warden", classId: "heavy", image: "./assets/nightfall/characters/index/warden-v1.webp" }),
+  Object.freeze({ id: "scout", name: "Dust Scout", classId: "scout", image: "./assets/nightfall/characters/renders/scout-v2-isolated.png" }),
+  Object.freeze({ id: "ranger", name: "Ranger", classId: "ranger", image: "./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" }),
+  Object.freeze({ id: "heavy", name: "Heavy", classId: "heavy", image: "./assets/nightfall/characters/renders/heavy-v2-isolated.png" }),
+  Object.freeze({ id: "tech", name: "Tech Runner", classId: "tech", image: "./assets/nightfall/characters/renders/tech-runner-v2-isolated.png" }),
+  Object.freeze({ id: "medic", name: "Field Medic", classId: "tech", image: "./assets/nightfall/characters/renders/field-medic-v2-isolated.png" }),
+  Object.freeze({ id: "warden", name: "Warden", classId: "heavy", image: "./assets/nightfall/characters/renders/warden-v2-isolated.png" }),
 ]);
 
 const AVATAR_BY_ID = new Map(LOBBY_AVATARS.map(avatar => [avatar.id, avatar]));
