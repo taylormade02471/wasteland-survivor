@@ -275,6 +275,30 @@ test("expanded arena presets produce deterministic non-overlapping placements wi
   }
 });
 
+test("arena placements include readable boundary features for cover map definition", () => {
+  const expectedByMap = {
+    wasteland: ["perimeter-wall", "ruined-building", "dry-riverbed"],
+    "toxic-pond": ["perimeter-wall", "industrial-building", "toxic-river"],
+    "icy-mountain": ["ice-cliff", "stone-wall", "frozen-river"],
+    "fiery-inferno": ["basalt-wall", "burned-building", "lava-river"],
+  };
+
+  for (const [id, expectedTypes] of Object.entries(expectedByMap)) {
+    const arena = sampleArenaPlacements(id, { seed: "map-definition" });
+    assert.deepEqual(arena.boundaries.map((feature) => feature.type), expectedTypes);
+    assert.ok(arena.boundaries.every((feature) => feature.blocksPlayers));
+    assert.ok(arena.boundaries.every((feature) => feature.visualDefinition.length > 0));
+    assert.ok(arena.boundaries.some((feature) => feature.kind === "building" || feature.kind === "wall"));
+    assert.ok(arena.boundaries.some((feature) => feature.kind === "river"));
+
+    for (const feature of arena.boundaries) {
+      assert.ok(feature.width >= 8, `${feature.type} is readable at gameplay scale`);
+      assert.ok(feature.depth >= 1.2, `${feature.type} has blocker depth`);
+      assert.ok(Math.hypot(feature.x, feature.z) > 18, `${feature.type} leaves spawn lanes open`);
+    }
+  }
+});
+
 test("lobby loadout visual contract stays slim combined and controller friendly", () => {
   const contract = LOBBY_LOADOUT_VISUAL_CONTRACT;
   assert.equal(contract.version, 1);

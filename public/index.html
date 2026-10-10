@@ -14,16 +14,17 @@
   <link rel="apple-touch-icon" href="assets/nightfall/icons/icon-512-v1.png" />
   <link rel="manifest" href="site.webmanifest" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="graphics-qa.css" />
 </head>
 <body>
   <canvas id="game" aria-label="Wasteland Survivor battlefield"></canvas>
   <div id="aimReticle" class="aim-reticle" aria-hidden="true"><i></i><b></b></div>
   <aside id="controllerDebug" class="controller-debug hidden" aria-live="polite"><b>CONTROLLER DEBUG</b><span id="debugPadName">No controller detected</span><span id="debugAxes">LX 0.00 · LY 0.00 · RX 0.00 · RY 0.00</span><span id="debugButtons">Buttons: none</span><span id="debugAction">Action: waiting</span></aside>
   <div id="nightfallBackground" aria-hidden="true"></div>
-  <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline preload="metadata" poster="./assets/nightfall/backgrounds/nightfall-loading-v1.webp" aria-hidden="true">
-    <source src="./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.webm" type="video/webm" />
-    <source src="./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4" type="video/mp4" />
+  <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline preload="auto" poster="./assets/nightfall/backgrounds/nightfall-loading-v1.webp" aria-hidden="true">
+    <source src="./assets/nightfall/video/nightfall-water-walk-v1.mp4" type="video/mp4" />
   </video>
+  <audio id="bundledMusic" class="bundled-music" preload="auto" loop src="./assets/nightfall/audio/nightfall-ambient-v1.mp3" aria-hidden="true"></audio>
   <div id="matchCountdown" class="match-countdown hidden"><span id="countdownLabel">ENTERING NIGHTFALL</span><b id="countdownNumber">15</b></div>
   <aside id="inputRecoveryNotice" class="input-recovery-notice hidden" role="status" aria-live="assertive" aria-atomic="true">
     <div class="input-recovery-panel">
@@ -53,31 +54,33 @@
     <button id="profileBackBtn" class="screen-back-button screen-back-control" type="button" aria-label="Back to saved profiles">&#8592; Back</button>
     <div class="welcome-panel">
       <header class="title-hero">
+        <img class="title-cover-art" src="./assets/nightfall/backgrounds/nightfall-six-survivors-v2.png" alt="" aria-hidden="true" />
         <div class="title-hero-copy">
           <p class="nightfall-crown">Nightfall</p>
           <div class="survivor-title-plate"><h1>Wasteland Survivor</h1></div>
           <p class="hero-tagline">No one is coming. Hold the line.</p>
-          <p class="welcome-copy">Build your survivor profile, verify your mobile number for private recovery, and choose a lobby.</p>
+          <p class="welcome-copy">Build your survivor profile with a name, birthday, and local PIN, then enter the lobby.</p>
         </div>
         <div class="title-survivor" aria-hidden="true">
           <span class="title-survivor-glow"></span>
-          <img src="./assets/nightfall/characters/index/ranger-v1.webp" alt="" />
+          <img src="./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" alt="" />
           <b>RANGER // 02</b>
         </div>
+        <div class="menu-joystick-rail menu-joystick-left" aria-hidden="true"><span>LEFT STICK</span><i></i><small>MOVE</small></div>
+        <div class="menu-joystick-rail menu-joystick-right" aria-hidden="true"><span>RIGHT STICK</span><i></i><small>LOOK</small></div>
       </header>
       <div id="profileStep" class="profile-step">
         <label for="profileName">Player name <input id="profileName" type="text" maxlength="24" autocomplete="nickname" placeholder="Survivor name" /></label>
         <label for="profileBirthDate">Date of birth <input id="profileBirthDate" type="date" autocomplete="bday" /></label>
-        <label for="profilePhone">Mobile number <input id="profilePhone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(615) 555-0123" /></label>
         <fieldset class="avatar-picker">
           <legend>Choose your survivor</legend>
           <div class="avatar-selection-grid">
-            <button class="avatar-choice selected" type="button" data-avatar="scout"><img src="./assets/nightfall/characters/index/scout-v1.webp" alt="Dust Scout"><span><b>Dust Scout</b><small>Scout Blaster · Fleet Foot</small><em>Ability: Dash</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="ranger"><img src="./assets/nightfall/characters/index/ranger-v1.webp" alt="Ranger"><span><b>Ranger</b><small>Scout Blaster · Steady Aim</small><em>Ability: Focus Lock</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="heavy"><img src="./assets/nightfall/characters/index/heavy-v1.webp" alt="Heavy"><span><b>Heavy</b><small>Breach Cannon · Reinforced</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="tech"><img src="./assets/nightfall/characters/index/tech-runner-v1.webp" alt="Tech Runner"><span><b>Tech Runner</b><small>Inferno Repeater · Extra Scrap</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="medic"><img src="./assets/nightfall/characters/index/field-medic-v1.webp" alt="Field Medic"><span><b>Field Medic</b><small>Scout Blaster · Recovery Kit</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="warden"><img src="./assets/nightfall/characters/index/warden-v1.webp" alt="Warden"><span><b>Warden</b><small>Breach Cannon · Fortified</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice selected" type="button" data-avatar="scout"><img src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Dust Scout"><span><b>Dust Scout</b><small>Scout Blaster · Fleet Foot</small><em>Ability: Dash</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="ranger"><img src="./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" alt="Ranger"><span><b>Ranger</b><small>Scout Blaster · Steady Aim</small><em>Ability: Focus Lock</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="heavy"><img src="./assets/nightfall/characters/renders/heavy-v2-isolated.png" alt="Heavy"><span><b>Heavy</b><small>Breach Cannon · Reinforced</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="tech"><img src="./assets/nightfall/characters/renders/tech-runner-v2-isolated.png" alt="Tech Runner"><span><b>Tech Runner</b><small>Inferno Repeater · Extra Scrap</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="medic"><img src="./assets/nightfall/characters/renders/field-medic-v2-isolated.png" alt="Field Medic"><span><b>Field Medic</b><small>Scout Blaster · Recovery Kit</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="warden"><img src="./assets/nightfall/characters/renders/warden-v2-isolated.png" alt="Warden"><span><b>Warden</b><small>Breach Cannon · Fortified</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
           </div>
         </fieldset>
         <label class="avatar-select-fallback" for="profileAvatar">Selected survivor <select id="profileAvatar"><option value="scout">Dust Scout</option><option value="ranger">Ranger</option><option value="heavy">Heavy</option><option value="tech">Tech Runner</option><option value="medic">Field Medic</option><option value="warden">Warden</option></select></label>
@@ -86,14 +89,13 @@
         <div id="parentSetup" class="parent-setup hidden">
           <b>Parent controls required</b>
           <small>Players under 14 start with voice and online-network features restricted.</small>
-          <label for="parentPhone">Parent mobile number <input id="parentPhone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(615) 555-0123" /></label>
           <label for="parentPin">Parent 4-digit PIN <input id="parentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" /></label>
         </div>
         <button id="enterWastlandBtn" class="full-button" type="button">Enter Wasteland</button>
         <button id="guestOfflineBtn" class="text-button" type="button">Play offline as guest</button>
-        <button id="showLinkProfileNewBtn" class="text-button" type="button">Link a player from another device</button>
         <p id="profileMessage" class="form-message" role="status"></p>
       </div>
+      <button id="mobileEntryBtn" class="mobile-entry-dock" type="button">Enter Wasteland</button>
       <div id="returnStep" class="profile-step hidden">
         <p id="returningPlayer" class="returning-player"></p>
         <label for="profileSelector">Saved player <select id="profileSelector"></select></label>
@@ -101,28 +103,18 @@
         <button id="returnWastlandBtn" class="full-button" type="button">Continue</button>
         <button id="storyGuestBtn" class="text-button" type="button">Play Story Survival Offline</button>
         <button id="newProfileBtn" class="text-button" type="button">Use a different profile</button>
-        <button id="showLinkProfileBtn" class="text-button" type="button">Link a player from another device</button>
         <p id="returnMessage" class="form-message" role="status"></p>
       </div>
-      <div id="linkProfileStep" class="profile-step hidden">
-        <button id="linkProfileBackBtn" class="screen-back-button" type="button">&#8592; Back</button>
-        <p class="eyebrow">Restore Linked Player</p>
-        <p class="welcome-copy">Verify the mobile number already linked to your survivor. Your new four-digit PIN will lock this profile only on this device.</p>
-        <label for="linkPhone">Verified mobile number <input id="linkPhone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(615) 555-0123" /></label>
-        <label for="linkLocalPin">New 4-digit PIN for this device <input id="linkLocalPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" /></label>
-        <button id="claimLinkBtn" class="full-button" type="button">Send Verification Code</button>
-        <p id="linkProfileMessage" class="form-message" role="status"></p>
-      </div>
-      <div id="phoneCodeStep" class="profile-step hidden">
-        <button id="phoneCodeBackBtn" class="screen-back-button" type="button">&#8592; Back</button>
-        <p id="phoneCodeHeading" class="eyebrow">Verify Mobile Number</p>
-        <p id="phoneCodeHint" class="welcome-copy"></p>
-        <label for="phoneCode">6-digit verification code <input id="phoneCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" /></label>
-        <button id="confirmPhoneCodeBtn" class="full-button" type="button">Verify And Continue</button>
-        <button id="resendPhoneCodeBtn" class="text-button" type="button" disabled>Resend code in 30s</button>
-        <div id="phoneRecaptcha" aria-hidden="true"></div>
-        <p id="phoneCodeMessage" class="form-message" role="status"></p>
-      </div>
+    </div>
+  </section>
+  <section id="termsModal" class="terms-modal hidden" role="dialog" aria-modal="true" aria-labelledby="termsTitle" aria-describedby="termsBody">
+    <div class="terms-card">
+      <p class="eyebrow">Profile setup // Terms review</p>
+      <h2 id="termsTitle">Wasteland Survivor Terms</h2>
+      <p id="termsBody">This is a fictional action game with combat, weapons, and intense scenes. You agree to play responsibly and understand that the game is not responsible for actions taken outside the game or for misuse of its fictional content, including excessively violent actions.</p>
+      <p class="terms-window">This acceptance remains valid for 2 hours on this device, then the terms review appears again.</p>
+      <label class="consent-line" for="termsConfirm"><input id="termsConfirm" type="checkbox" /> I have read and accept these terms.</label>
+      <div class="terms-actions"><button id="termsCancelBtn" class="text-button" type="button">Cancel</button><button id="termsAcceptBtn" class="full-button" type="button">Accept and continue</button></div>
     </div>
   </section>
 
@@ -138,7 +130,7 @@
     <section class="lobby-survivor-hero" aria-label="Active survivor">
       <button id="lobbyAvatarButton" data-lobby-control class="lobby-avatar-button" type="button" aria-controls="dashboardModal">
         <span class="lobby-avatar-glow" aria-hidden="true"></span>
-        <img id="lobbyAvatarImage" class="lobby-avatar-image" src="./assets/nightfall/characters/index/scout-v1.webp" alt="Dust Scout">
+        <img id="lobbyAvatarImage" class="lobby-avatar-image" src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Dust Scout">
         <span class="lobby-avatar-action">Open loadout</span>
       </button>
       <button id="lobbyProfileReadout" data-lobby-control class="lobby-profile-readout" type="button" aria-controls="dashboardModal">
@@ -175,6 +167,7 @@
         <button id="dashboardBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Loadout</button>
         <button id="editProfileBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Profile</button>
         <button id="lobbyConnectionsBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Connections</button>
+        <button id="renderLabBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">3D Render Lab</button>
         <button id="lobbySettingsBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Settings</button>
         <button id="signOutProfileBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Switch Profile</button>
       </div>
@@ -249,11 +242,12 @@
         <div class="map-control"><button data-map="wasteland" type="button" class="active">Wasteland</button><button data-map="toxic" type="button">Toxic</button><button data-map="ice" type="button">Ice</button><button data-map="inferno" type="button">Inferno</button></div>
       </div>
       <div class="game-menu-actions">
-        <button id="resumeGameBtn" type="button">Resume</button>
+        <button id="resumeGameBtn" type="button">Back to Game</button>
         <button id="frontViewBtn" type="button">Arena View</button>
         <button id="openShopBtn" type="button">Armory</button>
         <button id="menuSettingsBtn" type="button">Settings</button>
         <button id="settingsBtn" class="hidden" type="button" aria-hidden="true">Settings</button>
+        <button id="saveExitStoryBtn" class="hidden" type="button">Save Story &amp; Exit</button>
         <button id="exitGameBtn" class="danger-button" type="button">Exit to Lobby</button>
       </div>
       <p id="graceStatus" class="grace-status hidden">Control reconnecting: <b>3</b></p>
@@ -277,22 +271,51 @@
     <div class="modal-card">
       <p class="eyebrow">Wasteland Survivor</p>
       <h2>Scavenger Armory</h2>
-      <div class="shop-item">
+      <div class="armory-overview">
+        <div class="armory-avatar">
+          <img id="armoryAvatarImage" src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Selected survivor">
+          <div><small>Selected survivor</small><b id="armoryAvatarName">Dust Scout</b><span id="armoryAvatarSkill">Fast movement</span></div>
+        </div>
+        <div class="armory-resource-grid" aria-label="Current supplies">
+          <div><small>Scrap</small><b id="armoryScrap">0</b></div>
+          <div><small>Ammo</small><b id="armoryAmmo">0 / 0</b></div>
+          <div><small>Armor</small><b id="armoryArmor">0 / 0</b></div>
+        </div>
+      </div>
+      <div class="armory-tabs" role="tablist" aria-label="Armory filters">
+        <button class="armory-tab active" type="button" role="tab" aria-selected="true" data-armory-tab="weapons">Weapons</button>
+        <button class="armory-tab" type="button" role="tab" aria-selected="false" data-armory-tab="protection">Ammo &amp; Armor</button>
+        <button class="armory-tab" type="button" role="tab" aria-selected="false" data-armory-tab="tactical">Tactical</button>
+      </div>
+      <div class="armory-folder" data-armory-folder="weapons" role="tabpanel">
+        <div class="shop-item">
         <div><b>Scout Blaster <span id="scoutLevel">L0</span></b><small>Fast, low-power fire. Upgrade track unlocks at 3 kills. Pierces after level 25.</small></div>
         <div class="shop-actions"><button id="equipScoutBtn" type="button">Equip</button><button id="upgradeScoutBtn" type="button">12 scrap</button></div>
-      </div>
-      <div class="shop-item">
+        </div>
+        <div class="shop-item">
         <div><b>Breach Cannon <span id="cannonLevel">L0</span></b><small>Unlocks at 6 kills. Slow, piercing shots with extra barrels at 50, 75, and 100.</small></div>
         <div class="shop-actions"><button id="equipCannonBtn" type="button">Equip</button><button id="upgradeCannonBtn" type="button">28 scrap</button></div>
-      </div>
-      <div class="shop-item">
+        </div>
+        <div class="shop-item">
         <div><b>Inferno Repeater <span id="infernoLevel">L0</span></b><small>Unlocks at 9 kills. Harder-hitting piercing fire, max level 50.</small></div>
         <div class="shop-actions"><button id="equipInfernoBtn" type="button">Equip</button><button id="upgradeInfernoBtn" type="button">42 scrap</button></div>
+        </div>
       </div>
-      <div class="shop-item">
-        <div><b>Scrap Shield <span id="shieldLevel">L0</span></b><small>Adds armor before health takes damage.</small></div>
-        <button id="upgradeShieldBtn" type="button">24 scrap</button>
+      <div class="armory-folder hidden" data-armory-folder="protection" role="tabpanel" aria-hidden="true">
+        <div class="shop-item">
+          <div><b>Ammo reserve</b><small>Magazine capacity follows the equipped weapon and its upgrade level.</small></div>
+          <b id="armoryAmmoDetail">0 / 0</b>
+        </div>
+        <div class="shop-item">
+          <div><b>Scrap Shield <span id="shieldLevel">L0</span></b><small>Adds armor before health takes damage.</small></div>
+          <button id="upgradeShieldBtn" type="button">24 scrap</button>
+        </div>
       </div>
+      <div class="armory-folder hidden" data-armory-folder="tactical" role="tabpanel" aria-hidden="true">
+        <div class="shop-item"><div><b>Ability loadout</b><small id="armoryAbilityDetail">Choose a survivor to view their passive and active ability.</small></div><b>READY</b></div>
+        <div class="shop-item"><div><b>Fire control</b><small>Desktop keeps manual aim. Android keeps the assisted touch profile.</small></div><b id="armoryAimDetail">AIM ASSIST</b></div>
+      </div>
+      <p id="armoryStatus" class="armory-status" role="status" aria-live="polite">Select an upgrade to view the result.</p>
       <button id="closeShopBtn" class="full-button" type="button">Back</button>
     </div>
   </section>
@@ -303,7 +326,10 @@
       <h2>Wasteland Claimed Another</h2>
       <p class="final-stats">Kills <b id="finalKills">0</b> <span></span> Scrap <b id="finalScrap">0</b> <span></span> Score <b id="finalScore">0</b></p>
       <p id="rewardSummary" class="reward-summary"></p>
-      <button id="restartBtn" class="full-button danger-button" type="button">Respawn</button>
+      <div class="game-over-actions">
+        <button id="restartBtn" class="full-button danger-button" type="button">Play Again</button>
+        <button id="endMatchBtn" class="full-button" type="button">End Match - Back To Lobby</button>
+      </div>
     </div>
   </section>
 
@@ -360,8 +386,7 @@
         <label class="switch-control"><input id="offlineToggle" type="checkbox" /><span>Offline mode</span></label>
       </div>
       <div class="device-link-card">
-        <div><b>Verified Account</b><small id="verifiedPhoneStatus">Verify a mobile number to restore this Player Tag on another device.</small></div>
-        <button id="openPhoneAccountBtn" type="button">Phone Account</button>
+        <div><b>Device Profile</b><small id="verifiedPhoneStatus">Your profile, birthday confirmation, and four-digit PIN are stored locally on this device.</small></div>
       </div>
       <div class="settings-block controls-tour-setting">
         <div><b>Controls Tour</b><small>Replay the safe move, aim, fire, menu, and ability checklist.</small></div>
@@ -378,12 +403,22 @@
   <div id="touchControls" aria-hidden="true">
     <div class="touch-move-zone"><span>Move</span><div id="moveStick" class="touch-stick"><i></i></div></div>
     <div class="touch-action-zone">
-      <div id="aimStick" class="touch-stick aim-swipe"><i></i><span>Aim</span></div>
-      <div class="touch-action-grid">
-        <button id="touchAdsBtn" type="button">ADS</button><button id="touchFireBtn" class="primary-action" type="button">Fire</button>
-        <button id="touchReloadBtn" type="button">Reload</button><button id="touchWeaponBtn" type="button">Weapon</button>
-        <button id="touchInteractBtn" type="button">Interact</button><button id="touchAbilityBtn" type="button">Ability</button>
-        <button id="touchPauseBtn" type="button">Pause</button>
+      <div id="touchAssistStatus" class="touch-assist-status" role="status">AIM ON TARGET · AUTO FIRE</div>
+      <div class="touch-aim-cluster">
+        <div id="aimStick" class="touch-stick aim-swipe"><i></i><span>Look</span></div>
+        <button id="touchLockBtn" type="button" aria-label="Lock onto the next target">Lock</button>
+      </div>
+      <div id="touchPrimaryActions" class="touch-primary-actions" aria-label="Primary combat controls">
+        <button id="touchFireBtn" class="primary-action" type="button">Fire</button>
+        <button id="touchAbilityBtn" type="button">Ability</button>
+        <button id="touchUtilityBtn" type="button" aria-expanded="false" aria-controls="touchUtilityTray">More</button>
+      </div>
+      <div id="touchUtilityTray" class="touch-utility-tray hidden" aria-hidden="true" aria-label="Utility controls">
+        <button id="touchReloadBtn" type="button">Reload</button>
+        <button id="touchWeaponBtn" type="button">Swap</button>
+        <button id="touchInteractBtn" type="button">Use</button>
+        <button id="touchAdsBtn" type="button">ADS</button>
+        <button id="touchPauseBtn" type="button">Menu</button>
       </div>
     </div>
   </div>

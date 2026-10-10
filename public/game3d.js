@@ -1,8 +1,11 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
+import { shouldProcessRenderFrame } from "./graphics-lod-rules.mjs";
 import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
 import { applyCanvasPointerHandoff, bindTransientPointerInterrupts } from "./input-recovery-adapter.mjs";
+import { advanceControllerLook, cameraDirectionFromView, chooseGamepad, sampleGamepad } from "./controller-rules.mjs";
+import { advanceVirtualMouseLook, centerVirtualMouseLook, mouseLookRates, virtualMouseLookFromPoint } from "./mouse-look-rules.mjs";
 import { createNightfallBackground, setNightfallPresentation, setNightfallScene, setNightfallTier } from "./nightfall-background.mjs";
 import { createMenuMediaLifecycle } from "./menu-media-lifecycle.mjs";
 import { resolveMenuMedia, resolveMenuPresentation } from "./menu-presentation.mjs";
@@ -29,19 +32,42 @@ import {
   shouldBlockControlsTourSimulation,
 } from "./controls-tour.mjs";
 import { activateAbility, createClassProgress, getClassDefinition, getClassStats, normalizeClassProgress } from "./class-rules.mjs";
-import { composeWave, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
+import { resolveShieldUpgrade } from "./armory-rules.mjs";
+import { composeWave, enemyCombatProfile, predictAimPoint, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
 import { getWeaponProfile } from "./combat-rules.mjs";
 import { kingdomUnlocked as hasKingdom, levelFromXp, unlockedMaps } from "./progression-rules.mjs";
+import {
+  buildStorySnapshot,
+  canSaveAndExitStory,
+  deriveStoryCampaignState,
+  mergeStorySnapshot,
+  validateStorySnapshot,
+} from "./story-session-rules.mjs";
 import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
+import { createWeaponModel, createWeaponPoseController } from "./weapon-models.mjs";
+import { CHARACTER_ARCHETYPE_IDS, createCharacterModel, createPoseController } from "./character-models.mjs";
+import { createEnemyModel } from "./enemy-models.mjs";
+import { createEnvironmentModel, sampleArenaPlacements } from "./environment-models.mjs";
+import { normalizeTouchStick, resolveAndroidSingleStick, shouldAutoFireFromTouch } from "./touch-control-rules.mjs";
+import { decideAndroidTouchAutoFire } from "./mobile-auto-fire-rules.mjs";
+import { gameOverActionModel, nextGameOverActionIndex } from "./game-over-rules.mjs";
+import {
+  WEAPON_PRESENTATION_PROFILES,
+  advanceWeaponPresentation,
+  beginWeaponReload,
+  createWeaponPresentationState,
+  triggerWeaponShot,
+} from "./weapon-presentation.mjs";
 import {
   LOBBY_CONTROL_ORDER,
   createMenuNavigator,
   describeLobbyControl,
   nextLobbySelectIndex,
   resolveLobbyControllerAction,
+  resolveMenuStickNavigation,
   resolveMenuKeyAction,
   visibleLobbyControlDescriptors,
 } from "./menu-navigation.mjs";
@@ -71,7 +97,11 @@ import {
 } from "./lobby-profile-view.mjs";
 
 const $ = id => document.getElementById(id);
+// The static preview uses 8100 while the local account and room service uses 8080.
+const serviceOrigin = location.hostname === "localhost" && location.port === "8100" ? "http://localhost:8080" : "";
+const serviceUrl = path => `${serviceOrigin}${path}`;
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
+const storySnapshotKey = (profile = activeProfile) => task4StorageKey(`story-session-${profile?.profileId || "offline-guest"}`);
 const canvas = $("game");
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
@@ -85,6 +115,33 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.16;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(52, 1, .1, 260);
+const heldWeapon = new THREE.Group();
+const heldWeaponFlash = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffdf72, transparent: true, opacity: 0 }));
+const heldWeaponSmoke = [];
+const heldWeaponShells = [];
+let heldWeaponRecoil = 0;
+let heldWeaponBob = 0;
+let heldWeaponModel = null;
+let heldWeaponPoseController = null;
+let heldWeaponPresentation = createWeaponPresentationState("scout");
+let reloadStartedAt = 0;
+let reloadDurationMs = 0;
+const heldWeaponModelIds = { scout: "compact-smg", cannon: "riot-shotgun", inferno: "coil-carbine" };
+
+function createHeldWeapon(gunName = "scout") {
+  while (heldWeapon.children.length) heldWeapon.remove(heldWeapon.children[0]);
+  const presentation = WEAPON_PRESENTATION_PROFILES[gunName] || WEAPON_PRESENTATION_PROFILES.scout;
+  heldWeaponModel = createWeaponModel(THREE, presentation.modelId || heldWeaponModelIds[gunName] || "compact-smg");
+  heldWeaponPoseController = createWeaponPoseController(heldWeaponModel);
+  heldWeaponPresentation = createWeaponPresentationState(gunName);
+  heldWeaponFlash.position.set(.28, -.2, -1.58);
+  heldWeaponFlash.scale.set(.8, .8, 1.7);
+  heldWeapon.add(heldWeaponModel.root, heldWeaponFlash);
+  heldWeapon.position.set(.02, -.18, -.72);
+  heldWeapon.visible = false;
+}
+createHeldWeapon("scout");
+camera.add(heldWeapon);
 const clock = new THREE.Clock();
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -103,7 +160,6 @@ const profileStep = $("profileStep");
 const returnStep = $("returnStep");
 const linkProfileStep = $("linkProfileStep");
 const phoneCodeStep = $("phoneCodeStep");
-const profilePhone = $("profilePhone");
 const profileAvatar = $("profileAvatar");
 const profileName = $("profileName");
 const profileBirthDate = $("profileBirthDate");
@@ -119,7 +175,10 @@ const profileSelector = $("profileSelector");
 const lobbyPlayer = $("lobbyPlayer");
 const storyMapSelect = $("storyMapSelect");
 const homeBackdrop = $("homeBackdrop");
+const bundledMusic = $("bundledMusic");
 const nightfallBackground = $("nightfallBackground");
+const isAndroidApp = /WastelandSurvivorAndroid\//.test(navigator.userAgent);
+document.body.classList.toggle("android-app", isAndroidApp);
 const menuMediaLifecycle = createMenuMediaLifecycle();
 const MAPS = {
   wasteland: { label: "Wasteland", texture: "assets/wasteland-ground-v1.png", fog: 0x554331, hazard: 0x83ff47 },
@@ -127,6 +186,7 @@ const MAPS = {
   ice: { label: "Icy Mountain", texture: "assets/icy-mountain-ground-v1.png", fog: 0xc3d9e7, hazard: 0x4dbbff },
   inferno: { label: "Fire Inferno", texture: "assets/fire-inferno-ground-v1.png", fog: 0x351510, hazard: 0xff5a24 }
 };
+const ARENA_PRESET_BY_MAP = Object.freeze({ wasteland: "wasteland", toxic: "toxic-pond", ice: "icy-mountain", inferno: "fiery-inferno" });
 
 function updateAvatarCards(value = profileAvatar.value) {
   document.querySelectorAll(".avatar-choice").forEach(card => {
@@ -156,9 +216,16 @@ let ground, player, ally;
 let chests = [];
 let chestSpawnRadius = 70;
 let allies = [], enemies = [], bullets = [], hazards = [], flags = [], effects = [];
+let mapBlockers = [];
+let mapBoundaryRects = [];
+let activeMapBounds = { radius: 90, width: 180, depth: 180 };
+const observedPlayerVelocity = new THREE.Vector3();
+const previousPlayerPosition = new THREE.Vector3();
 let cameraShake = 0;
 let score = 0, kills = 0, scrap = 0, wave = 1, blue = 0, red = 0, shieldLevel = 0;
 let playerLevel = 1, storyStage = 1, missionIndex = 0, kingdomUnlocked = false;
+let storyCheckpoint = null;
+let pendingStoryResume = null;
 let riskLevel = localStorage.getItem("wastland-survivor-risk") || "standard";
 const storyMissions = ["Survive the cycle", "Collect 60 scrap", "Defeat 10 raiders", "Reach stage 3", "Defend the frontier"];
 const timelineAdvantages = ["Field Scavenger", "Reinforced Plating", "Rapid Reload", "Kingdom Vanguard"];
@@ -180,12 +247,32 @@ let classProgress = createClassProgress();
 let activeAbility = null;
 let totalXp = 0;
 const avatarClass = type => ({ medic: "tech", warden: "heavy" })[type] || type;
+const survivorArchetype = (value, fallbackIndex = 0) => CHARACTER_ARCHETYPE_IDS.includes(value)
+  ? value
+  : CHARACTER_ARCHETYPE_IDS[((fallbackIndex % CHARACTER_ARCHETYPE_IDS.length) + CHARACTER_ARCHETYPE_IDS.length) % CHARACTER_ARCHETYPE_IDS.length];
+function slotSurvivorArchetype(slot, fallbackIndex = 0) {
+  return survivorArchetype(slot?.archetypeId || slot?.avatarType || slot?.classId, fallbackIndex);
+}
+function enemySurvivorArchetype(type, index = 0) {
+  return ({
+    rusher: "scout",
+    shooter: "ranger",
+    sniper: "ranger",
+    shield: "warden",
+    heavy: "heavy",
+    drone: "tech",
+    mutant: "medic",
+    boss: "warden",
+  })[type] || survivorArchetype(null, index + 2);
+}
 let replayCaptureActive = false;
 let firing = false;
 let adsActive = false;
 let aim = new THREE.Vector3(0, 0, 1);
 let lastButtons = [];
 let controllerConnected = false;
+let activeGamepadIndex = null;
+let viewPitch = 0;
 let controllerOnly = localStorage.getItem("wastland-survivor-controller-only") === "true";
 let audioEnabled = localStorage.getItem("wastland-survivor-audio") !== "off";
 let audioVolume = Number(localStorage.getItem("wastland-survivor-volume") || 55);
@@ -213,10 +300,14 @@ let queuedControlsTour = null;
 let guestControlsIdentityActive = false;
 const offeredMiniTourFamilies = new Set();
 let loadoutControllerIndex = 1;
+let lobbyStickDirection = null;
+let loadoutStickDirection = null;
+let shopControllerIndex = 0;
+let shopStickDirection = null;
+let gameOverControllerIndex = 0;
+let gameOverStickDirection = null;
 const localPinAttempts = new Map();
 let audioContext = null;
-let musicTimer = null;
-let musicStep = 0;
 let localTracks = [];
 let localTrackIndex = 0;
 const localMusic = new Audio();
@@ -233,7 +324,7 @@ let chestAccessGranted = false;
 let lobbyRetryTimer = null;
 let voiceMuted = false;
 const voicePeers = new Map();
-const touch = { mx: 0, mz: 0, ax: 0, az: 0, fire: false };
+const touch = { mx: 0, mz: 0, ax: 0, az: 0, fire: false, aiming: false };
 const touchStickReleases = [];
 const keys = {};
 const coarsePointer = matchMedia("(pointer: coarse)");
@@ -242,7 +333,9 @@ let mouseInputActive = false;
 let inputMode = "mouse";
 let viewYaw = 0;
 let lockedTarget = null;
+let virtualMouseLook = centerVirtualMouseLook();
 let graphicsTierOverride = localStorage.getItem(task4StorageKey("graphics-tier")) || "auto";
+let termsAcceptedUntil = 0;
 let pointerResumeRequired = false;
 let rendererContextLost = false;
 let canvasPointerLocked = false;
@@ -263,12 +356,14 @@ function setInputMode(nextMode) {
   const previousFamily = normalizeControlsFamily(inputMode);
   inputMode = nextMode;
   mouseInputActive = nextMode === "mouse";
+  if (nextMode !== "mouse") virtualMouseLook = centerVirtualMouseLook();
   if (nextMode !== "mouse" && pointerResumeRequired) {
     pointerResumeRequired = false;
     updateInputRecoveryNotice();
   }
   if (nextMode !== "mouse" && document.pointerLockElement === canvas) document.exitPointerLock?.();
   document.body.dataset.inputMode = nextMode;
+  $("touchControls")?.setAttribute("aria-hidden", String(nextMode !== "touch"));
   $("landscapeHint").classList.toggle("hidden", nextMode !== "touch" || matchMedia("(orientation: landscape)").matches);
   const nextFamily = normalizeControlsFamily(nextMode);
   if (previousFamily !== nextFamily) offerControlsMiniTour(nextFamily);
@@ -361,8 +456,13 @@ function changeLobbySelect(select, step) {
 
 function handleLobbyController() {
   const controller = pollController();
+  if (controller.ability) { $("lobbyBackBtn").click(); return; }
+  const stick = resolveMenuStickNavigation({ x: controller.mx, y: controller.mz }, lobbyStickDirection);
+  lobbyStickDirection = stick.heldDirection;
+  const navigationController = { ...controller };
+  if (stick.direction) navigationController[`dpad${stick.direction[0].toUpperCase()}${stick.direction.slice(1)}`] = true;
   const active = $(lobbyNavigator?.current().id);
-  const action = resolveLobbyControllerAction(controller, describeLobbyControl(active));
+  const action = resolveLobbyControllerAction(navigationController, describeLobbyControl(active));
   if (action?.type === "move") moveLobbyFocus(action.direction, "controller");
   if (action?.type === "select") changeLobbySelect(active, action.step);
   if (action?.type === "activate") activateLobbyCommand();
@@ -444,35 +544,65 @@ function material(color, emissive = 0) {
   return new THREE.MeshStandardMaterial({ color, roughness: .68, metalness: .16, emissive: color, emissiveIntensity: emissive });
 }
 
-function unit(color, x, z, avatarType = "scout") {
+function unit(color, x, z, avatarType = "scout", enemyType = null) {
   const group = new THREE.Group();
-  const bodyGeometry = avatarType === "heavy" ? new THREE.CapsuleGeometry(.72, 1.05, 6, 12) : new THREE.CapsuleGeometry(.55, 1.1, 5, 10);
-  const body = new THREE.Mesh(bodyGeometry, material(color, .08));
-  body.castShadow = true;
-  body.position.y = 1;
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(.75, .18, .18), material(0xcafcff, .9));
-  visor.position.set(0, 1.28, .52);
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(.22, .18, 1.05), material(0x252b31));
-  gun.position.set(.38, 1.05, .58);
-  group.add(body, visor, gun);
-  if (avatarType === "ranger") {
-    const hood = new THREE.Mesh(new THREE.ConeGeometry(.62, .55, 6), material(0x1c3948));
-    hood.position.y = 1.78;
-    group.add(hood);
-  } else if (avatarType === "heavy") {
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(.7, .8, .28), material(0x515b68));
-    pack.position.set(0, 1.05, -.48);
-    group.add(pack);
-  } else if (avatarType === "tech") {
-    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, .65, 8), material(0xffdf52, .7));
-    antenna.position.set(0, 1.82, 0);
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(.12, 8, 8), material(0xff5d75, .9));
-    beacon.position.set(0, 2.15, 0);
-    group.add(antenna, beacon);
-  }
+  const archetypeId = survivorArchetype(avatarType);
+  const model = enemyType ? createEnemyModel(THREE, enemyType) : createCharacterModel(THREE, archetypeId);
+  model.root.rotation.y = Math.PI;
+  model.root.scale.multiplyScalar(1.12);
+  if (!enemyType) model.root.traverse(node => {
+    if (!node.material?.color || !color) return;
+    node.material.color.lerp(new THREE.Color(color), .12);
+  });
+  group.add(model.root);
   group.position.set(x, 0, z);
   world.add(group);
-  return { g: group, hp: 100, maxHp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
+  return { g: group, hp: 100, maxHp: 100, shield: 0,
+    shieldMax: 0,
+    cooldown: 0,
+    alive: true,
+    orbitAngle: Math.random() * Math.PI * 2,
+    orbitDirection: Math.random() > .5 ? 1 : -1,
+    archetypeId,
+    visualModel: model,
+    visualController: createPoseController(model.controllerModel || model),
+    visualSpeed: 0,
+    visualFire: 0,
+    visualLastPosition: new THREE.Vector3(x, 0, z),
+  };
+}
+
+function reviveUnitVisual(unit) {
+  if (!unit) return;
+  unit.visualController?.resetTerminalState?.();
+  unit.visualLastPosition = unit.g?.position?.clone?.() || unit.visualLastPosition;
+  unit.visualFire = 0;
+  unit.visualSpeed = 0;
+}
+
+function updateUnitVisual(actor, dt) {
+  if (!actor?.visualController || !actor?.g) return;
+  const position = actor.g.position;
+  const distance = position.distanceTo(actor.visualLastPosition || position);
+  actor.visualLastPosition = position.clone();
+  actor.visualSpeed = Math.min(1, distance / Math.max(dt, .001) / 6);
+  actor.visualFire = Math.max(0, (actor.visualFire || 0) - dt * 6);
+  const state = !actor.alive || actor.hp <= 0
+    ? "downed"
+    : actor.visualFire > .05
+      ? "fire"
+      : actor.visualSpeed > .72
+        ? "run"
+        : actor.visualSpeed > .08
+          ? "walk"
+          : "idle";
+  actor.visualController.update(dt, {
+    state,
+    speed: actor.visualSpeed,
+    aim: state === "fire" ? .9 : .15,
+    fire: actor.visualFire,
+    downed: state === "downed",
+  });
 }
 
 function prop(x, z, scale = 1) {
@@ -483,6 +613,98 @@ function prop(x, z, scale = 1) {
   world.add(rock);
 }
 
+function boundaryMaterial(feature) {
+  const colors = {
+    scrap: 0x5c5446,
+    concrete: 0x6a6964,
+    dust: 0x705838,
+    industrial: 0x3f5652,
+    toxic: 0x68ff42,
+    ice: 0xbfefff,
+    stone: 0x77818a,
+    basalt: 0x201c1a,
+    burned: 0x3b2a22,
+    lava: 0xff5c24,
+  };
+  const emissive = feature.kind === "river" && (feature.palette === "toxic" || feature.palette === "lava") ? .55 : feature.kind === "river" ? .18 : .04;
+  return material(colors[feature.palette] || 0x5c5446, emissive);
+}
+
+function createBoundaryFeature(feature) {
+  const group = new THREE.Group();
+  group.name = `boundary:${feature.type}`;
+  group.position.set(feature.x, 0, feature.z);
+  group.rotation.y = feature.rotation || 0;
+
+  if (feature.kind === "river") {
+    const river = new THREE.Mesh(new THREE.BoxGeometry(feature.width, feature.height, feature.depth), boundaryMaterial(feature));
+    river.position.y = Math.max(.04, feature.height * .5);
+    river.receiveShadow = true;
+    group.add(river);
+    const lipMaterial = material(feature.palette === "lava" ? 0x331711 : feature.palette === "toxic" ? 0x243a22 : 0x39464d, .08);
+    for (const side of [-1, 1]) {
+      const lip = new THREE.Mesh(new THREE.BoxGeometry(.32, .42, feature.depth), lipMaterial);
+      lip.position.set(side * feature.width * .5, .24, 0);
+      lip.castShadow = true;
+      group.add(lip);
+    }
+  } else {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(feature.width, feature.height, feature.depth), boundaryMaterial(feature));
+    body.position.y = feature.height * .5;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+    if (feature.kind === "building") {
+      const cutout = new THREE.Mesh(new THREE.BoxGeometry(feature.width * .34, feature.height * .34, feature.depth + .08), material(0x111719, .12));
+      cutout.position.set(feature.width * .18, feature.height * .55, 0);
+      group.add(cutout);
+    }
+  }
+  world.add(group);
+  return group;
+}
+
+function createArenaObstacles(arena) {
+  for (const obstacle of arena.obstacles) {
+    const model = createEnvironmentModel(THREE, obstacle.type, { seed: obstacle.id });
+    model.root.position.set(obstacle.x, 0, obstacle.z);
+    model.root.rotation.y += obstacle.variant?.yaw || 0;
+    world.add(model.root);
+  }
+  for (const feature of arena.boundaries) createBoundaryFeature(feature);
+}
+
+function pointInsideRotatedRect(position, rect, padding = .72) {
+  const angle = -(rect.rotation || 0);
+  const dx = position.x - rect.x;
+  const dz = position.z - rect.z;
+  const localX = dx * Math.cos(angle) - dz * Math.sin(angle);
+  const localZ = dx * Math.sin(angle) + dz * Math.cos(angle);
+  return Math.abs(localX) < rect.width * .5 + padding && Math.abs(localZ) < rect.depth * .5 + padding;
+}
+
+function resolvePlayerMapCollision(previousPosition) {
+  const position = player.g.position;
+  const halfWidth = activeMapBounds.width * .5 - 4;
+  const halfDepth = activeMapBounds.depth * .5 - 4;
+  position.x = THREE.MathUtils.clamp(position.x, -halfWidth, halfWidth);
+  position.z = THREE.MathUtils.clamp(position.z, -halfDepth, halfDepth);
+  if (mapBoundaryRects.some(rect => rect.blocksPlayers && pointInsideRotatedRect(position, rect))) {
+    position.copy(previousPosition);
+    return;
+  }
+  for (const blocker of mapBlockers) {
+    const dx = position.x - blocker.x;
+    const dz = position.z - blocker.z;
+    const distance = Math.hypot(dx, dz);
+    const minDistance = blocker.radius + .78;
+    if (distance > 0 && distance < minDistance) {
+      position.x = blocker.x + dx / distance * minDistance;
+      position.z = blocker.z + dz / distance * minDistance;
+    }
+  }
+}
+
 function resetMap() {
   world.clear();
   hazards = [];
@@ -490,6 +712,8 @@ function resetMap() {
   bullets = [];
   effects = [];
   flags = [];
+  mapBlockers = [];
+  mapBoundaryRects = [];
   const cfg = MAPS[mapKey];
   scene.fog = new THREE.FogExp2(cfg.fog, .025);
   scene.background = new THREE.Color(cfg.fog);
@@ -500,12 +724,17 @@ function resetMap() {
   texture.colorSpace = THREE.SRGBColorSpace;
   const mapScale = mode === "solo" ? 1 + Math.min(1.5, (storyStage - 1) * .18) : 1;
   const mapSize = 180 * mapScale;
+  const arena = sampleArenaPlacements(ARENA_PRESET_BY_MAP[mapKey], { seed: `${mapKey}:${mode}:${storyStage}` });
+  activeMapBounds = arena.preset.playableBounds || { radius: mapSize * .5, width: mapSize, depth: mapSize };
   ground = new THREE.Mesh(new THREE.PlaneGeometry(mapSize, mapSize), new THREE.MeshStandardMaterial({ map: texture, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   world.add(ground);
+  createArenaObstacles(arena);
+  mapBlockers = arena.blockers.filter(blocker => blocker.type).map(blocker => ({ x: blocker.x, z: blocker.z, radius: blocker.radius }));
+  mapBoundaryRects = arena.boundaries.map(feature => ({ ...feature }));
   const obstacleSpread = 156 * mapScale;
-  for (let index = 0; index < Math.round(72 * mapScale); index++) prop((Math.random() - .5) * obstacleSpread, (Math.random() - .5) * obstacleSpread, 1 + Math.random() * 1.8);
+  for (let index = 0; index < Math.round(28 * mapScale); index++) prop((Math.random() - .5) * obstacleSpread, (Math.random() - .5) * obstacleSpread, .7 + Math.random() * 1.25);
   for (let index = 0; index < 4 + Math.floor(storyStage / 2); index++) {
     const position = new THREE.Vector3((Math.random() - .5) * 136 * mapScale, .05, (Math.random() - .5) * 136 * mapScale);
     const hazard = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 4.8, .12, 30), material(cfg.hazard, .7));
@@ -535,9 +764,11 @@ function resetMap() {
   player.scrapMultiplier = classStats.scrapMultiplier;
   player.shieldMax = classStats.maxShield + shieldLevel * 30;
   player.shield = player.shieldMax;
+  observedPlayerVelocity.set(0, 0, 0);
+  previousPlayerPosition.copy(player.g.position);
   allies = [];
   const botCount = mode === "ctf" ? ctfPlayers / 2 - 1 : 0;
-  for (let index = 0; index < botCount; index++) allies.push(unit(0x3985ff, 2.5 + index * 2, 1.5, index % 2 ? "tech" : "ranger"));
+  for (let index = 0; index < botCount; index++) allies.push(unit(0x3985ff, 2.5 + index * 2, 1.5, survivorArchetype(null, index + 1)));
   ally = allies[0] || null;
   if (mode === "ctf") createCtfFlags();
 }
@@ -571,13 +802,13 @@ function difficultyName() {
   return "insane";
 }
 
-function spawnEnemy(index = enemies.length, requestedType = null) {
+function spawnEnemy(index = enemies.length, requestedType = null, requestedArchetype = null) {
   const angle = Math.random() * Math.PI * 2;
   const radius = 20 + Math.random() * 16;
   const type = requestedType || enemySpawnTypes.shift() || "rusher";
-  const visualClass = ["heavy", "shield", "boss", "mutant"].includes(type) ? "heavy" : type === "sniper" ? "ranger" : type === "drone" ? "tech" : "scout";
+  const visualClass = survivorArchetype(requestedArchetype, CHARACTER_ARCHETYPE_IDS.indexOf(enemySurvivorArchetype(type, index)));
   const color = ({ rusher: 0xff5b55, shooter: 0xff8b45, sniper: 0xb97aff, shield: 0x4dbbff, heavy: 0xff3d3d, drone: 0x66fcf1, mutant: 0x8cff4d, boss: 0xffcf40 })[type];
-  const enemy = unit(color, Math.cos(angle) * radius, Math.sin(angle) * radius, visualClass);
+  const enemy = unit(color, Math.cos(angle) * radius, Math.sin(angle) * radius, visualClass, type);
   const scaled = scaleEnemy(type, { wave, difficulty: difficultyName(), playerSkill: playerLevel });
   enemy.enemyType = type;
   enemy.maxHp = scaled.health;
@@ -586,8 +817,9 @@ function spawnEnemy(index = enemies.length, requestedType = null) {
   enemy.range = scaled.range;
   enemy.speed = scaled.speed;
   enemy.orbitRadius = radius;
-  enemy.cooldown = index % 2 === 0 ? 25 + index * 12.5 : 37.5 + index * 6;
   enemy.botIndex = enemies.length;
+  enemy.combat = enemyCombatProfile(type, { wave, difficulty: difficultyName(), botIndex: enemy.botIndex });
+  enemy.cooldown = enemy.combat.initialDelay;
   enemies.push(enemy);
 }
 
@@ -604,9 +836,9 @@ function spawnMatchBots(plan = activeMatchPlan) {
   const localTeam = localSlot?.team || "alpha";
   for (const slot of plan.slots.filter(item => item.playerType === "bot")) {
     if (slot.team === localTeam) {
-      allies.push(unit(0x3985ff, 2.5 + allies.length * 2, 1.5, allies.length % 2 ? "tech" : "ranger"));
+      allies.push(unit(0x3985ff, 2.5 + allies.length * 2, 1.5, slotSurvivorArchetype(slot, allies.length + 1)));
     } else {
-      spawnEnemy(enemies.length, "shooter");
+      spawnEnemy(enemies.length, "shooter", slotSurvivorArchetype(slot, enemies.length + 3));
     }
   }
   ally = allies[0] || null;
@@ -621,6 +853,11 @@ function start() {
   ui.shop.classList.add("hidden");
   Object.values(guns).forEach(gun => { gun.level = 0; });
   loadProgress(activeProfile);
+  if (mode === "solo") {
+    if (pendingStoryResume?.ok) applyStoryResume(pendingStoryResume);
+    else applyStoryCampaignProgression();
+    pendingStoryResume = null;
+  }
   activeMatchPlan = null;
   resetMap();
   ensureLobbyRoom();
@@ -641,7 +878,7 @@ function beginCountdown(startsAt = Date.now() + 15000) {
   countdownDeadline = countdownState.startsAt;
   firing = false;
   touch.mx = touch.mz = touch.ax = touch.az = 0;
-  touch.fire = false;
+  touch.fire = touch.aiming = false;
   clearKeyboardInput();
   if (countdownState.expired) {
     $("matchCountdown").classList.add("hidden");
@@ -727,6 +964,7 @@ function nextCombat() {
 }
 
 function prep() {
+  if (mode === "solo") storyCheckpoint = createStoryCheckpoint();
   saveProgress();
   phase = "prep";
   timer = 60;
@@ -788,7 +1026,13 @@ function gameOver(title) {
   $("finalScore").textContent = score;
   $("rewardSummary").textContent = `${RISK_PROFILES[reward.risk].label}: +${reward.xpEarned} XP, +${reward.scrapEarned} scrap${reward.scrapPenalty ? `, -${reward.scrapPenalty} risk penalty` : ""}. Level ${playerLevel}.`;
   ui.over.querySelector(".danger").textContent = title;
+  const actions = gameOverActionModel(mode);
+  $("restartBtn").textContent = actions.restartLabel;
+  $("endMatchBtn").textContent = actions.exitLabel;
+  gameOverControllerIndex = 0;
+  gameOverStickDirection = null;
   ui.over.classList.remove("hidden");
+  $("restartBtn").focus({ preventScroll: true });
   localStorage.setItem("wastland-survivor-best", String(Math.max(Number(localStorage.getItem("wastland-survivor-best") || 0), score)));
   playTone(100, .38, "sawtooth", .08);
 }
@@ -829,6 +1073,12 @@ function fire(actor, target, profile = null) {
   if (!direction.lengthSq()) return;
   direction.normalize();
   actor.g.rotation.y = Math.atan2(direction.x, direction.z);
+  if (actor === player) {
+    const shotPresentation = triggerWeaponShot(heldWeaponPresentation);
+    heldWeaponPresentation = shotPresentation.state;
+    if (shotPresentation.cue.type === "shot") ejectHeldWeaponShell();
+  }
+  actor.visualFire = 1;
   for (let index = 0; index < weapon.shots; index++) {
     const offset = (index - (weapon.shots - 1) / 2) * weapon.spread;
     const shotDirection = direction.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset);
@@ -840,16 +1090,30 @@ function fire(actor, target, profile = null) {
   }
   burst(actor.g.position.clone().add(new THREE.Vector3(0, 1, .6)), actor === player || allies.includes(actor) ? 0x66fcf1 : 0xff5d75, 4);
   if (actor === player) cameraShake = Math.min(.18, cameraShake + .07);
+  if (actor === player) {
+    heldWeaponRecoil = Math.min(.18, heldWeaponRecoil + .095);
+    heldWeaponFlash.material.opacity = 1;
+    heldWeaponFlash.scale.set(1.15, 1.15, 2.4);
+    const smoke = new THREE.Mesh(new THREE.SphereGeometry(.035, 6, 6), new THREE.MeshBasicMaterial({ color: 0x9ba9a2, transparent: true, opacity: .42 }));
+    smoke.position.copy(heldWeaponFlash.position);
+    heldWeapon.add(smoke);
+    heldWeaponSmoke.push({ mesh: smoke, life: .24 });
+  }
   if (actor === player) playTone(activeGun === "scout" ? 120 : 90, .04, "square", .035);
 }
 
 function reloadWeapon(manual = true) {
   if (Date.now() < reloadUntil || magazines[activeGun] >= magazineSizes[activeGun]) return;
-  reloadUntil = Date.now() + (manual ? 900 : 1100);
+  const reloadGun = activeGun;
+  const duration = manual ? 900 : 1100;
+  reloadStartedAt = Date.now();
+  reloadDurationMs = duration;
+  reloadUntil = reloadStartedAt + duration;
+  heldWeaponPresentation = beginWeaponReload(heldWeaponPresentation).state;
   setTimeout(() => {
-    magazines[activeGun] = magazineSizes[activeGun];
+    magazines[reloadGun] = magazineSizes[reloadGun];
     playTone(420, .05, "triangle", .025);
-  }, manual ? 900 : 1100);
+  }, duration);
 }
 
 function cycleWeapon(direction = 1) {
@@ -897,9 +1161,22 @@ function burst(position, color, count = 7) {
   }
 }
 
+function ejectHeldWeaponShell() {
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(.018, .024, .095, 8), material(0xc8873e, .06));
+  shell.position.copy(heldWeaponFlash.position).add(new THREE.Vector3(-.08, .02, .02));
+  shell.rotation.z = Math.PI / 2;
+  heldWeapon.add(shell);
+  heldWeaponShells.push({
+    mesh: shell,
+    life: .82,
+    velocity: new THREE.Vector3(.34, .42, .18),
+    spin: 9,
+  });
+}
+
 function hitEnemy(enemy, damage) {
   enemy.hp -= damage;
-  burst(enemy.g.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xffdf52, 5);
+  burst(enemy.g.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xffdf52, WEAPON_PRESENTATION_PROFILES[activeGun]?.impactSparkCount || 5);
   if (enemy.hp <= 0) {
     enemy.alive = false;
     if (mode === "ctf") {
@@ -921,7 +1198,7 @@ function applyDamage(target, amount) {
     amount *= activeAbility.modifiers.incomingDamageMultiplier;
   }
   let remaining = amount;
-  if (target === player && target.shield > 0) {
+  if (target.shield > 0) {
     const absorbed = Math.min(target.shield, remaining);
     target.shield -= absorbed;
     remaining -= absorbed;
@@ -929,16 +1206,15 @@ function applyDamage(target, amount) {
   target.hp -= remaining;
 }
 
-function deadzone(value) { return Math.abs(value) < .18 ? 0 : value; }
-
 function updateControllerState(connected) {
   if (connected === controllerConnected) return;
   controllerConnected = connected;
   ui.controllerOnly.disabled = !connected;
-  ui.controllerStatus.textContent = connected ? "Controller connected" : "No controller connected";
+  ui.controllerStatus.textContent = connected ? "Controller connected - move a stick to take control" : "No controller connected";
   if (!connected) {
     firing = false;
     lastButtons = [];
+    activeGamepadIndex = null;
   }
   refreshInputMode();
 }
@@ -946,29 +1222,40 @@ function updateControllerState(connected) {
 function controllerLocked() { return controllerOnly && controllerConnected; }
 
 function pollController() {
-  const pad = [...navigator.getGamepads()].find(Boolean);
+  const pad = chooseGamepad(navigator.getGamepads?.() || [], activeGamepadIndex);
   updateControllerState(Boolean(pad));
   const debug = new URLSearchParams(location.search).has("debug");
   if (!pad) {
-    if (debug) { controllerDebug.classList.remove("hidden"); $("debugPadName").textContent = "No controller detected"; }
+    lastButtons = [];
+    if (debug) {
+      controllerDebug.classList.remove("hidden");
+      $("debugPadName").textContent = "No controller detected - press an Xbox button";
+      $("debugAxes").textContent = "LX 0.00 · LY 0.00 · RX 0.00 · RY 0.00";
+      $("debugButtons").textContent = "Buttons: none";
+      $("debugAction").textContent = "Action: waiting for browser connection";
+    }
     return { mx: 0, mz: 0, ax: 0, az: 0, fire: false, ads: false, menuHeld: false, bHeld: false };
   }
-  const pressed = pad.buttons.map(button => button.pressed);
-  const justPressed = index => pressed[index] && !lastButtons[index];
-  lastButtons = pressed;
+  const sample = sampleGamepad(pad, lastButtons);
+  lastButtons = sample.buttonLatch;
+  if (sample.active) {
+    activeGamepadIndex = sample.index;
+    setInputMode("controller");
+    ui.controllerStatus.textContent = `Controller active: ${sample.id}`;
+  }
   const result = {
-    mx: deadzone(pad.axes[0] || 0), mz: deadzone(pad.axes[1] || 0), ax: deadzone(pad.axes[2] || 0), az: deadzone(pad.axes[3] || 0),
-    fire: (pad.buttons[7]?.value || 0) > .2, ads: (pad.buttons[6]?.value || 0) > .2,
-    menuHeld: Boolean(pad.buttons[9]?.pressed), bHeld: Boolean(pad.buttons[1]?.pressed),
-    interact: justPressed(0), ability: justPressed(1), reload: justPressed(2), weapon: justPressed(3), pause: justPressed(9), switchTarget: justPressed(11),
-    dpadUp: justPressed(12), dpadDown: justPressed(13), dpadLeft: justPressed(14), dpadRight: justPressed(15),
+    mx: sample.move.x, mz: sample.move.y, ax: sample.look.x, az: sample.look.y,
+    fire: sample.fire, ads: sample.ads,
+    menuHeld: sample.menuHeld, bHeld: sample.bHeld,
+    interact: sample.interact, ability: sample.ability, reload: sample.reload, weapon: sample.weapon,
+    pause: sample.pause, switchTarget: sample.switchTarget,
+    dpadUp: sample.dpadUp, dpadDown: sample.dpadDown, dpadLeft: sample.dpadLeft, dpadRight: sample.dpadRight,
   };
-  if (Math.hypot(result.mx, result.mz, result.ax, result.az) > .08 || result.fire || result.ads || pressed.some(Boolean)) setInputMode("controller");
   if (debug) {
     controllerDebug.classList.remove("hidden");
-    $("debugPadName").textContent = pad.id || "Xbox controller";
+    $("debugPadName").textContent = `${sample.id} · ${sample.mapping || "browser mapping"}`;
     $("debugAxes").textContent = `LX ${result.mx.toFixed(2)} · LY ${result.mz.toFixed(2)} · RX ${result.ax.toFixed(2)} · RY ${result.az.toFixed(2)}`;
-    $("debugButtons").textContent = `Buttons: ${pressed.map((down, index) => down ? index : null).filter(index => index !== null).join(", ") || "none"}`;
+    $("debugButtons").textContent = `Buttons: ${sample.buttonLatch.map((down, index) => down ? index : null).filter(index => index !== null).join(", ") || "none"}`;
     $("debugAction").textContent = result.fire ? "Action: FIRE" : result.ads ? "Action: ADS" : result.pause ? "Action: PAUSE" : result.reload ? "Action: RELOAD" : result.weapon ? "Action: WEAPON" : result.ability ? "Action: ABILITY" : result.interact ? "Action: INTERACT" : "Action: movement / aim";
   }
   return result;
@@ -1008,14 +1295,86 @@ function handleSettingsController() {
 function handleLoadoutController() {
   const controller = pollController();
   const controls = [$("loadoutArmoryBtn"), $("loadoutReadyBtn")];
-  if (controller.dpadLeft || controller.dpadUp) loadoutControllerIndex = 0;
-  if (controller.dpadRight || controller.dpadDown) loadoutControllerIndex = 1;
+  const stick = resolveMenuStickNavigation({ x: controller.mx, y: controller.mz }, loadoutStickDirection);
+  loadoutStickDirection = stick.heldDirection;
+  if (controller.dpadLeft || controller.dpadUp || stick.direction === "left" || stick.direction === "up") loadoutControllerIndex = 0;
+  if (controller.dpadRight || controller.dpadDown || stick.direction === "right" || stick.direction === "down") loadoutControllerIndex = 1;
   controls[loadoutControllerIndex]?.focus({ preventScroll: true });
   if (controller.interact) controls[loadoutControllerIndex]?.click();
 }
 
+function handleShopController() {
+  const controller = pollController();
+  if (controller.ability || controller.pause) { $("closeShopBtn").click(); return; }
+  const controls = [
+    "equipScoutBtn", "upgradeScoutBtn", "equipCannonBtn", "upgradeCannonBtn",
+    "equipInfernoBtn", "upgradeInfernoBtn", "upgradeShieldBtn", "closeShopBtn",
+  ].map($).filter(control => control && !control.disabled);
+  if (!controls.length) return;
+  const stick = resolveMenuStickNavigation({ x: controller.mx, y: controller.mz }, shopStickDirection);
+  shopStickDirection = stick.heldDirection;
+  const previous = controller.dpadLeft || controller.dpadUp || stick.direction === "left" || stick.direction === "up";
+  const next = controller.dpadRight || controller.dpadDown || stick.direction === "right" || stick.direction === "down";
+  if (previous) shopControllerIndex = (shopControllerIndex - 1 + controls.length) % controls.length;
+  if (next) shopControllerIndex = (shopControllerIndex + 1) % controls.length;
+  shopControllerIndex = Math.min(shopControllerIndex, controls.length - 1);
+  document.querySelectorAll("#shopModal .is-controller-selected").forEach(control => control.classList.remove("is-controller-selected"));
+  controls[shopControllerIndex].classList.add("is-controller-selected");
+  controls[shopControllerIndex].focus({ preventScroll: true });
+  if (controller.interact) controls[shopControllerIndex].click();
+}
+
 function nearest(unit, candidates) {
   return candidates.filter(candidate => candidate.alive).sort((left, right) => left.g.position.distanceToSquared(unit.g.position) - right.g.position.distanceToSquared(unit.g.position))[0];
+}
+
+function gameOverActionButtons() {
+  return [$("restartBtn"), $("endMatchBtn")].filter(control => control && !control.classList.contains("hidden"));
+}
+
+function handleGameOverController() {
+  const controller = pollController();
+  const controls = gameOverActionButtons();
+  if (!controls.length) return;
+  if (controller.ability) {
+    $("endMatchBtn").click();
+    return;
+  }
+  const stick = resolveMenuStickNavigation({ x: controller.mx, y: controller.mz }, gameOverStickDirection);
+  gameOverStickDirection = stick.heldDirection;
+  const previous = controller.dpadLeft || controller.dpadUp || stick.direction === "left" || stick.direction === "up";
+  const next = controller.dpadRight || controller.dpadDown || stick.direction === "right" || stick.direction === "down";
+  if (previous || next) gameOverControllerIndex = nextGameOverActionIndex(gameOverControllerIndex, next ? 1 : -1, controls.length);
+  controls[gameOverControllerIndex]?.focus({ preventScroll: true });
+  if (controller.interact) controls[gameOverControllerIndex]?.click();
+}
+
+function touchTargetInCrosshair() {
+  if (!player || !enemies.length) return null;
+  const view = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
+  const origin = player.g.position.clone().add(new THREE.Vector3(0, 1.55, 0));
+  const direction = new THREE.Vector3(view.x, view.y, view.z).normalize();
+  return enemies
+    .filter(enemy => enemy.alive)
+    .map(enemy => {
+      const targetPoint = enemy.g.position.clone().add(new THREE.Vector3(0, 1.05, 0));
+      const delta = targetPoint.sub(origin);
+      const distance = delta.length() || 1;
+      const angle = Math.acos(THREE.MathUtils.clamp(direction.dot(delta.normalize()), -1, 1));
+      return { enemy, angle, distance };
+    })
+    .filter(candidate => candidate.angle <= .48)
+    .sort((left, right) => left.angle - right.angle || left.distance - right.distance)[0]?.enemy || null;
+}
+
+function androidTouchTarget(preferredTarget = null, maxDistance = 36) {
+  if (!player) return null;
+  const inRange = enemy => enemy?.alive && enemy.g.position.distanceTo(player.g.position) <= maxDistance;
+  if (inRange(preferredTarget)) return preferredTarget;
+  if (inRange(lockedTarget)) return lockedTarget;
+  return enemies
+    .filter(inRange)
+    .sort((left, right) => left.g.position.distanceToSquared(player.g.position) - right.g.position.distanceToSquared(player.g.position))[0] || null;
 }
 
 function switchLockedTarget() {
@@ -1051,16 +1410,24 @@ function updateCtfBots(dt) {
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
     const rival = nearest(enemy, blueTeam);
+    if (!rival) continue;
     const flag = nearestFlag(enemy);
     const closeRival = rival && rival.g.position.distanceTo(enemy.g.position) < 13;
     const distance = moveBot(enemy, closeRival ? rival.g.position : flag.position, 4.2, dt);
+    enemy.cooldown = Math.max(0, enemy.cooldown - dt);
+    const combat = enemy.combat || enemyCombatProfile(enemy.enemyType || "shooter", { wave, difficulty: difficultyName(), botIndex: enemy.botIndex });
+    if (enemy.cooldown <= 0 && distance < combat.engagementRange) {
+      const velocity = rival === player ? observedPlayerVelocity : new THREE.Vector3();
+      const target = predictAimPoint({ target: rival.g.position, velocity, distance, accuracy: combat.accuracy });
+      fire(enemy, new THREE.Vector3(target.x, target.y, target.z), { damage: enemy.damage || 10, delay: combat.fireInterval, shots: 1, pierce: 0, spread: combat.spreadRadians });
+      enemy.cooldown = combat.fireInterval;
+    }
     if (closeRival && distance < 1.6) applyDamage(rival, 16 * dt);
   }
 }
 
 function updateSoloEnemies(dt) {
   const pressure = Math.min(2.8, 1 + difficultyRatio * (wave - 1));
-  const fireDelay = Math.max(2.5, 25 / pressure);
   const orbitSpeed = .42 * pressure;
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
@@ -1083,13 +1450,15 @@ function updateSoloEnemies(dt) {
     movement.y = 0;
     if (movement.length() > .5) enemy.g.position.addScaledVector(movement.normalize(), enemy.speed * dt);
     keepInArena(enemy);
-    const aimAt = player.g.position.clone().add(new THREE.Vector3(0, 0, 0));
+    const combat = enemy.combat || enemyCombatProfile(enemy.enemyType || "shooter", { wave, difficulty: difficultyName(), botIndex: enemy.botIndex });
+    const predicted = predictAimPoint({ target: player.g.position, velocity: observedPlayerVelocity, distance, accuracy: combat.accuracy });
+    const aimAt = new THREE.Vector3(predicted.x, predicted.y, predicted.z);
     enemy.g.rotation.y = Math.atan2(aimAt.x - enemy.g.position.x, aimAt.z - enemy.g.position.z);
     enemy.orbitAngle += orbitSpeed * dt * enemy.orbitDirection;
     enemy.cooldown = Math.max(0, enemy.cooldown - dt);
-    if (enemy.cooldown <= 0 && distance < (enemy.range || 34)) {
-      fire(enemy, player.g.position, { damage: enemy.damage || (8 + wave * 2) * pressure, delay: fireDelay, shots: enemy.enemyType === "boss" ? 3 : pressure > 2 ? 2 : 1, pierce: enemy.enemyType === "sniper" ? 1 : 0, spread: enemy.enemyType === "sniper" ? .01 : .06 });
-      enemy.cooldown = fireDelay + (enemy.botIndex % 2 ? fireDelay * .5 : 0);
+    if (enemy.cooldown <= 0 && distance < combat.engagementRange) {
+      fire(enemy, aimAt, { damage: enemy.damage || (8 + wave * 2) * pressure, delay: combat.fireInterval, shots: enemy.enemyType === "boss" ? 3 : pressure > 2 ? 2 : 1, pierce: enemy.enemyType === "sniper" ? 1 : 0, spread: combat.spreadRadians });
+      enemy.cooldown = combat.fireInterval;
     }
     if (distance < Math.max(1.5, enemy.range <= 4 ? enemy.range : 1.5)) applyDamage(player, (enemy.damage || 18 + wave * 2) * dt);
   }
@@ -1114,6 +1483,7 @@ function updateCtfRespawns(dt) {
     unit.shield = unit === player ? unit.shieldMax : 0;
     unit.alive = true;
     unit.g.visible = true;
+    reviveUnitVisual(unit);
   });
 }
 
@@ -1160,6 +1530,10 @@ function update(dt) {
     return;
   }
   if (phase === "loadout") return;
+  const measuredPlayerVelocity = player.g.position.clone().sub(previousPlayerPosition).divideScalar(Math.max(dt, .001));
+  if (measuredPlayerVelocity.lengthSq() > 900) measuredPlayerVelocity.set(0, 0, 0);
+  observedPlayerVelocity.lerp(measuredPlayerVelocity, Math.min(1, dt * 6));
+  previousPlayerPosition.copy(player.g.position);
   const sampledController = pollController();
   const inputPaused = localGameplayInputPaused();
   const controller = inputPaused ? neutralControllerInput() : sampledController;
@@ -1174,7 +1548,8 @@ function update(dt) {
   if (controller.dpadRight || controller.dpadUp) cycleWeapon(1);
   adsActive = controller.ads || adsActive && inputMode === "touch";
   timer -= dt;
-  if (phase === "prep") {
+  const prepActive = phase === "prep";
+  if (prepActive) {
     chests.forEach(chest => { chest.group.rotation.y += dt; });
     const closeEnough = canAccessChest(player.g.position, chests);
     ui.chest.classList.toggle("hidden", !closeEnough);
@@ -1187,15 +1562,14 @@ function update(dt) {
     if (timer <= 0) {
       wave++;
       nextCombat();
+      return;
     }
-    return;
-  }
-  if (timer <= 0) {
+  } else if (timer <= 0) {
     if (mode === "ctf") finishCtf();
     else prep();
     return;
   }
-  if (spawnQueue > 0) {
+  if (!prepActive && spawnQueue > 0) {
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       const spawned = enemies.length;
@@ -1205,11 +1579,28 @@ function update(dt) {
       spawnTimer = schedule[1] || Math.max(.75, 4 - wave * .1);
     }
   }
-  let mx = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
-  let mz = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+  // Controller-only mode disables keyboard and mouse events, not controller movement.
+  let mx = inputPaused || menuOpen ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+  let mz = inputPaused || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
   if (!inputPaused && (touch.mx || touch.mz)) { mx = touch.mx; mz = touch.mz; }
   if (!inputPaused && (controller.mx || controller.mz)) { mx = controller.mx; mz = controller.mz; }
+  const androidSingleStick = isAndroidApp && inputMode === "touch" && !inputPaused && !menuOpen
+    ? resolveAndroidSingleStick({
+      x: touch.mx,
+      y: touch.mz,
+      maxTurnRate: 2.4 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity),
+    })
+    : null;
+  if (androidSingleStick) {
+    viewYaw += androidSingleStick.turnRate * dt;
+    viewPitch = androidSingleStick.pitch;
+    mz = -androidSingleStick.forward;
+    mx = 0;
+    const direction = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
+    aim.copy(player.g.position).add(new THREE.Vector3(direction.x, direction.y, direction.z).multiplyScalar(35));
+  }
   const length = Math.hypot(mx, mz) || 1;
+  const beforeMove = player.g.position.clone();
   if (frontView) {
     const forward = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
     const right = new THREE.Vector3(Math.cos(viewYaw), 0, -Math.sin(viewYaw));
@@ -1221,6 +1612,7 @@ function update(dt) {
     player.g.position.x += mx / length * 10 * classSpeed * dt;
     player.g.position.z += mz / length * 10 * classSpeed * dt;
   }
+  resolvePlayerMapCollision(beforeMove);
   const manualTouchAim = !inputPaused && Math.hypot(touch.ax, touch.az) > .08;
   const manualControllerAim = !inputPaused && Math.hypot(controller.ax, controller.az) > .08;
   if (manualTouchAim) {
@@ -1229,16 +1621,62 @@ function update(dt) {
     viewYaw = Math.atan2(touch.ax, touch.az);
   }
   if (manualControllerAim) {
-    aim.copy(player.g.position).add(new THREE.Vector3(controller.ax, 0, controller.az).multiplyScalar(20));
-    viewYaw = Math.atan2(controller.ax, controller.az);
+    const nextView = advanceControllerLook(
+      { yaw: viewYaw, pitch: viewPitch },
+      { x: controller.ax, y: controller.az },
+      dt,
+      { sensitivity: 2.5 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity), maxPitch: .75 },
+    );
+    viewYaw = nextView.yaw;
+    viewPitch = nextView.pitch;
+    const direction = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
+    aim.copy(player.g.position).add(new THREE.Vector3(direction.x, direction.y, direction.z).multiplyScalar(35));
   }
-  const wantsFire = !inputPaused && ((!controllerLocked() && firing) || touch.fire || controller.fire);
-  if (shouldAutoLock({ coarsePointer: coarsePointer.matches, difficultyRatio, preset: aimSettings.preset, manualAim: manualTouchAim || manualControllerAim, mouseInputActive, controllerInputActive: inputMode === "controller" && manualControllerAim }) && wantsFire) {
-    const target = lockedTarget?.alive ? lockedTarget : nearest(player, enemies);
+  const virtualMouseActive = frontView && inputMode === "mouse" && !menuOpen
+    && ["combat", "prep"].includes(phase) && !rendererContextLost && document.visibilityState === "visible";
+  if (virtualMouseActive) {
+    const rates = mouseLookRates(virtualMouseLook, {
+      maxYawRate: 3.2 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity),
+      maxPitchRate: 2.4 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity),
+    });
+    viewYaw += rates.yawRate * dt;
+    viewPitch = THREE.MathUtils.clamp(viewPitch + rates.pitchRate * dt, -.75, .75);
+    const direction = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
+    aim.copy(player.g.position).add(new THREE.Vector3(direction.x, direction.y, direction.z).multiplyScalar(35));
+  }
+  const touchCrosshairTarget = inputMode === "touch" && touch.aiming ? touchTargetInCrosshair() : null;
+  const androidAutoTarget = isAndroidApp && inputMode === "touch"
+    ? androidTouchTarget(touchCrosshairTarget)
+    : null;
+  const androidAutoFire = decideAndroidTouchAutoFire({
+    isAndroidApp,
+    inputMode,
+    phase,
+    target: androidAutoTarget,
+    menuOpen,
+    inputPaused,
+    manualFire: touch.fire,
+  });
+  const touchAutoFire = inputMode === "touch" && shouldAutoFireFromTouch({
+    aiming: touch.aiming,
+    targetInCrosshair: Boolean(touchCrosshairTarget),
+    manualFire: touch.fire,
+  });
+  const wantsFire = !inputPaused && ((!controllerLocked() && firing) || touchAutoFire || androidAutoFire.firingRequested || controller.fire);
+  if ((isAndroidApp || shouldAutoLock({ coarsePointer: coarsePointer.matches, difficultyRatio, preset: aimSettings.preset, manualAim: manualTouchAim || manualControllerAim, mouseInputActive, controllerInputActive: inputMode === "controller" && manualControllerAim })) && wantsFire) {
+    const target = androidAutoFire.targetMayBeAcquired
+      ? androidAutoTarget
+      : touchAutoFire && !touch.fire
+        ? touchCrosshairTarget
+        : lockedTarget?.alive ? lockedTarget : nearest(player, enemies);
     if (target) {
       lockedTarget = target;
       aim.lerp(target.g.position, Math.min(1, dt * 8));
       viewYaw = Math.atan2(aim.x - player.g.position.x, aim.z - player.g.position.z);
+      const horizontalDistance = Math.max(.001, Math.hypot(aim.x - player.g.position.x, aim.z - player.g.position.z));
+      const targetPitch = THREE.MathUtils.clamp(Math.atan2((aim.y + 1.05) - (player.g.position.y + 1.55), horizontalDistance), -.75, .75);
+      const pitchStep = Math.max(.1, 2.1 * dt);
+      viewPitch += THREE.MathUtils.clamp(targetPitch - viewPitch, -pitchStep, pitchStep);
     }
   } else if (aimSettings.preset === "assist" && (manualTouchAim || manualControllerAim || mouseInputActive)) {
     const target = nearest(player, enemies);
@@ -1248,69 +1686,123 @@ function update(dt) {
       if (Math.abs(delta) < .32) viewYaw += delta * aimSettings.assistStrength * dt * 2.2;
     }
   } else if (frontView && mouseInputActive && !manualControllerAim) {
-    aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
+    const direction = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
+    aim.copy(player.g.position).add(new THREE.Vector3(direction.x, direction.y, direction.z).multiplyScalar(35));
   }
   const lookDirection = aim.clone().sub(player.g.position);
   lookDirection.y = 0;
   if (lookDirection.lengthSq() > .01) player.g.rotation.y = Math.atan2(lookDirection.x, lookDirection.z);
   keepInArena(player);
-  for (const hazard of hazards) if (player.g.position.distanceTo(hazard) < 4) applyDamage(player, 10 * dt);
-  if (!menuOpen && wantsFire) fire(player, aim);
+  if (!prepActive) {
+    for (const hazard of hazards) if (player.g.position.distanceTo(hazard) < 4) applyDamage(player, 10 * dt);
+    if (!menuOpen && wantsFire) fire(player, aim);
     if (mode === "ctf") updateCtfBots(dt);
-  else {
-    updateSoloEnemies(dt);
-    for (const enemy of enemies) if (enemy.alive) for (const bot of allies) if (bot.alive) fire(bot, enemy.g.position, { damage: 30, delay: .38, shots: 1, pierce: 0, spread: 0 });
-  }
-  for (const bullet of bullets) {
-    bullet.m.position.addScaledVector(bullet.v, dt);
-    bullet.life -= dt;
-    if (bullet.blue) for (const enemy of enemies) {
-      if (enemy.alive && !bullet.hits.has(enemy) && bullet.m.position.distanceTo(enemy.g.position) < 1.1) {
-        bullet.hits.add(enemy);
-        hitEnemy(enemy, bullet.damage);
-        if (bullet.pierce-- <= 0) bullet.life = 0;
+    else {
+      updateSoloEnemies(dt);
+      for (const enemy of enemies) if (enemy.alive) for (const bot of allies) if (bot.alive) fire(bot, enemy.g.position, { damage: 30, delay: .38, shots: 1, pierce: 0, spread: 0 });
+    }
+    for (const bullet of bullets) {
+      bullet.m.position.addScaledVector(bullet.v, dt);
+      bullet.life -= dt;
+      if (bullet.blue) for (const enemy of enemies) {
+        if (enemy.alive && !bullet.hits.has(enemy) && bullet.m.position.distanceTo(enemy.g.position) < 1.1) {
+          bullet.hits.add(enemy);
+          hitEnemy(enemy, bullet.damage);
+          if (bullet.pierce-- <= 0) bullet.life = 0;
+        }
+      }
+      else for (const target of [player, ...allies]) {
+        if (target.alive && bullet.m.position.distanceTo(target.g.position) < 1.1) {
+          applyDamage(target, bullet.damage);
+          bullet.life = 0;
+          break;
+        }
       }
     }
-    else if (bullet.m.position.distanceTo(player.g.position) < 1.1) {
-      applyDamage(player, bullet.damage);
-      bullet.life = 0;
+    effects.forEach(effect => {
+      effect.life -= dt;
+      effect.mesh.position.addScaledVector(effect.velocity, dt);
+      effect.velocity.y -= 7 * dt;
+      effect.mesh.scale.multiplyScalar(.94);
+    });
+    effects = effects.filter(effect => {
+      if (effect.life <= 0) { world.remove(effect.mesh); return false; }
+      return true;
+    });
+    bullets = bullets.filter(bullet => {
+      if (bullet.life <= 0) {
+        world.remove(bullet.m);
+        return false;
+      }
+      return true;
+    });
+    if (mode === "ctf") {
+      updateFlags(dt);
+      [player, ...allies].forEach(scheduleRespawn);
+      updateCtfRespawns(dt);
+    } else {
+      enemies = enemies.filter(enemy => enemy.alive);
+      if (!player.alive || player.hp <= 0) {
+        player.alive = false;
+        finishRound("red");
+      } else if (!enemies.length && spawnQueue === 0) finishRound("blue");
     }
   }
-  effects.forEach(effect => {
-    effect.life -= dt;
-    effect.mesh.position.addScaledVector(effect.velocity, dt);
-    effect.velocity.y -= 7 * dt;
-    effect.mesh.scale.multiplyScalar(.94);
-  });
-  effects = effects.filter(effect => {
-    if (effect.life <= 0) { world.remove(effect.mesh); return false; }
-    return true;
-  });
-  bullets = bullets.filter(bullet => {
-    if (bullet.life <= 0) {
-      world.remove(bullet.m);
-      return false;
-    }
-    return true;
-  });
-  if (mode === "ctf") {
-    updateFlags(dt);
-    [player, ...allies].forEach(scheduleRespawn);
-    updateCtfRespawns(dt);
-  } else {
-    enemies = enemies.filter(enemy => enemy.alive);
-    if (!player.alive || player.hp <= 0) {
-      player.alive = false;
-      finishRound("red");
-    } else if (!enemies.length && spawnQueue === 0) finishRound("blue");
-  }
+  [player, ...allies, ...enemies].forEach(actor => updateUnitVisual(actor, dt));
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
+  const view = cameraDirectionFromView({ yaw: viewYaw, pitch: viewPitch });
+  const viewDirection = new THREE.Vector3(view.x, view.y, view.z);
   const cameraTarget = frontView ? player.g.position.clone().add(new THREE.Vector3(0, 2.2, 0)).addScaledVector(facing, .72) : new THREE.Vector3(player.g.position.x, 26, player.g.position.z + 22);
   camera.position.lerp(cameraTarget, Math.min(1, dt * (frontView ? 12 : 4)));
   cameraShake = Math.max(0, cameraShake - dt * 1.8);
   if (cameraShake) camera.position.add(new THREE.Vector3((Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake));
-  if (frontView) camera.lookAt(camera.position.clone().addScaledVector(facing, 30));
+  if (frontView) camera.lookAt(camera.position.clone().addScaledVector(viewDirection, 30));
   else camera.lookAt(player.g.position.x, 0, player.g.position.z);
+  heldWeapon.visible = Boolean(frontView && ["countdown", "combat", "prep"].includes(phase) && !menuOpen && player?.alive);
+  heldWeaponRecoil = Math.max(0, heldWeaponRecoil - dt * 1.9);
+  heldWeaponBob += dt * (1.5 + Math.min(3, observedPlayerVelocity.length() * .16));
+  const moving = Math.min(1, observedPlayerVelocity.length() / 8);
+  heldWeapon.position.x = Math.sin(heldWeaponBob * 1.7) * .012 * moving;
+  heldWeapon.position.y = Math.cos(heldWeaponBob * 2.1) * .009 * moving - heldWeaponRecoil * .18;
+  heldWeapon.rotation.x = heldWeaponRecoil * 1.4;
+  heldWeaponPresentation = advanceWeaponPresentation(heldWeaponPresentation, dt);
+  const reloadProgress = heldWeaponPresentation.reloading
+    ? heldWeaponPresentation.reloadProgress
+    : reloadDurationMs > 0 && Date.now() < reloadUntil
+      ? Math.min(1, (Date.now() - reloadStartedAt) / reloadDurationMs)
+      : heldWeaponPresentation.reloadProgress;
+  heldWeaponPoseController?.update(dt, {
+    state: heldWeaponPresentation.reloading ? "reload" : heldWeaponPresentation.recoil > .02 ? "fire" : "idle",
+    fire: Math.min(1, heldWeaponPresentation.recoil / .42),
+    reload: reloadProgress,
+    heat: 0,
+    aim: frontView ? 0 : 1,
+  });
+  heldWeaponFlash.material.opacity = Math.max(0, heldWeaponFlash.material.opacity - dt * 12);
+  heldWeaponFlash.scale.lerp(new THREE.Vector3(.8, .8, 1.7), Math.min(1, dt * 18));
+  for (let index = heldWeaponSmoke.length - 1; index >= 0; index -= 1) {
+    const puff = heldWeaponSmoke[index];
+    puff.life -= dt;
+    puff.mesh.position.z -= dt * .35;
+    puff.mesh.scale.addScalar(dt * 1.4);
+    puff.mesh.material.opacity = Math.max(0, puff.life * 1.8);
+    if (puff.life <= 0) { heldWeapon.remove(puff.mesh); puff.mesh.material.dispose(); heldWeaponSmoke.splice(index, 1); }
+  }
+  for (let index = heldWeaponShells.length - 1; index >= 0; index -= 1) {
+    const shell = heldWeaponShells[index];
+    shell.life -= dt;
+    shell.velocity.y -= dt * .9;
+    shell.mesh.position.addScaledVector(shell.velocity, dt);
+    shell.mesh.rotation.x += shell.spin * dt;
+    shell.mesh.rotation.y += shell.spin * .7 * dt;
+    shell.mesh.material.opacity = Math.max(0, Math.min(1, shell.life * 2));
+    if (shell.life <= 0) {
+      heldWeapon.remove(shell.mesh);
+      shell.mesh.material.dispose();
+      shell.mesh.geometry.dispose();
+      heldWeaponShells.splice(index, 1);
+    }
+  }
 }
 
 function formatTime(seconds) {
@@ -1374,12 +1866,26 @@ function renderHud() {
   ui.red.textContent = hud.score.red;
 }
 
-function render() {
+let lastProcessedRenderFrameAt = 0;
+
+function render(now = performance.now()) {
+  if (!shouldProcessRenderFrame({
+    phase,
+    now,
+    lastFrameAt: lastProcessedRenderFrameAt,
+    documentHidden: document.visibilityState === "hidden",
+  })) {
+    requestAnimationFrame(render);
+    return;
+  }
+  lastProcessedRenderFrameAt = now;
   const dt = Math.min(clock.getDelta(), .04);
   syncPointerCaptureEligibility();
   startQueuedControlsTourWhenSafe();
   if (controlsTourState?.status === "active") handleControlsTourController();
+  else if (!ui.shop.classList.contains("hidden") && controllerConnected) handleShopController();
   else if (!ui.settings.classList.contains("hidden") && controllerConnected) handleSettingsController();
+  else if (phase === "over" && !ui.over.classList.contains("hidden") && controllerConnected) handleGameOverController();
   else if (phase === "loadout" && !$("loadoutRoomModal").classList.contains("hidden") && controllerConnected) handleLoadoutController();
   else if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
   update(dt);
@@ -1392,9 +1898,11 @@ function render() {
 }
 
 function wakeAudio() {
-  if ((!audioEnabled && !musicEnabled) || (!window.AudioContext && !window.webkitAudioContext)) return;
-  if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
+  if (!audioEnabled && !musicEnabled) return;
+  if ((window.AudioContext || window.webkitAudioContext) && !audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioContext?.state === "suspended") audioContext.resume().catch(() => {});
   if (musicEnabled && musicSource === "builtin") startBuiltInMusic();
 }
 
@@ -1419,38 +1927,24 @@ function effectiveMusicVolume() {
   return musicVolume / 100 * (shouldDuckMusic({ voiceActive: Boolean(localStream), voiceMuted }) ? .28 : 1);
 }
 
-function playMusicTone(frequency, duration = .32) {
-  if (!musicEnabled || musicSource !== "builtin" || !audioContext || audioContext.state !== "running") return;
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  oscillator.type = musicStep % 8 === 0 ? "sawtooth" : "triangle";
-  oscillator.frequency.value = frequency;
-  const level = Math.max(.0001, .026 * effectiveMusicVolume());
-  gain.gain.setValueAtTime(.0001, audioContext.currentTime);
-  gain.gain.exponentialRampToValueAtTime(level, audioContext.currentTime + .025);
-  gain.gain.exponentialRampToValueAtTime(.0001, audioContext.currentTime + duration);
-  oscillator.connect(gain).connect(audioContext.destination);
-  oscillator.start();
-  oscillator.stop(audioContext.currentTime + duration + .03);
-}
-
 function startBuiltInMusic() {
-  if (musicTimer || !musicEnabled || musicSource !== "builtin") return;
-  const notes = [55, 82.41, 65.41, 98, 55, 110, 73.42, 82.41];
-  musicTimer = setInterval(() => {
-    playMusicTone(notes[musicStep % notes.length]);
-    musicStep++;
-  }, 430);
-  ui.musicStatus.textContent = "Built-in wasteland soundtrack";
+  if (!musicEnabled || musicSource !== "builtin" || !bundledMusic || !bundledMusic.paused) return;
+  bundledMusic.volume = Math.min(1, effectiveMusicVolume());
+  bundledMusic.play().then(() => {
+    ui.musicStatus.textContent = "Nightfall ambient soundtrack";
+    $("playMusicBtn").textContent = "Pause";
+  }).catch(() => {
+    ui.musicStatus.textContent = "Tap Play to start the soundtrack";
+  });
 }
 
 function stopBuiltInMusic() {
-  clearInterval(musicTimer);
-  musicTimer = null;
+  bundledMusic?.pause();
 }
 
 function updateLocalMusicVolume() {
   localMusic.volume = Math.min(1, effectiveMusicVolume());
+  if (bundledMusic) bundledMusic.volume = Math.min(1, effectiveMusicVolume());
 }
 
 function playLocalTrack(index = localTrackIndex) {
@@ -1468,6 +1962,16 @@ function stopMusic() {
   localMusic.pause();
   $("playMusicBtn").textContent = "Play";
 }
+
+function suspendAudioForLifecycle() {
+  stopMusic();
+  if (audioContext?.state === "running") audioContext.suspend().catch(() => {});
+}
+
+addEventListener("wasteland:app-paused", suspendAudioForLifecycle);
+addEventListener("wasteland:app-resumed", () => {
+  if (musicEnabled) wakeAudio();
+});
 
 function clearKeyboardInput() {
   Object.keys(keys).forEach(key => delete keys[key]);
@@ -1492,6 +1996,7 @@ function clearTransientGameplayInput(reason) {
   Object.keys(keys).forEach(key => delete keys[key]);
   Object.assign(keys, cleared.keys);
   Object.assign(touch, cleared.touch);
+  touch.aiming = false;
   firing = cleared.firing;
   adsActive = cleared.ads;
   lastButtons = cleared.controllerButtonLatch;
@@ -1556,7 +2061,11 @@ function updateInputRecoveryNotice() {
   $("inputRecoveryTitle").textContent = graphicsRecovery ? "GRAPHICS RECOVERING" : "AIMING PAUSED";
   $("inputRecoveryText").textContent = graphicsRecovery
     ? "Restoring the battlefield view. Local controls are safely released."
-    : "Click the battlefield to resume mouse aim.";
+    : inputMode === "touch"
+      ? "Touch the battlefield to resume play."
+      : controllerConnected
+        ? "Press a controller button to resume play."
+        : "Click the battlefield to resume mouse aim.";
 }
 
 function interruptLocalInput(reason) {
@@ -1580,18 +2089,22 @@ function syncPointerCaptureEligibility() {
 }
 
 function requestGameplayPointerLock(event) {
+  const mouseActivation = event?.pointerType === "mouse" || (event?.type === "click" && Number(event?.detail) > 0);
+  if (mouseActivation && !controllerOnly) setInputMode("mouse");
+  const pointerType = event?.pointerType || (mouseActivation ? "mouse" : "");
   const eligible = pointerCaptureDecision({
-    pointerType: event.pointerType,
-    deliberateCanvasAction: event.isTrusted && event.button === 0 && event.isPrimary !== false,
+    pointerType,
+    deliberateCanvasAction: Boolean(event?.isTrusted) && (event?.button ?? 0) === 0 && event?.isPrimary !== false,
     pointerLocked: document.pointerLockElement === canvas,
   });
   if (!eligible || typeof canvas.requestPointerLock !== "function") return false;
+  virtualMouseLook = centerVirtualMouseLook();
   try {
     const request = canvas.requestPointerLock();
-    request?.catch?.(() => interruptLocalInput("pointer-lock-lost"));
+    request?.catch?.(() => interruptLocalInput("pointer-lock-unavailable"));
     return true;
   } catch {
-    interruptLocalInput("pointer-lock-lost");
+    interruptLocalInput("pointer-lock-unavailable");
     return false;
   }
 }
@@ -1613,6 +2126,12 @@ async function pinDigest(pin) {
 
 function validPin(pin) { return /^\d{4}$/.test(pin); }
 
+function focusProfileRequirement(field, message) {
+  profileMessage.textContent = message;
+  field?.focus?.({ preventScroll: true });
+  field?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+}
+
 function ageFromBirthDate(value) {
   const birthday = new Date(`${value}T00:00:00`);
   if (!value || Number.isNaN(birthday.getTime()) || birthday > new Date()) return null;
@@ -1628,15 +2147,18 @@ function phoneEnvironment() {
 }
 
 function phoneProvider() {
-  if (!phoneProviderPromise) phoneProviderPromise = loadPhoneAuthProvider({ environment: phoneEnvironment() });
+  if (!phoneProviderPromise) phoneProviderPromise = loadPhoneAuthProvider({
+    environment: phoneEnvironment(),
+    fetchImpl: path => fetch(serviceUrl(path)),
+  });
   return phoneProviderPromise;
 }
 
 function hideProfileSteps() {
   profileStep.classList.add("hidden");
   returnStep.classList.add("hidden");
-  linkProfileStep.classList.add("hidden");
-  phoneCodeStep.classList.add("hidden");
+  linkProfileStep?.classList.add("hidden");
+  phoneCodeStep?.classList.add("hidden");
 }
 
 async function sendPhoneCode({ kind, phoneNumber, profile, pinDigest: localPinDigest }) {
@@ -1653,26 +2175,26 @@ async function sendPhoneCode({ kind, phoneNumber, profile, pinDigest: localPinDi
     phoneConfirmation = await provider.sendCode({ phoneNumber: normalized, recaptchaContainer: "phoneRecaptcha" });
     phoneChallenge = beginPhoneChallenge(normalized);
     pendingPhoneAction = { kind, phoneNumber: normalized, profile, pinDigest: localPinDigest };
-    profilePhone.value = "";
-    $("linkPhone").value = "";
-    $("phoneCode").value = "";
-    $("phoneCodeMessage").textContent = "";
-    $("phoneCodeHeading").textContent = kind === "restore" ? "Restore Linked Player" : "Verify Mobile Number";
-    $("phoneCodeHint").textContent = `A code was sent to ${phoneChallenge.phoneHint}. The number is not shown to other players.`;
+    if ($("linkPhone")) $("linkPhone").value = "";
+    if ($("phoneCode")) $("phoneCode").value = "";
+    if ($("phoneCodeMessage")) $("phoneCodeMessage").textContent = "";
+    if ($("phoneCodeHeading")) $("phoneCodeHeading").textContent = kind === "restore" ? "Restore Linked Player" : "Verify Mobile Number";
+    if ($("phoneCodeHint")) $("phoneCodeHint").textContent = `A code was sent to ${phoneChallenge.phoneHint}. The number is not shown to other players.`;
     hideProfileSteps();
-    phoneCodeStep.classList.remove("hidden");
-    $("phoneCode").focus();
+    phoneCodeStep?.classList.remove("hidden");
+    $("phoneCode")?.focus();
     updatePhoneResendControl();
     return true;
   } catch (error) {
     phoneProviderPromise = null;
-    message.textContent = error?.message || "Verified phone sign-in is unavailable. Offline play still works.";
+    message.textContent = error?.message || "Phone verification is not configured for this deployment. Offline play still works.";
     return false;
   }
 }
 
 function updatePhoneResendControl() {
   const button = $("resendPhoneCodeBtn");
+  if (!button) return;
   if (!phoneChallenge || !pendingPhoneAction) {
     button.disabled = true;
     button.textContent = "Resend code";
@@ -1699,7 +2221,7 @@ async function confirmPhoneCode() {
     const requestBody = action.kind === "create"
       ? buildPhoneLinkRequest({ idToken, profile: action.profile })
       : { idToken, deviceProfileId: action.profile.profileId };
-    const response = await fetch("/api/account/phone", {
+    const response = await fetch(serviceUrl("/api/account/phone"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1752,7 +2274,7 @@ function cancelPhoneVerification() {
   phoneChallenge = null;
   pendingPhoneAction = null;
   hideProfileSteps();
-  (previous === "restore" ? linkProfileStep : profileStep).classList.remove("hidden");
+  (previous === "restore" ? linkProfileStep : profileStep)?.classList.remove("hidden");
 }
 
 async function syncPublicPlayer() {
@@ -1765,7 +2287,7 @@ async function syncPublicPlayer() {
   const profile = activeProfile;
   Object.assign(profile, ensureProfileIdentity(profile));
   try {
-    const response = await fetch("/api/players", {
+    const response = await fetch(serviceUrl("/api/players"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1858,7 +2380,7 @@ async function syncControlsTourPreferences() {
       getCurrentIdentityInput: controlsTourIdentityInput,
       localFamilies,
       requestFamilies: async capture => {
-        const response = await fetch("/api/account/preferences", {
+        const response = await fetch(serviceUrl("/api/account/preferences"), {
           headers: { Authorization: `Bearer ${capture.backendSession}` },
         });
         if (!response.ok) throw new Error("Private controls preferences were unavailable");
@@ -1877,7 +2399,7 @@ async function syncControlsTourPreferences() {
 function persistControlsTourCompletion(families) {
   const seenFamilies = saveControlsTourFamilies(families);
   if (guestControlsIdentityActive || !activeProfile?.backendSession || offlineMode || activeProfile.youthAccount) return Promise.resolve(seenFamilies);
-  return fetch("/api/account/preferences", {
+  return fetch(serviceUrl("/api/account/preferences"), {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeProfile.backendSession}` },
     body: JSON.stringify({ controlsTourSeenFamilies: seenFamilies }),
@@ -1965,7 +2487,7 @@ function startControlsTour({ family = inputMode, mode: tourMode = "required" } =
   document.body.classList.add("controls-tour-active");
   setRequiredControlsTourLock(tourMode === "required");
   firing = false;
-  touch.fire = false;
+  touch.fire = touch.aiming = false;
   clearKeyboardInput();
   renderControlsTour();
 }
@@ -2057,14 +2579,14 @@ async function claimDeviceLink() {
 
 function showDeviceLinkStep() {
   hideProfileSteps();
-  linkProfileStep.classList.remove("hidden");
-  $("linkProfileMessage").textContent = "";
+  linkProfileStep?.classList.remove("hidden");
+  if ($("linkProfileMessage")) $("linkProfileMessage").textContent = "";
 }
 
 async function reportMatch(title) {
   if (!activeProfile?.backendPlayerId || offlineMode) return;
   try {
-    const response = await fetch("/api/matches", {
+    const response = await fetch(serviceUrl("/api/matches"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeProfile.backendSession || ""}` },
       body: JSON.stringify({
@@ -2129,12 +2651,7 @@ function renderLobbyProfile(fallbackName = "Offline Guest") {
   $("lobbyAvatarImage").alt = view.avatar.name;
   $("lobbyAvatarButton").setAttribute("aria-label", `Open ${view.displayName} loadout`);
   $("lobbyProfileReadout").setAttribute("aria-label", `Open ${view.displayName} profile and loadout`);
-  $("verifiedPhoneStatus").textContent = activeProfile?.phoneHint
-    ? `Linked privately to ${activeProfile.phoneHint}. Use that number to restore this Player Tag on another device.`
-    : activeProfile?.youthAccount
-      ? "Parent controls are stored only on this device."
-      : "Verify a mobile number to restore this Player Tag on another device.";
-  $("openPhoneAccountBtn").disabled = Boolean(activeProfile?.youthAccount);
+  $("verifiedPhoneStatus").textContent = "Your profile, birthday confirmation, and four-digit PIN are stored locally on this device.";
 }
 
 function openConnections() {
@@ -2177,18 +2694,15 @@ function editActiveProfile() {
   setMenuSection("survivor");
   profileStep.classList.remove("hidden");
   returnStep.classList.add("hidden");
-  linkProfileStep.classList.add("hidden");
-  phoneCodeStep.classList.add("hidden");
+  linkProfileStep?.classList.add("hidden");
+  phoneCodeStep?.classList.add("hidden");
   profileName.value = activeProfile.name || "";
   profileBirthDate.value = activeProfile.birthDate || "";
-  profilePhone.value = "";
   profileAvatar.value = activeProfile.avatarType || "scout";
   updateAvatarCards();
   ageConfirm.checked = true;
   profilePin.value = "";
-  profilePhone.closest("label").classList.add("hidden");
   profilePin.closest("label").classList.add("hidden");
-  parentPhone.closest("label").classList.toggle("hidden", Boolean(activeProfile.youthAccount));
   parentSetup.classList.toggle("hidden", !activeProfile.youthAccount);
   parentPin.value = "";
   $("enterWastlandBtn").textContent = "Save Profile";
@@ -2235,7 +2749,7 @@ function saveProfile(profile = activeProfile) {
 
 function saveProgress() {
   if (!activeProfile || activeProfile.youthAccount) return;
-  activeProfile.progress = { wave, score, kills, scrap, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, classProgress, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
+  activeProfile.progress = { ...(activeProfile.progress || {}), wave, score, kills, scrap, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, classProgress, storyCheckpoint, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
   saveProfile();
 }
 
@@ -2252,8 +2766,100 @@ function loadProgress(profile) {
   storyStage = Math.max(1, Number(progress.storyStage) || 1);
   missionIndex = Math.max(0, Math.min(storyMissions.length - 1, Number(progress.missionIndex) || 0));
   kingdomUnlocked = Boolean(progress.kingdomUnlocked);
+  storyCheckpoint = progress.storyCheckpoint && typeof progress.storyCheckpoint === "object" ? progress.storyCheckpoint : null;
   classProgress = normalizeClassProgress(progress.classProgress || { classId: profile?.avatarType || "scout" });
   Object.entries(progress.guns || {}).forEach(([key, level]) => { if (guns[key]) guns[key].level = Math.min(guns[key].max, Math.max(0, Number(level) || 0)); });
+}
+
+function storyMissionId() {
+  const chapter = Math.min(4, Math.max(1, storyStage));
+  return `c${chapter}-m${missionIndex % 2 + 1}`;
+}
+
+function createStoryCheckpoint() {
+  return {
+    id: `chapter-${Math.min(4, Math.max(1, storyStage))}-stage-${storyStage}`,
+    chapter: Math.min(4, Math.max(1, storyStage)),
+    mission: storyMissionId(),
+    map: mapKey,
+    wave: Math.max(1, wave),
+    stage: Math.max(1, storyStage),
+  };
+}
+
+function storyRuntimeProgress() {
+  return {
+    profileId: activeProfile?.profileId || "offline-guest",
+    chapter: Math.min(4, Math.max(1, storyStage)),
+    mission: storyMissionId(),
+    map: mapKey,
+    wave,
+    stage: storyStage,
+    level: playerLevel,
+    xp: totalXp,
+    scrap,
+    kills,
+    classId: classProgress.classId,
+    avatarId: activeProfile?.avatarType || classProgress.classId,
+    unlockedMaps: unlockedMaps(playerLevel),
+    weaponLevels: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])),
+    inventory: activeProfile?.progress?.inventory || {},
+    shieldUpgrades: { level: shieldLevel },
+    tacticalUpgrades: activeProfile?.progress?.tacticalUpgrades || {},
+    kingdom: activeProfile?.progress?.kingdom || { unlocked: kingdomUnlocked, level: kingdomUnlocked ? 1 : 0 },
+    difficulty: difficultyName(),
+    checkpoint: storyCheckpoint || createStoryCheckpoint(),
+  };
+}
+
+function applyStoryCampaignProgression(progress = storyRuntimeProgress(), { preserveMap = false } = {}) {
+  const campaign = deriveStoryCampaignState({ level: progress.level, stage: progress.stage });
+  mapKey = preserveMap && campaign.availableMaps.includes(progress.map) ? progress.map : campaign.recommendedMap;
+  difficultyRatio = campaign.difficultyRatio;
+  storyMapSelect.value = mapKey;
+  $("botDifficulty").value = String(difficultyRatio);
+  return campaign;
+}
+
+function applyStoryResume(result) {
+  const progress = result.progress;
+  wave = Math.max(1, progress.wave);
+  storyStage = Math.max(1, progress.stage);
+  playerLevel = Math.max(1, progress.level);
+  totalXp = Math.max(0, progress.xp);
+  scrap = Math.max(0, progress.scrap);
+  kills = Math.max(0, progress.kills);
+  shieldLevel = Math.max(0, progress.shieldUpgrades.level || 0);
+  kingdomUnlocked = Boolean(progress.kingdom.unlocked);
+  Object.entries(progress.weaponLevels).forEach(([key, level]) => {
+    if (guns[key]) guns[key].level = Math.min(guns[key].max, Math.max(0, Number(level) || 0));
+  });
+  storyCheckpoint = { ...result.resume };
+  applyStoryCampaignProgression({ ...progress, map: result.resume.map }, { preserveMap: true });
+}
+
+function restoreStorySession() {
+  let stored;
+  try { stored = JSON.parse(localStorage.getItem(storySnapshotKey()) || "null"); }
+  catch { stored = null; }
+  const validation = validateStorySnapshot(stored);
+  if (!validation.ok) {
+    pendingStoryResume = null;
+    return null;
+  }
+  pendingStoryResume = mergeStorySnapshot(storyRuntimeProgress(), validation.snapshot);
+  return pendingStoryResume;
+}
+
+function saveStoryAndExit(reason) {
+  const state = reason === "death-exit" ? "dead" : "paused";
+  if (!canSaveAndExitStory({ mode: mode === "solo" ? "story" : mode, state }).available) return false;
+  if (reason === "death-exit" && !storyCheckpoint) storyCheckpoint = createStoryCheckpoint();
+  saveProgress();
+  const snapshot = buildStorySnapshot(storyRuntimeProgress(), { reason });
+  localStorage.setItem(storySnapshotKey(), JSON.stringify(snapshot));
+  if (snapshot.returnIntent.screen === "main-lobby" && snapshot.returnIntent.multiplayerSelectable) exitToLobby();
+  return true;
 }
 
 function updateStoryProgress() {
@@ -2292,25 +2898,29 @@ async function enterProfile() {
   const name = profileName.value.trim();
   const birthDate = profileBirthDate.value;
   const age = ageFromBirthDate(birthDate);
-  const phoneNumber = profilePhone.value;
   const pin = profilePin.value.trim();
-  const parentPhoneNumber = parentPhone.value;
   const parentLocalPin = parentPin.value.trim();
   if (!name) {
-    profileMessage.textContent = "Enter a player name.";
+    focusProfileRequirement(profileName, "Enter a player name.");
     return;
   }
   if (age === null) {
-    profileMessage.textContent = "This birth date could not be verified. Parent controls will stay available until it is verified.";
+    focusProfileRequirement(profileBirthDate, "This birth date could not be verified. Parent controls will stay available until it is verified.");
     parentSetup.classList.remove("hidden");
     return;
   }
   if (!editingProfile && !validPin(pin)) {
-    profileMessage.textContent = "PIN must be exactly four numbers.";
+    focusProfileRequirement(profilePin, "PIN must be exactly four numbers.");
     return;
   }
   if (!ageConfirm.checked) {
-    profileMessage.textContent = "Confirm the age information before entering.";
+    focusProfileRequirement(ageConfirm, "Confirm the age information before entering.");
+    return;
+  }
+  if (Date.now() >= termsAcceptedUntil) {
+    $("termsConfirm").checked = false;
+    $("termsModal").classList.remove("hidden");
+    $("termsConfirm").focus();
     return;
   }
   youthAccount = age < 14;
@@ -2329,22 +2939,16 @@ async function enterProfile() {
     $("enterWastlandBtn").textContent = "Enter Wasteland";
     $("guestOfflineBtn").classList.remove("hidden");
     profilePin.value = "";
-    profilePhone.closest("label").classList.remove("hidden");
     profilePin.closest("label").classList.remove("hidden");
-    parentPhone.closest("label").classList.remove("hidden");
     parentPin.value = "";
     parentSetup.classList.add("hidden");
     profileMessage.textContent = "Profile saved.";
     openLobby(name);
     return;
   }
-  if (youthAccount && (!normalizePhoneNumber(parentPhoneNumber) || !validPin(parentLocalPin))) {
-    profileMessage.textContent = "A parent mobile number and separate four-digit parent PIN are required for players under 14.";
+  if (youthAccount && !validPin(parentLocalPin)) {
+    profileMessage.textContent = "A separate four-digit parent PIN is required for players under 14.";
     parentSetup.classList.remove("hidden");
-    return;
-  }
-  if (!youthAccount && !normalizePhoneNumber(phoneNumber)) {
-    profileMessage.textContent = "Enter a valid mobile number for secure account recovery.";
     return;
   }
   const digest = await pinDigest(pin);
@@ -2355,7 +2959,7 @@ async function enterProfile() {
     birthDate,
     age,
     avatarType: profileAvatar.value,
-    parentPhoneHint: youthAccount ? maskPhoneNumber(parentPhoneNumber) : "",
+    parentPhoneHint: "",
     parentPinDigest,
     youthAccount,
     pinDigest: digest,
@@ -2365,17 +2969,13 @@ async function enterProfile() {
   });
   profilePin.value = "";
   parentPin.value = "";
-  parentPhone.value = "";
-  if (youthAccount) {
-    saveProfile(profile);
-    guestControlsIdentityActive = false;
-    activeProfile = profile;
-    offlineMode = true;
-    localStorage.setItem("wastland-survivor-offline", "true");
-    openLobby(name);
-    return;
-  }
-  await sendPhoneCode({ kind: "create", phoneNumber, profile, pinDigest: digest });
+  saveProfile(profile);
+  guestControlsIdentityActive = false;
+  activeProfile = profile;
+  offlineMode = true;
+  localStorage.setItem("wastland-survivor-offline", "true");
+  profileMessage.textContent = "Local profile created.";
+  openLobby(name);
 }
 
 function returnProfile() {
@@ -2416,9 +3016,9 @@ function showProfileChoice() {
   const profiles = savedProfiles();
   profileMessage.textContent = "";
   returnMessage.textContent = "";
-  profileSelector.replaceChildren(...profiles.map(profile => new Option(`${profile.name} · ${profile.birthDate || profile.phoneHint || "local profile"}`, profile.profileId)));
-  linkProfileStep.classList.add("hidden");
-  phoneCodeStep.classList.add("hidden");
+  profileSelector.replaceChildren(...profiles.map(profile => new Option(`${profile.name} · ${profile.birthDate || "local profile"}`, profile.profileId)));
+  linkProfileStep?.classList.add("hidden");
+  phoneCodeStep?.classList.add("hidden");
   if (profiles.length) {
     profileStep.classList.add("hidden");
     returnStep.classList.remove("hidden");
@@ -2431,9 +3031,7 @@ function showProfileChoice() {
 
 function initializeProfileScreen() {
   editingProfile = false;
-  profilePhone.closest("label").classList.remove("hidden");
   profilePin.closest("label").classList.remove("hidden");
-  parentPhone.closest("label").classList.remove("hidden");
   parentSetup.classList.add("hidden");
   $("enterWastlandBtn").textContent = "Enter Wasteland";
   $("guestOfflineBtn").classList.remove("hidden");
@@ -2471,6 +3069,7 @@ function bindTouchStick(id, prefix) {
     if (event && pointerId !== null && event.pointerId !== pointerId) return;
     pointerId = null;
     touch[`${prefix}x`] = touch[`${prefix}z`] = 0;
+    if (prefix === "a") touch.aiming = false;
     knob.style.transform = "translate(0,0)";
   };
   const move = event => {
@@ -2479,18 +3078,19 @@ function bindTouchStick(id, prefix) {
     const dx = event.clientX - (rect.left + rect.width / 2);
     const dy = event.clientY - (rect.top + rect.height / 2);
     const distance = Math.hypot(dx, dy) || 1;
-    const cap = Math.min(38, distance);
-    const x = dx / distance * cap;
-    const y = dy / distance * cap;
-    knob.style.transform = `translate(${x}px,${y}px)`;
-    touch[`${prefix}x`] = x / 38;
-    touch[`${prefix}z`] = y / 38;
-    handleControlsTourSignal({ source: "touch-stick", control: prefix === "m" ? "move" : "aim", magnitude: cap / 38 });
+    const knobRadius = (knob.offsetWidth || 38) / 2;
+    const radius = Math.max(1, Math.min(rect.width, rect.height) / 2 - knobRadius - 2);
+    const normalized = normalizeTouchStick({ dx, dy, radius });
+    knob.style.transform = `translate(${normalized.x * radius}px,${normalized.z * radius}px)`;
+    touch[`${prefix}x`] = normalized.x;
+    touch[`${prefix}z`] = normalized.z;
+    handleControlsTourSignal({ source: "touch-stick", control: prefix === "m" ? "move" : "aim", magnitude: normalized.magnitude });
   };
   element.addEventListener("pointerdown", event => {
     if (phase === "countdown") return;
     setInputMode("touch");
     pointerId = event.pointerId;
+    if (prefix === "a") touch.aiming = true;
     element.setPointerCapture(pointerId);
     wakeAudio();
     move(event);
@@ -2549,8 +3149,9 @@ function ensureLobbyRoom() {
     return;
   }
   const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const socketOrigin = serviceOrigin ? serviceOrigin.replace(/^http/, "ws") : `${protocol}://${location.host}`;
   lobbyRoomName = roomName;
-  lobbySocket = new WebSocket(`${protocol}://${location.host}/signal`);
+  lobbySocket = new WebSocket(`${socketOrigin}/signal`);
   lobbySocket.onopen = () => {
     updateLobbyConnectivity({ type: "lobby-socket-open" });
     lobbySocket.send(JSON.stringify({ type: "join", room: roomName }));
@@ -2695,7 +3296,8 @@ async function joinVoice() {
     updateVoiceButtons();
     setVoiceStatus("Connecting to voice lobby");
     const protocol = location.protocol === "https:" ? "wss" : "ws";
-    voiceSocket = new WebSocket(`${protocol}://${location.host}/signal`);
+    const socketOrigin = serviceOrigin ? serviceOrigin.replace(/^http/, "ws") : `${protocol}://${location.host}`;
+    voiceSocket = new WebSocket(`${socketOrigin}/signal`);
     voiceSocket.onopen = () => sendVoice({ type: "join", room: voiceRoom() });
     voiceSocket.onmessage = async event => {
       try {
@@ -2748,6 +3350,7 @@ function openGameMenu() {
   $("graceStatus").classList.add("hidden");
   $("menuMatchStatus").textContent = liveMatch ? "LIVE MATCH CONTINUES" : "MATCH PAUSED";
   $("openShopBtn").disabled = !menuOpenedFromPrep;
+  $("saveExitStoryBtn").classList.toggle("hidden", !canSaveAndExitStory({ mode: mode === "solo" ? "story" : mode, state: phase }).available);
 }
 
 function closeGameMenu() {
@@ -2771,7 +3374,7 @@ function exitToLobby() {
   phase = "menu";
   firing = false;
   touch.mx = touch.mz = touch.ax = touch.az = 0;
-  touch.fire = false;
+  touch.fire = touch.aiming = false;
   clearKeyboardInput();
   $("gameMenu").classList.add("hidden");
   $("loadoutRoomModal").classList.add("hidden");
@@ -2930,6 +3533,18 @@ async function initializeMenuBackdrop({ force = false } = {}) {
     : result.kind;
 }
 
+async function resumeDesktopMenuBackdrop() {
+  if (!document.body.classList.contains("menu-active") || document.visibilityState !== "visible" || reducedMotionEnabled()) return;
+  if (!homeBackdrop.paused && homeBackdrop.dataset.mediaKind !== "fallback") return;
+  if (homeBackdrop.dataset.mediaKind === "fallback") return initializeMenuBackdrop({ force: true });
+  try {
+    await homeBackdrop.play();
+    revealMenuBackdrop(homeBackdrop.dataset.mediaKind || homeBackdrop.dataset.mediaCandidate || "bundled");
+  } catch {
+    await initializeMenuBackdrop({ force: true });
+  }
+}
+
 function updateMenuReplayStatus(kind) {
   $("replayStatus").textContent = kind === "replay"
     ? "Playing a recent match clip saved on this device."
@@ -3008,13 +3623,23 @@ function upgrade(gunName) {
 }
 
 function upgradeShield() {
-  const price = 24 + shieldLevel * 8;
-  if (!["prep", "loadout"].includes(phase) || scrap < price || shieldLevel >= 10) return;
-  scrap -= price;
-  shieldLevel++;
-  player.shieldMax = shieldLevel * 30;
-  player.shield = player.shieldMax;
+  const result = resolveShieldUpgrade({
+    phase,
+    scrap,
+    shieldLevel,
+    baseArmor: getClassStats(classProgress).maxShield,
+  });
+  $("armoryStatus").textContent = result.message;
+  if (!result.applied) {
+    playTone(150, .08, "square", .025);
+    return;
+  }
+  scrap = result.nextScrap;
+  shieldLevel = result.nextLevel;
+  player.shieldMax = result.shieldMax;
+  player.shield = result.shieldMax;
   updateArmory();
+  saveProgress();
   playTone(610, .06, "sine", .04);
 }
 
@@ -3035,6 +3660,35 @@ function updateArmory() {
     button.textContent = locked ? `${gunUnlocks[gun]} kills` : guns[gun].level >= guns[gun].max ? "Maxed" : `${weaponPrice(gun)} scrap`;
   });
   $("upgradeShieldBtn").textContent = shieldLevel >= 10 ? "Maxed" : `${24 + shieldLevel * 8} scrap`;
+  const ammo = `${magazines[activeGun]} / ${magazineSizes[activeGun]}`;
+  const armor = `${Math.round(player?.shield || 0)} / ${Math.round(player?.shieldMax || 0)}`;
+  const avatar = activeProfile?.avatarType || classProgress?.classId || "scout";
+  const avatarDetails = {
+    scout: ["Dust Scout", "Fast movement", "Dash"],
+    ranger: ["Ranger", "Steadier aim", "Focus"],
+    heavy: ["Heavy", "Extra armor", "Shield Brace"],
+    tech: ["Tech Runner", "Extra scrap", "Repair Pulse"],
+    medic: ["Field Medic", "Recovery support", "Repair Pulse"],
+    warden: ["Warden", "Extra armor", "Shield Brace"],
+  }[avatar] || ["Dust Scout", "Fast movement", "Dash"];
+  const avatarImage = {
+    scout: "./assets/nightfall/characters/renders/scout-v2-isolated.png",
+    ranger: "./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png",
+    heavy: "./assets/nightfall/characters/renders/heavy-v2-isolated.png",
+    tech: "./assets/nightfall/characters/renders/tech-runner-v2-isolated.png",
+    medic: "./assets/nightfall/characters/renders/field-medic-v2-isolated.png",
+    warden: "./assets/nightfall/characters/renders/warden-v2-isolated.png",
+  }[avatar] || "./assets/nightfall/characters/renders/scout-v2-isolated.png";
+  const image = $("armoryAvatarImage");
+  if (image) { image.src = avatarImage; image.alt = avatarDetails[0]; }
+  $("armoryAvatarName")?.replaceChildren(document.createTextNode(avatarDetails[0]));
+  $("armoryAvatarSkill")?.replaceChildren(document.createTextNode(avatarDetails[1]));
+  $("armoryScrap")?.replaceChildren(document.createTextNode(String(Math.max(0, Math.floor(scrap)))));
+  $("armoryAmmo")?.replaceChildren(document.createTextNode(ammo));
+  $("armoryAmmoDetail")?.replaceChildren(document.createTextNode(ammo));
+  $("armoryArmor")?.replaceChildren(document.createTextNode(armor));
+  $("armoryAbilityDetail")?.replaceChildren(document.createTextNode(`${avatarDetails[2]} is ready for this survivor.`));
+  $("armoryAimDetail")?.replaceChildren(document.createTextNode(isAndroidApp ? "AUTO-AIM" : "AIM ASSIST"));
   [["scout", "equipScoutBtn"], ["cannon", "equipCannonBtn"], ["inferno", "equipInfernoBtn"]].forEach(([gun, id]) => {
     const button = $(id);
     const locked = !gunUnlocked(gun) && activeGun !== gun;
@@ -3043,16 +3697,33 @@ function updateArmory() {
   });
 }
 
+function selectArmoryTab(tabName = "weapons") {
+  document.querySelectorAll("[data-armory-tab]").forEach(tab => {
+    const selected = tab.dataset.armoryTab === tabName;
+    tab.classList.toggle("active", selected);
+    tab.setAttribute("aria-selected", String(selected));
+  });
+  document.querySelectorAll("[data-armory-folder]").forEach(folder => {
+    const selected = folder.dataset.armoryFolder === tabName;
+    folder.classList.toggle("hidden", !selected);
+    folder.setAttribute("aria-hidden", String(!selected));
+  });
+}
+
 function equip(gunName) {
   if (!gunUnlocked(gunName) && activeGun !== gunName) return;
   activeGun = gunName;
+  createHeldWeapon(gunName);
   updateArmory();
 }
 
 addEventListener("resize", resize);
 addEventListener("blur", () => interruptLocalInput("window-blur"));
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") interruptLocalInput("document-hidden");
+  if (document.visibilityState === "hidden") {
+    interruptLocalInput("document-hidden");
+    suspendAudioForLifecycle();
+  }
 });
 document.addEventListener("pointerlockchange", () => {
   const locked = document.pointerLockElement === canvas;
@@ -3066,7 +3737,7 @@ document.addEventListener("pointerlockchange", () => {
   canvasPointerLocked = false;
   interruptLocalInput("pointer-lock-lost");
 });
-document.addEventListener("pointerlockerror", () => interruptLocalInput("pointer-lock-lost"));
+document.addEventListener("pointerlockerror", () => interruptLocalInput("pointer-lock-unavailable"));
 canvas.addEventListener("pointerleave", () => {
   if (document.pointerLockElement !== canvas) interruptLocalInput("canvas-exit");
 });
@@ -3094,9 +3765,16 @@ addEventListener("keydown", event => {
     return;
   }
   if (event.key === "Escape") {
+    if (phase === "over") { endFinishedMatch(); return; }
     if (!ui.settings.classList.contains("hidden")) { closeSettings(); return; }
     if (!$("dashboardModal").classList.contains("hidden")) { $("dashboardModal").classList.add("hidden"); restoreVisibleMenuSection(); return; }
     if (!ui.shop.classList.contains("hidden")) { ui.shop.classList.add("hidden"); restoreVisibleMenuSection(); return; }
+  }
+  if (!welcomeScreen.classList.contains("hidden") && key === " " && event.target?.matches?.(".avatar-choice")) {
+    event.preventDefault();
+    event.target.click();
+    setInputMode("keyboard");
+    return;
   }
   if (controllerLocked() || phase === "countdown") return;
   if (!lobbyScreen.classList.contains("hidden")) {
@@ -3128,6 +3806,7 @@ addEventListener("keydown", event => {
   if (key === "q") cycleWeapon(1);
   if (key === "e") interact();
   if (key === "f") triggerAbility();
+  if (key === " ") firing = true;
   if (key === "tab") { event.preventDefault(); switchLockedTarget(); }
   keys[key] = true;
   if (key === "arrowleft") keys.a = true;
@@ -3136,9 +3815,17 @@ addEventListener("keydown", event => {
   if (key === "arrowdown") keys.s = true;
   wakeAudio();
 });
+addEventListener("android-menu-request", () => {
+  if (phase !== "combat") return;
+  setInputMode("touch");
+  if (!handleControlsTourSignal({ source: "touch-button", control: "menu" })) {
+    menuOpen ? closeGameMenu() : openGameMenu();
+  }
+});
 addEventListener("keyup", event => {
   if (controllerLocked()) return;
   const key = event.key.toLowerCase();
+  if (key === " ") firing = false;
   keys[key] = false;
   if (key === "arrowleft") keys.a = false;
   if (key === "arrowright") keys.d = false;
@@ -3154,13 +3841,13 @@ canvas.addEventListener("pointermove", event => {
   }
   if (event.pointerType === "mouse") {
     setInputMode("mouse");
-    if (localGameplayInputPaused()) return;
-    if (frontView && phase === "combat" && !menuOpen) {
-      if (document.pointerLockElement !== canvas) return;
-      viewYaw -= event.movementX * .0032 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
-      aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
+    if (frontView && ["countdown", "combat", "prep"].includes(phase) && !menuOpen) {
+      virtualMouseLook = document.pointerLockElement === canvas
+        ? advanceVirtualMouseLook(virtualMouseLook, event, { width: canvas.clientWidth, height: canvas.clientHeight })
+        : virtualMouseLookFromPoint(event, canvas.getBoundingClientRect());
       return;
     }
+    if (localGameplayInputPaused()) return;
   }
   pointer.set(event.clientX / innerWidth * 2 - 1, -(event.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
@@ -3168,7 +3855,7 @@ canvas.addEventListener("pointermove", event => {
   if (hit) aim.copy(hit.point);
 });
 canvas.addEventListener("pointerdown", event => {
-  if (controllerLocked() || phase === "countdown") return;
+  if (controllerLocked()) return;
   const pointerHandoff = applyCanvasPointerHandoff(event, {
     inputMode,
     pointerResumeRequired,
@@ -3183,9 +3870,17 @@ canvas.addEventListener("pointerdown", event => {
     return;
   }
   const resumingPointer = pointerResumeRequired;
-  if (pointerHandoff.pointerLockCandidate && frontView && document.pointerLockElement !== canvas) requestGameplayPointerLock(event);
+  if (pointerHandoff.pointerLockCandidate && frontView && document.pointerLockElement !== canvas) {
+    virtualMouseLook = centerVirtualMouseLook();
+    requestGameplayPointerLock(event);
+  }
   wakeAudio();
-  if (resumingPointer || localGameplayInputPaused()) return;
+  // A deliberate click must always recover windowed play when pointer lock is refused.
+  if (resumingPointer) {
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+  }
+  if (localGameplayInputPaused()) return;
   if (phase !== "combat" || menuOpen || event.button !== 0 || event.isPrimary === false) return;
   firing = true;
 });
@@ -3214,15 +3909,32 @@ const touchFireButton = bindHoldButton("touchFireBtn", active => {
   touch.fire = active;
 });
 const touchAdsButton = bindHoldButton("touchAdsBtn", active => { adsActive = active; });
+const touchUtilityTray = $("touchUtilityTray");
+const touchUtilityButton = $("touchUtilityBtn");
+function setTouchUtilityOpen(open) {
+  const next = Boolean(open);
+  touchUtilityTray.classList.toggle("hidden", !next);
+  touchUtilityTray.setAttribute("aria-hidden", String(!next));
+  touchUtilityButton.setAttribute("aria-expanded", String(next));
+  touchUtilityButton.textContent = next ? "Close" : "More";
+}
+
+function endFinishedMatch() {
+  if (mode === "solo") return saveStoryAndExit("death-exit");
+  exitToLobby();
+  return true;
+}
 bindTransientPointerInterrupts({
   targets: [moveStick, aimStick, touchFireButton, touchAdsButton],
   interrupt: interruptLocalInput,
 });
+$('touchLockBtn').onclick = () => { setInputMode("touch"); switchLockedTarget(); };
+$('touchUtilityBtn').onclick = () => { setInputMode("touch"); setTouchUtilityOpen(touchUtilityTray.classList.contains("hidden")); };
 $("touchReloadBtn").onclick = () => { setInputMode("touch"); reloadWeapon(true); };
 $("touchWeaponBtn").onclick = () => { setInputMode("touch"); cycleWeapon(1); };
 $("touchInteractBtn").onclick = () => { setInputMode("touch"); interact(); };
 $("touchAbilityBtn").onclick = () => { setInputMode("touch"); if (!handleControlsTourSignal({ source: "touch-button", control: "ability" })) triggerAbility(); };
-$("touchPauseBtn").onclick = () => { setInputMode("touch"); if (!handleControlsTourSignal({ source: "touch-button", control: "pause" })) menuOpen ? closeGameMenu() : openGameMenu(); };
+$("touchPauseBtn").onclick = () => { setInputMode("touch"); setTouchUtilityOpen(false); if (!handleControlsTourSignal({ source: "touch-button", control: "pause" })) menuOpen ? closeGameMenu() : openGameMenu(); };
 $("soloMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "solo"; $("soloMode").classList.add("active"); $("teamMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); });
 $("teamMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "teams"; $("teamMode").classList.add("active"); $("soloMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); });
 $("ctfMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "ctf"; $("ctfMode").classList.add("active"); $("soloMode").classList.remove("active"); $("teamMode").classList.remove("active"); $("ctfPlayerControl").classList.remove("hidden"); lobbyChanged(); start(); });
@@ -3258,8 +3970,11 @@ $("closeShopBtn").onclick = () => {
   if (chestAccessGranted && lobbySocket?.readyState === WebSocket.OPEN) lobbySocket.send(JSON.stringify({ type: "chest-leave" }));
   chestAccessGranted = false;
 };
-$("loadoutArmoryBtn").onclick = () => { setMenuSection("armory"); ui.shop.classList.remove("hidden"); };
-$("loadoutReadyBtn").onclick = () => {
+document.querySelectorAll("[data-armory-tab]").forEach(tab => {
+  tab.onclick = () => selectArmoryTab(tab.dataset.armoryTab);
+});
+$("loadoutArmoryBtn").onclick = () => { setMenuSection("armory"); selectArmoryTab("weapons"); updateArmory(); ui.shop.classList.remove("hidden"); };
+$("loadoutReadyBtn").onclick = event => {
   ui.shop.classList.add("hidden");
   if (mode === "teams" && !offlineMode) {
     if (lobbySocket?.readyState === WebSocket.OPEN) {
@@ -3272,6 +3987,7 @@ $("loadoutReadyBtn").onclick = () => {
   }
   $("loadoutRoomModal").classList.add("hidden");
   beginCountdown();
+  requestGameplayPointerLock(event);
 };
 $("equipScoutBtn").onclick = () => equip("scout");
 $("equipCannonBtn").onclick = () => equip("cannon");
@@ -3281,9 +3997,11 @@ $("upgradeCannonBtn").onclick = () => upgrade("cannon");
 $("upgradeInfernoBtn").onclick = () => upgrade("inferno");
 $("upgradeShieldBtn").onclick = upgradeShield;
 $("restartBtn").onclick = () => { ui.over.classList.add("hidden"); start(); };
+$("endMatchBtn").onclick = () => endFinishedMatch();
 $("settingsBtn").onclick = openSettings;
 $("lobbySettingsBtn").onclick = openSettings;
 $("lobbyConnectionsBtn").onclick = openConnections;
+$("renderLabBtn").onclick = () => { location.href = "./render-lab.html"; };
 $("menuSettingsBtn").onclick = openSettings;
 $("closeSettingsBtn").onclick = closeSettings;
 $("controlsTourReplayBtn").onclick = () => requestOptionalControlsTour({ family: inputMode, mode: "replay" });
@@ -3296,9 +4014,10 @@ $("dismissControlsMiniTourBtn").onclick = () => {
   $("controlsMiniTourOffer").classList.add("hidden");
 };
 $("menuToggle").onclick = () => menuOpen ? closeGameMenu() : openGameMenu();
-$("resumeGameBtn").onclick = closeGameMenu;
+$("resumeGameBtn").onclick = event => { closeGameMenu(); requestGameplayPointerLock(event); };
 $("frontViewBtn").onclick = () => { frontView = !frontView; $("frontViewBtn").textContent = frontView ? "Arena View" : "First Person"; };
 $("exitGameBtn").onclick = exitToLobby;
+$("saveExitStoryBtn").onclick = () => saveStoryAndExit("pause-exit");
 $("mobileMenuSelect").onchange = event => {
   if (event.target.value === "resume") closeGameMenu();
   if (event.target.value === "settings") openSettings();
@@ -3308,7 +4027,13 @@ $("mobileMenuSelect").onchange = event => {
 };
 ui.controllerOnly.checked = controllerOnly;
 ui.controllerOnly.onchange = () => { controllerOnly = ui.controllerOnly.checked; localStorage.setItem("wastland-survivor-controller-only", String(controllerOnly)); clearKeyboardInput(); };
+if (isAndroidApp && ui.aimPreset) {
+  ui.aimPreset.value = "full";
+  ui.aimPreset.disabled = true;
+  ui.aimPreset.setAttribute("aria-label", "Android auto-aim is always on");
+}
 ui.aimPreset.value = aimSettings.preset;
+if (isAndroidApp && ui.aimPreset) ui.aimPreset.value = "full";
 ui.aimSensitivity.value = String(aimSettings.sensitivity);
 ui.adsSensitivity.value = String(aimSettings.adsSensitivity);
 ui.aimAssistStrength.value = String(aimSettings.assistStrength);
@@ -3358,7 +4083,7 @@ $("localTrackInput").onchange = event => {
 $("playMusicBtn").onclick = () => {
   wakeAudio();
   if (musicSource === "builtin") {
-    if (musicTimer) { stopBuiltInMusic(); $("playMusicBtn").textContent = "Play"; }
+    if (bundledMusic && !bundledMusic.paused) { stopBuiltInMusic(); $("playMusicBtn").textContent = "Play"; }
     else { startBuiltInMusic(); $("playMusicBtn").textContent = "Pause"; }
   } else if (localMusic.paused) playLocalTrack();
   else { localMusic.pause(); $("playMusicBtn").textContent = "Play"; }
@@ -3382,19 +4107,22 @@ ui.offline.onchange = () => {
   }
 };
 $("enterWastlandBtn").onclick = enterProfile;
-$("guestOfflineBtn").onclick = enterGuestOffline;
-$("showLinkProfileBtn").onclick = showDeviceLinkStep;
-$("showLinkProfileNewBtn").onclick = showDeviceLinkStep;
-$("linkProfileBackBtn").onclick = initializeProfileScreen;
-$("claimLinkBtn").onclick = claimDeviceLink;
-$("phoneCodeBackBtn").onclick = cancelPhoneVerification;
-$("confirmPhoneCodeBtn").onclick = confirmPhoneCode;
-$("resendPhoneCodeBtn").onclick = resendPhoneCode;
-$("openPhoneAccountBtn").onclick = () => {
-  $("verifiedPhoneStatus").textContent = activeProfile?.phoneHint
-    ? `Linked privately to ${activeProfile.phoneHint}. On another device, choose Restore Linked Player.`
-    : "Return to the profile screen and choose Restore Linked Player after verification.";
+$("termsCancelBtn").onclick = () => $("termsModal").classList.add("hidden");
+$("termsAcceptBtn").onclick = () => {
+  if (!$("termsConfirm").checked) {
+    profileMessage.textContent = "Accept the terms before continuing.";
+    return;
+  }
+  termsAcceptedUntil = Date.now() + 2 * 60 * 60 * 1000;
+  $("termsModal").classList.add("hidden");
+  enterProfile();
 };
+$("guestOfflineBtn").onclick = enterGuestOffline;
+$("linkProfileBackBtn")?.addEventListener("click", initializeProfileScreen);
+$("claimLinkBtn")?.addEventListener("click", claimDeviceLink);
+$("phoneCodeBackBtn")?.addEventListener("click", cancelPhoneVerification);
+$("confirmPhoneCodeBtn")?.addEventListener("click", confirmPhoneCode);
+$("resendPhoneCodeBtn")?.addEventListener("click", resendPhoneCode);
 document.querySelectorAll(".avatar-choice").forEach(card => card.onclick = () => {
   profileAvatar.value = card.dataset.avatar;
   updateAvatarCards(card.dataset.avatar);
@@ -3404,7 +4132,7 @@ profileBirthDate.addEventListener("input", () => {
   const age = ageFromBirthDate(profileBirthDate.value);
   parentSetup.classList.toggle("hidden", !(age > 0 && age < 14));
 });
-[profilePin, returnPin, parentPin, $("linkLocalPin")].forEach(input => {
+[profilePin, returnPin, parentPin, $("linkLocalPin")].filter(Boolean).forEach(input => {
   ["copy", "cut", "paste", "contextmenu"].forEach(eventName => input.addEventListener(eventName, event => event.preventDefault()));
 });
 setInterval(() => {
@@ -3412,7 +4140,7 @@ setInterval(() => {
   updatePhoneResendControl();
   if (phoneChallenge.status === "code-sent" && Date.now() > phoneChallenge.expiresAt) {
     phoneChallenge = failPhoneChallenge(phoneChallenge, phoneChallenge.expiresAt + 1);
-    $("phoneCodeMessage").textContent = "This code expired. Go back and request a new one.";
+    if ($("phoneCodeMessage")) $("phoneCodeMessage").textContent = "This code expired. Go back and request a new one.";
   }
 }, 1000);
 $("returnWastlandBtn").onclick = returnProfile;
@@ -3450,7 +4178,7 @@ $("profileBackBtn").onclick = () => {
 };
 $("dashboardEditBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); editActiveProfile(); };
 $("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") { setMenuSection("armory"); ui.shop.classList.remove("hidden"); } else openDashboard(); };
-$("survivalLobbyBtn").onclick = () => { lobbyScreen.classList.add("hidden"); $("soloMode").click(); };
+$("survivalLobbyBtn").onclick = () => { restoreStorySession(); lobbyScreen.classList.add("hidden"); $("soloMode").click(); };
 $("teamLobbyBtn").onclick = () => {
   const choices = $("teamSizeChoices");
   const expanded = choices.classList.toggle("hidden") === false;
@@ -3512,6 +4240,10 @@ homeBackdrop.addEventListener("playing", () => {
 });
 homeBackdrop.addEventListener("error", () => retainNightfallFallback("decode-failed"));
 homeBackdrop.addEventListener("stalled", () => retainNightfallFallback("stalled"));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") resumeDesktopMenuBackdrop();
+});
+window.addEventListener("pageshow", resumeDesktopMenuBackdrop);
 matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", () => {
   applyMenuPresentation(menuSection, lobbyNavigator?.current().id || null);
   if (document.body.classList.contains("menu-active")) initializeMenuBackdrop({ force: true });

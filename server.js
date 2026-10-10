@@ -31,6 +31,9 @@ const mimeTypes = {
   ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".glb": "model/gltf-binary",
+  ".mp3": "audio/mpeg",
+  ".mp4": "video/mp4",
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".webp": "image/webp"
@@ -161,6 +164,26 @@ function phoneClientConfig() {
   return result;
 }
 
+function socialClientConfig() {
+  const authDomain = configuredFirebaseAuthDomain();
+  const enabled = process.env.FIREBASE_SOCIAL_AUTH_ENABLED === "true"
+    && Boolean(process.env.FIREBASE_WEB_API_KEY)
+    && Boolean(authDomain)
+    && Boolean(process.env.FIREBASE_PROJECT_ID);
+  if (!enabled) return { enabled: false, providers: { google: false, microsoft: false } };
+  return {
+    enabled: true,
+    providers: { google: true, microsoft: true },
+    sdkVersion: process.env.FIREBASE_WEB_SDK_VERSION || "11.10.0",
+    firebaseConfig: {
+      apiKey: process.env.FIREBASE_WEB_API_KEY,
+      authDomain: authDomain.domain,
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      appId: process.env.FIREBASE_APP_ID || undefined,
+    },
+  };
+}
+
 function contentSecurityPolicy() {
   const config = phoneClientConfig();
   const scripts = ["'self'", "https://cdn.jsdelivr.net"];
@@ -201,6 +224,10 @@ function handleApi(request, response, requestUrl) {
   }
   if (request.method === "GET" && requestUrl.pathname === "/api/phone/config") {
     json(response, 200, phoneClientConfig());
+    return true;
+  }
+  if (request.method === "GET" && requestUrl.pathname === "/api/auth/config") {
+    json(response, 200, socialClientConfig());
     return true;
   }
   if (request.method === "POST" && requestUrl.pathname === "/api/account/phone") {

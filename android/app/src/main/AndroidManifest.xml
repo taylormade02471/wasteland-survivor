@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:theme="@style/AppTheme" android:label="Wasteland Survivor" android:usesCleartextTraffic="false" android:enableOnBackInvokedCallback="true">
+        <activity android:name=".MainActivity" android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|screenLayout" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

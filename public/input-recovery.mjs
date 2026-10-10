@@ -21,6 +21,7 @@ const TRANSIENT_RESET_REASONS = new Set([
   "pointer-lock-lost",
   "canvas-exit",
   "pointer-capture-lost",
+  "pointer-lock-unavailable",
   "webgl-context-lost",
 ]);
 
@@ -52,7 +53,7 @@ export function canCaptureGameplayPointer({
   documentVisible = true,
   rendererReady = true,
 } = {}) {
-  return phase === "combat"
+  return ["countdown", "combat"].includes(phase)
     && inputMode === "mouse"
     && pointerType === "mouse"
     && deliberateCanvasAction

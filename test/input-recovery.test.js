@@ -58,13 +58,18 @@ test("allows pointer capture only for a deliberate live first-person canvas acti
   assert.equal(canCaptureGameplayPointer({ ...eligiblePointerState, pointerLocked: true }), false);
 });
 
-test("rejects pointer capture in every menu and non-combat phase", async () => {
+test("allows a trusted countdown activation to carry windowed mouse capture into combat", async () => {
+  const { canCaptureGameplayPointer } = await import(modulePath);
+
+  assert.equal(canCaptureGameplayPointer({ ...eligiblePointerState, phase: "countdown" }), true);
+});
+
+test("rejects pointer capture in every menu and non-gameplay phase", async () => {
   const { canCaptureGameplayPointer } = await import(modulePath);
   const excludedPhases = [
     "setup",
     "menu",
     "lobby",
-    "countdown",
     "controls-tour",
     "loadout",
     "prep",
@@ -82,6 +87,18 @@ test("rejects pointer capture in every menu and non-combat phase", async () => {
       `${phase} must not capture the pointer`,
     );
   }
+});
+
+test("game wiring captures from Ready and permits countdown canvas recapture without firing", () => {
+  const game = fs.readFileSync(path.join(__dirname, "..", "public", "game3d.js"), "utf8");
+  const readyHandler = game.match(/\$\("loadoutReadyBtn"\)\.onclick = event => \{[\s\S]*?\n\};/)?.[0] || "";
+  const pointerHandler = game.match(/canvas\.addEventListener\("pointerdown", event => \{[\s\S]*?\n\}\);/)?.[0] || "";
+  const resumeHandler = game.match(/\$\("resumeGameBtn"\)\.onclick = event =>[^\n]+/)?.[0] || "";
+
+  assert.match(readyHandler, /beginCountdown\(\);[\s\S]*requestGameplayPointerLock\(event\)/);
+  assert.doesNotMatch(pointerHandler, /phase === "countdown"\) return/);
+  assert.match(pointerHandler, /if \(phase !== "combat"[^\n]*\) return;[\s\S]*firing = true/);
+  assert.match(resumeHandler, /closeGameMenu\(\);[\s\S]*requestGameplayPointerLock\(event\)/);
 });
 
 test("rejects pointer capture for menus tours hidden pages and non-mouse modes", async () => {
@@ -383,6 +400,35 @@ test("pointer-lock loss and canvas exit clear input and require a new click", as
     assert.deepEqual(result.state.touch, { mx: 0, mz: 0, ax: 0, az: 0, fire: false }, reason);
     assert.deepEqual(result.state.controllerButtonLatch, [false, true], reason);
   }
+});
+
+test("pointer-lock failure clears input without trapping the player behind recovery", async () => {
+  const { resolveTransientInputReset } = await import(modulePath);
+  const result = resolveTransientInputReset({
+    reason: "pointer-lock-unavailable",
+    pointerResumeEligible: true,
+    keys: { w: true, d: true },
+    touch: { mx: 1, mz: 1, ax: 0, az: 0, fire: true },
+    controllerButtons: [true],
+  });
+  assert.equal(result.shouldReset, true);
+  assert.equal(result.requiresPointerClick, false);
+  assert.equal(result.state.firing, false);
+  assert.equal(Object.values(result.state.keys).some(Boolean), false);
+});
+
+test("controller-only gameplay leaves movement enabled while firing", () => {
+  const game = fs.readFileSync(path.join(__dirname, "..", "public", "game3d.js"), "utf8");
+  assert.match(game, /let mx = inputPaused \|\| menuOpen \? 0/);
+  assert.match(game, /let mz = inputPaused \|\| menuOpen \? 0/);
+  assert.doesNotMatch(game, /let mx = inputPaused \|\| controllerLocked\(\) \|\| menuOpen/);
+  assert.doesNotMatch(game, /let mz = inputPaused \|\| controllerLocked\(\) \|\| menuOpen/);
+});
+
+test("desktop gameplay exposes Space as a held fire action", () => {
+  const game = fs.readFileSync(path.join(__dirname, "..", "public", "game3d.js"), "utf8");
+  assert.match(game, /if \(key === " "\) firing = true/);
+  assert.match(game, /if \(key === " "\) firing = false/);
 });
 
 test("WebGL loss clears local input without requiring a synthetic pointer click", async () => {

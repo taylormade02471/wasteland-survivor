@@ -26,15 +26,14 @@ const avatarManifest = JSON.parse(fs.readFileSync(
 ));
 
 test("maps all six bundled survivor renders and gameplay classes", () => {
-  assert.deepEqual(
-    LOBBY_AVATARS,
-    avatarManifest.avatars.map(avatar => ({
-      id: avatar.id,
-      name: avatar.name,
-      classId: avatar.classId,
-      image: `./assets/nightfall/characters/index/${avatar.image}`,
-    })),
-  );
+  assert.deepEqual(LOBBY_AVATARS.map(({ id, name, classId, image }) => ({ id, name, classId, image })), [
+    { id: "scout", name: "Dust Scout", classId: "scout", image: "./assets/nightfall/characters/renders/scout-v2-isolated.png" },
+    { id: "ranger", name: "Ranger", classId: "ranger", image: "./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" },
+    { id: "heavy", name: "Heavy", classId: "heavy", image: "./assets/nightfall/characters/renders/heavy-v2-isolated.png" },
+    { id: "tech", name: "Tech Runner", classId: "tech", image: "./assets/nightfall/characters/renders/tech-runner-v2-isolated.png" },
+    { id: "medic", name: "Field Medic", classId: "tech", image: "./assets/nightfall/characters/renders/field-medic-v2-isolated.png" },
+    { id: "warden", name: "Warden", classId: "heavy", image: "./assets/nightfall/characters/renders/warden-v2-isolated.png" },
+  ]);
   assert.equal(LOBBY_AVATARS.find(avatar => avatar.id === "medic").classId, "tech");
   assert.equal(LOBBY_AVATARS.find(avatar => avatar.id === "warden").classId, "heavy");
 });
@@ -146,7 +145,7 @@ test("outputs class skill ability weapon shield and online state from current st
     id: "warden",
     name: "Warden",
     classId: "heavy",
-    image: "./assets/nightfall/characters/index/warden-v1.webp",
+    image: "./assets/nightfall/characters/renders/warden-v2-isolated.png",
   });
   assert.equal(view.classLabel, "Heavy");
   assert.equal(view.skillLabel, "Fortified");

@@ -4,3 +4,9 @@ node_modules/
 .worktrees/
 .superpowers/
 *.log
+.env*
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

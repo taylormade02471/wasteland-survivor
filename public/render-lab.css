@@ -1,0 +1,73 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #050b0e;
+  color: #f1f0de;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: radial-gradient(circle at 68% 16%, #183136 0, #071217 44%, #030708 100%); }
+button, select { font: inherit; }
+.render-lab { min-height: 100vh; padding: clamp(16px, 3vw, 38px); }
+.lab-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; max-width: 1440px; margin: 0 auto 20px; }
+.eyebrow { margin: 0 0 8px; color: #ffdc65; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+h1 { margin: 0; font-size: clamp(30px, 5vw, 64px); line-height: .98; letter-spacing: .01em; text-transform: uppercase; }
+.lab-copy { max-width: 620px; margin: 12px 0 0; color: #a9c3c1; font-size: 14px; }
+.lab-shell { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; max-width: 1440px; min-height: min(760px, calc(100vh - 170px)); margin: 0 auto; }
+.render-stage-wrap { position: relative; min-height: 540px; overflow: hidden; border: 1px solid rgba(125, 224, 211, .35); background: #071114; box-shadow: 0 22px 70px rgba(0,0,0,.4), inset 0 0 90px rgba(80, 214, 194, .07); }
+#renderStage { display: block; width: 100%; height: 100%; min-height: 540px; cursor: grab; touch-action: none; }
+#renderStage:active { cursor: grabbing; }
+.stage-readout { position: absolute; inset: auto 16px 14px; display: flex; justify-content: space-between; gap: 12px; color: #b8d5d2; font-size: 11px; letter-spacing: .08em; pointer-events: none; }
+.stage-readout span:first-child { color: #ffdc65; font-weight: 800; }
+.stage-error { position: absolute; inset: 16px; padding: 14px; border: 1px solid #e05a4d; background: rgba(43, 10, 9, .92); color: #ffd6cf; }
+.hidden { display: none !important; }
+.lab-controls { align-self: start; display: grid; gap: 12px; padding: 18px; border: 1px solid rgba(125, 224, 211, .28); background: rgba(5, 14, 17, .82); box-shadow: 0 18px 40px rgba(0,0,0,.26); }
+.control-heading { display: grid; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid rgba(174, 211, 205, .16); }
+.control-heading strong { font-size: 21px; color: #f4f1db; }
+.control-heading small, .lab-note { color: #95aaa9; line-height: 1.45; }
+.lab-controls label { display: grid; gap: 6px; color: #aac4c1; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+select { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid rgba(125, 224, 211, .34); background: #0b1a1e; color: #f1f0de; }
+.control-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.lab-button { min-height: 40px; padding: 0 12px; border: 1px solid rgba(255, 220, 101, .68); background: #a95538; color: #fff4d3; cursor: pointer; font-weight: 800; }
+.lab-button:hover, .lab-button:focus-visible, .lab-button.is-active { border-color: #fff2a9; background: #d27845; outline: 2px solid rgba(255,220,101,.28); }
+.lab-button-secondary { border-color: rgba(125, 224, 211, .4); background: #0a171b; color: #c7e0dc; }
+.lab-button-secondary:hover, .lab-button-secondary:focus-visible { background: #123037; }
+.stats-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; background: rgba(126, 224, 211, .06); }
+.stats-panel div { display: grid; gap: 4px; }
+.stats-panel span { color: #8da6a3; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.stats-panel strong { color: #e5f4dd; font-size: 14px; }
+.lab-note { margin: 0; font-size: 12px; }
+.art-board { max-width: 1440px; margin: 28px auto 0; padding: 22px; border: 1px solid rgba(125, 224, 211, .22); background: rgba(5, 14, 17, .72); box-shadow: 0 18px 48px rgba(0,0,0,.22); }
+.art-board-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+.art-board-heading h2 { margin: 0; color: #f4f1db; font-size: clamp(24px, 3vw, 38px); text-transform: uppercase; letter-spacing: .02em; }
+.art-board-heading > p { max-width: 620px; margin: 0; color: #a9c3c1; font-size: 13px; line-height: 1.5; }
+.art-board-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.art-board-card { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; margin: 0; overflow: hidden; border: 1px solid rgba(125, 224, 211, .24); background: #071114; }
+.art-board-card-wide { grid-column: span 2; }
+.art-board-card img { display: block; width: 100%; height: 100%; min-height: 180px; object-fit: cover; object-position: center; }
+.art-board-card-wide img { aspect-ratio: 16 / 9; }
+.art-board-card:not(.art-board-card-wide) img { aspect-ratio: 4 / 3; }
+.art-board-card figcaption { display: grid; gap: 4px; padding: 11px 12px 13px; }
+.art-board-card strong { color: #f4f1db; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+.art-board-card span { color: #91aaa7; font-size: 11px; line-height: 1.4; }
+.art-board-note { margin: 15px 0 0; padding-top: 13px; border-top: 1px solid rgba(174, 211, 205, .14); color: #9db6b2; font-size: 12px; line-height: 1.5; }
+.art-board-note b { color: #ffdc65; }
+@media (max-width: 880px) {
+  .lab-shell { grid-template-columns: 1fr; }
+  .render-stage-wrap, #renderStage { min-height: 58vh; }
+  .lab-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .control-heading, .stats-panel, .lab-note { grid-column: 1 / -1; }
+  .art-board-heading { align-items: start; flex-direction: column; gap: 10px; }
+  .art-board-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .art-board-card-wide { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .render-lab { padding: 12px; }
+  .lab-header { align-items: stretch; flex-direction: column; }
+  .lab-header .lab-button { width: 100%; }
+  .lab-controls { grid-template-columns: 1fr; padding: 13px; }
+  .control-heading, .stats-panel, .lab-note { grid-column: auto; }
+  .stage-readout { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .art-board { padding: 13px; }
+  .art-board-grid { grid-template-columns: 1fr; }
+  .art-board-card-wide { grid-column: auto; }
+}

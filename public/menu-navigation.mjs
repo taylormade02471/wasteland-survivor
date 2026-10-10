@@ -97,6 +97,23 @@ export function resolveLobbyControllerAction(controller = {}, activeControl = {}
   return null;
 }
 
+export function resolveMenuStickNavigation(move = {}, heldDirection = null, {
+  engageThreshold = 0.65,
+  releaseThreshold = 0.3,
+} = {}) {
+  const x = Number.isFinite(Number(move.x)) ? Number(move.x) : 0;
+  const y = Number.isFinite(Number(move.y)) ? Number(move.y) : 0;
+  const strongest = Math.max(Math.abs(x), Math.abs(y));
+  if (strongest <= releaseThreshold) return { direction: null, heldDirection: null };
+  if (heldDirection) return { direction: null, heldDirection };
+  if (strongest < engageThreshold) return { direction: null, heldDirection: null };
+
+  const direction = Math.abs(x) > Math.abs(y)
+    ? (x < 0 ? "left" : "right")
+    : (y < 0 ? "up" : "down");
+  return { direction, heldDirection: direction };
+}
+
 export function nextLobbySelectIndex(options, selectedIndex, step) {
   const items = Array.from(options || []);
   const direction = Number(step) < 0 ? -1 : 1;
