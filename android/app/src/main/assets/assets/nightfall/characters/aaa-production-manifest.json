@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "nightfall-survivor-aaa-character-pass",
+  "status": "production-specification",
+  "scope": "six survivor characters",
+  "sourceOfTruth": "public/character-models.mjs",
+  "export": {
+    "format": "glb",
+    "gltfVersion": "2.0",
+    "units": "meters",
+    "upAxis": "Y",
+    "forwardAxis": "-Z",
+    "textureColorSpace": "sRGB-albedo-linear-data",
+    "coordinateOrigin": "character root at ground contact",
+    "validation": [
+      "glb-json-2.0",
+      "no-missing-textures",
+      "no-zero-scale-nodes",
+      "single-character-root",
+      "skeleton-bind-pose-roundtrip",
+      "animation-sample-roundtrip",
+      "socket-name-contract",
+      "lod-screen-size-contract",
+      "mobile-budget-report"
+    ]
+  },
+  "sculptAndRetopo": {
+    "highResolutionSculpt": {
+      "target": "8-20 million triangles per character before baking",
+      "deliverables": ["neutral sculpt", "expression sculpt set", "gear separation masks", "damage and wear layers"]
+    },
+    "retopology": {
+      "heroTarget": "70k-110k triangles",
+      "gameplayTarget": "25k-45k triangles",
+      "mobileTarget": "8k-16k triangles",
+      "deformationRules": ["continuous edge loops at shoulders, elbows, knees, hips, jaw", "no non-manifold body surfaces", "uniform texel density by material class"]
+    }
+  },
+  "materials": {
+    "sets": ["skin", "cloth", "armor", "rubber", "metal", "glass", "emissive", "decal"],
+    "pbrChannels": ["baseColor", "normal", "metallicRoughness", "occlusion", "emissive", "heightOptional"],
+    "cinematicTextureTargets": {
+      "hero": "4096px",
+      "gameplay": "2048px",
+      "mobile": "1024px",
+      "minimumMipCount": 4
+    },
+    "requirements": ["authored roughness breakup", "edge-wear mask", "wetness mask", "radioactive grime variation", "no baked lighting in albedo"]
+  },
+  "rig": {
+    "skeleton": "humanoid-nightfall-v1",
+    "skin": { "maxInfluences": 4, "bindPose": "A-pose", "dualQuaternionSafe": true },
+    "requiredBones": ["root", "pelvis", "spine_01", "spine_02", "chest", "neck", "head", "jaw", "clavicle_l", "upperarm_l", "forearm_l", "hand_l", "clavicle_r", "upperarm_r", "forearm_r", "hand_r", "thigh_l", "calf_l", "foot_l", "thigh_r", "calf_r", "foot_r"],
+    "facialRig": {
+      "required": true,
+      "method": "blendshape-or-joint-hybrid",
+      "minimumBlendshapes": ["browUp", "browDown", "eyeBlinkL", "eyeBlinkR", "eyeSquintL", "eyeSquintR", "jawOpen", "mouthSmile", "mouthFrown", "mouthPucker", "lookUp", "lookDown", "lookInL", "lookInR"],
+      "dialogueReady": true
+    }
+  },
+  "sockets": [
+    "leftHandAnchor",
+    "rightHandAnchor",
+    "weaponAnchor",
+    "muzzle",
+    "classAttachmentAnchor",
+    "backpackAnchor",
+    "headAttachmentAnchor",
+    "chestAttachmentAnchor",
+    "hipAttachmentAnchor",
+    "footstepL",
+    "footstepR"
+  ],
+  "animationLibrary": {
+    "source": "motion-capture-retargeted-nightfall-v1",
+    "requiredClips": ["idle", "walk", "run", "sprint", "wade", "jump", "land", "aim", "fire", "fireOverheat", "reload", "weaponSwap", "hitFront", "hitBack", "downed", "revive", "respawn", "interact", "chestOpen", "dialogueIdle", "dialogueGesture"],
+    "requirements": ["root-motion flag per clip", "loop metadata", "left/right foot contact markers", "weapon hand constraint validation", "upper-body additive aim layer", "facial dialogue sync markers"]
+  },
+  "lods": [
+    { "id": "lod0-hero", "triangleRange": "70000-110000", "use": "render-lab-and-cinematic" },
+    { "id": "lod1-gameplay", "triangleRange": "25000-45000", "use": "desktop-gameplay" },
+    { "id": "lod2-mobile", "triangleRange": "8000-16000", "use": "phone-and-android-wrapper" },
+    { "id": "lod3-crowd", "triangleRange": "1500-6000", "use": "distant-players-and-menu-background" }
+  ],
+  "characters": [
+    { "id": "scout", "displayName": "Dust Scout", "currentGlb": "3d/scout-operator-v1.glb", "referenceImage": "index/scout-v1.webp", "productionPackage": "scout-aaa-v1" },
+    { "id": "ranger", "displayName": "Ranger", "currentGlb": "3d/ranger-operator-v1.glb", "referenceImage": "index/ranger-v1.webp", "productionPackage": "ranger-aaa-v1" },
+    { "id": "heavy", "displayName": "Heavy", "currentGlb": "3d/heavy-operator-v1.glb", "referenceImage": "index/heavy-v1.webp", "productionPackage": "heavy-aaa-v1" },
+    { "id": "tech", "displayName": "Tech Runner", "currentGlb": "3d/tech-operator-v1.glb", "referenceImage": "index/tech-runner-v1.webp", "productionPackage": "tech-aaa-v1" },
+    { "id": "medic", "displayName": "Field Medic", "currentGlb": "3d/medic-operator-v1.glb", "referenceImage": "index/field-medic-v1.webp", "productionPackage": "medic-aaa-v1" },
+    { "id": "warden", "displayName": "Warden", "currentGlb": "3d/warden-operator-v1.glb", "referenceImage": "index/warden-v1.webp", "productionPackage": "warden-aaa-v1" }
+  ]
+}
