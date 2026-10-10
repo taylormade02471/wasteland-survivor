@@ -4569,6 +4569,7 @@ $("closeShopBtn").onclick = () => {
 document.querySelectorAll("[data-armory-tab]").forEach(tab => {
   tab.onclick = () => selectArmoryTab(tab.dataset.armoryTab);
 });
+$('loadoutLobbyBtn').onclick = exitToLobby;
 $("loadoutArmoryBtn").onclick = () => { setMenuSection("armory"); selectArmoryTab("weapons"); updateArmory(); ui.shop.classList.remove("hidden"); };
 $("loadoutReadyBtn").onclick = event => {
   ui.shop.classList.add("hidden");
@@ -4703,6 +4704,7 @@ ui.offline.onchange = () => {
   }
 };
 $("enterWastlandBtn").onclick = enterProfile;
+$("mobileEntryBtn").onclick = enterProfile;
 $("termsCancelBtn").onclick = () => $("termsModal").classList.add("hidden");
 $("termsAcceptBtn").onclick = () => {
   if (!$("termsConfirm").checked) {
