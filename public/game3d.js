@@ -3584,7 +3584,7 @@ function voiceRoom() {
 }
 
 function lobbyRoom() {
-  return lobbyRoomOverride || createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
+  return (mode === "teams" && lobbyRoomOverride) || createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
 }
 
 function makeRoomCode() {
