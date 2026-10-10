@@ -39,6 +39,8 @@ canvas { image-rendering: auto; }
 body.menu-active .home-backdrop.is-ready { opacity: .52; }
 /* Keep the cinematic water-walk loop present behind the signed-in lobby. */
 body.lobby-active .home-backdrop.is-ready { opacity: .28; }
+/* The real water-walk clip is the 15-second preparation scene; combat hands off to WebGL. */
+body.countdown-active .home-backdrop.is-ready { opacity: .48; }
 .nightfall-background { position: fixed; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; background: radial-gradient(circle at 70% 28%, #274b55 0, #10191a 36%, #050809 78%); opacity: 1; transition: opacity .7s ease; --menu-camera-x: 0%; --menu-camera-y: 0%; --menu-camera-scale: 1.035; --menu-camera-duration: 520ms; --menu-camera-drift: .55%; --menu-amber-light: .3; --menu-cyan-light: .5; --menu-reflection-opacity: .24; --menu-disturbance: 0; }
 .nightfall-background.nightfall-media-hold { opacity: 1 !important; transition: none; }
 .nightfall-background[data-scene="game"] { opacity: 0; }

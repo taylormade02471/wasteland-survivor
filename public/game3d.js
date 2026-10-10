@@ -1187,6 +1187,7 @@ function spawnMatchBots(plan = activeMatchPlan) {
 }
 
 function start() {
+  document.body.classList.remove("countdown-active");
   pauseMenuBackdrop();
   blue = red = score = kills = scrap = shieldLevel = 0;
   mobileHeat = 0;
@@ -1219,7 +1220,11 @@ function start() {
 
 function beginCountdown(startsAt = Date.now() + 15000) {
   document.body.classList.remove("loadout-active");
-  pauseMenuBackdrop();
+  document.body.classList.add("countdown-active");
+  nightfallBackground.classList.remove("nightfall-media-hold");
+  if (homeBackdrop.dataset.mediaKind !== "fallback") {
+    homeBackdrop.play().catch(() => retainNightfallFallback("countdown-autoplay-failed"));
+  }
   const countdownState = resolveMatchCountdown(startsAt);
   phase = "countdown";
   countdown = countdownState.secondsRemaining;
@@ -1278,6 +1283,7 @@ function applyMatchLifecycleMessage(message = {}) {
 }
 
 function nextCombat() {
+  document.body.classList.remove("countdown-active");
   pauseMenuBackdrop();
   phase = "combat";
   setNightfallScene("game");
