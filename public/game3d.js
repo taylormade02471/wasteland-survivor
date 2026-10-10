@@ -4202,6 +4202,12 @@ canvas.addEventListener("pointermove", event => {
     setInputMode("mouse");
     if (localGameplayInputPaused()) return;
     if (frontView && phase === "combat" && !menuOpen) {
+      const canvasRect = canvas.getBoundingClientRect();
+      virtualMouseLook = virtualMouseLookFromPoint(event, canvasRect);
+      virtualMouseLook = advanceVirtualMouseLook(virtualMouseLook, event, {
+        width: canvasRect.width || canvas.clientWidth,
+        height: canvasRect.height || canvas.clientHeight,
+      });
       viewYaw -= event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }

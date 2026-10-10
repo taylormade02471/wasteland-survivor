@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $SourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
-$AndroidRoot = (Resolve-Path -LiteralPath $AndroidRoot).Path
+$AndroidRoot = (New-Item -ItemType Directory -Force -Path $AndroidRoot).FullName
 $OverrideRoot = (Resolve-Path -LiteralPath $OverrideRoot).Path
 
 Get-ChildItem -LiteralPath $AndroidRoot -Force | Remove-Item -Recurse -Force

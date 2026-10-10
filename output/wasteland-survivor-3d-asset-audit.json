@@ -1,0 +1,487 @@
+{
+  "reportVersion": 1,
+  "generatedAt": "2026-10-10T00:33:06.053Z",
+  "scope": "gameplay 3D model and reference coverage",
+  "counts": {
+    "survivorModels": 6,
+    "enemyModels": 8,
+    "weaponModels": 6,
+    "obstacleModels": 7,
+    "supplyStations": 2,
+    "tacticalModels": 3,
+    "sharedChests": 1,
+    "armorIntegratedSets": 6,
+    "mapPresets": 4
+  },
+  "assetFamilies": {
+    "characters": [
+      {
+        "id": "scout",
+        "category": "survivor",
+        "displayName": "Dust Scout",
+        "sourceType": "authored-glb",
+        "modelAsset": "./assets/nightfall/characters/3d/scout-operator-v1.glb",
+        "referenceImage": "./assets/nightfall/characters/index/scout-v1.webp",
+        "required": [
+          "./assets/nightfall/characters/3d/scout-operator-v1.glb",
+          "./assets/nightfall/characters/index/scout-v1.webp",
+          "./assets/nightfall/characters/renders/scout-v2-isolated.png"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "ranger",
+        "category": "survivor",
+        "displayName": "Ranger",
+        "sourceType": "authored-glb",
+        "modelAsset": "./assets/nightfall/characters/3d/ranger-operator-v1.glb",
+        "referenceImage": "./assets/nightfall/characters/index/ranger-v1.webp",
+        "required": [
+          "./assets/nightfall/characters/3d/ranger-operator-v1.glb",
+          "./assets/nightfall/characters/index/ranger-v1.webp",
+          "./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "heavy",
+        "category": "survivor",
+        "displayName": "Heavy",
+        "sourceType": "authored-glb",
+        "modelAsset": "./assets/nightfall/characters/3d/heavy-operator-v1.glb",
+        "referenceImage": "./assets/nightfall/characters/index/heavy-v1.webp",
+        "required": [
+          "./assets/nightfall/characters/3d/heavy-operator-v1.glb",
+          "./assets/nightfall/characters/index/heavy-v1.webp",
+          "./assets/nightfall/characters/renders/heavy-v2-isolated.png"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "tech",
+        "category": "survivor",
+        "displayName": "Tech Runner",
+        "sourceType": "authored-glb",
+        "modelAsset": "./assets/nightfall/characters/3d/tech-operator-v1.glb",
+        "referenceImage": "./assets/nightfall/characters/index/tech-runner-v1.webp",
+        "required": [
+          "./assets/nightfall/characters/3d/tech-operator-v1.glb",
+          "./assets/nightfall/characters/index/tech-runner-v1.webp",
+          "./assets/nightfall/characters/renders/tech-runner-v2-isolated.png"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "medic",
+        "category": "survivor",
+        "displayName": "Field Medic",
+        "sourceType": "authored-glb",
+        "modelAsset": "./assets/nightfall/characters/3d/medic-operator-v1.glb",
+        "referenceImage": "./assets/nightfall/characters/index/field-medic-v1.webp",
+        "required": [
+          "./assets/nightfall/characters/3d/medic-operator-v1.glb",
+          "./assets/nightfall/characters/index/field-medic-v1.webp",
+          "./assets/nightfall/characters/renders/field-medic-v2-isolated.png"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "warden",
+        "category": "survivor",
+        "displayName": "Warden",
+        "sourceType": "authored-glb",
+        "modelAsset": "./assets/nightfall/characters/3d/warden-operator-v1.glb",
+        "referenceImage": "./assets/nightfall/characters/index/warden-v1.webp",
+        "required": [
+          "./assets/nightfall/characters/3d/warden-operator-v1.glb",
+          "./assets/nightfall/characters/index/warden-v1.webp",
+          "./assets/nightfall/characters/renders/warden-v2-isolated.png"
+        ],
+        "missing": [],
+        "status": "ready"
+      }
+    ],
+    "enemies": [
+      {
+        "id": "rusher",
+        "category": "enemy",
+        "displayName": "Rad Rusher",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/rusher-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/rusher-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "shooter",
+        "category": "enemy",
+        "displayName": "Fallout Shooter",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/shooter-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/shooter-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "sniper",
+        "category": "enemy",
+        "displayName": "Waste Sniper",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/sniper-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/sniper-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "shield",
+        "category": "enemy",
+        "displayName": "Crystal Shield Brute",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/shield-brute-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/shield-brute-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "heavy",
+        "category": "enemy",
+        "displayName": "Irradiated Heavy",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/heavy-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/heavy-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "drone",
+        "category": "enemy",
+        "displayName": "Contaminated Drone",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/drone-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/drone-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "mutant",
+        "category": "enemy",
+        "displayName": "Toxic Mutant",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/mutant-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/mutant-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      },
+      {
+        "id": "boss",
+        "category": "enemy",
+        "displayName": "The Left-Behind",
+        "sourceType": "dedicated-procedural-mutated-mesh",
+        "referenceImage": "./assets/nightfall/enemies/index/boss-v1.webp",
+        "required": [
+          "./assets/nightfall/enemies/index/boss-v1.webp"
+        ],
+        "missing": [],
+        "status": "ready"
+      }
+    ],
+    "weapons": [
+      {
+        "id": "pulse-pistol",
+        "category": "weapon",
+        "displayName": "Pulse Pistol",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "compact-smg",
+        "category": "weapon",
+        "displayName": "Compact SMG",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "ranger-rifle",
+        "category": "weapon",
+        "displayName": "Ranger Rifle",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "riot-shotgun",
+        "category": "weapon",
+        "displayName": "Riot Shotgun",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "drum-lmg",
+        "category": "weapon",
+        "displayName": "Drum LMG",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "coil-carbine",
+        "category": "weapon",
+        "displayName": "Coil Carbine",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      }
+    ],
+    "environments": [
+      {
+        "id": "barricade",
+        "category": "obstacle",
+        "displayName": "Scrap Barricade",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "ruined-wall",
+        "category": "obstacle",
+        "displayName": "Ruined Wall",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "vehicle-shell",
+        "category": "obstacle",
+        "displayName": "Vehicle Shell",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "toxic-barrel-cluster",
+        "category": "obstacle",
+        "displayName": "Toxic Barrel Cluster",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "ice-boulder",
+        "category": "obstacle",
+        "displayName": "Ice Boulder",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "lava-vent",
+        "category": "obstacle",
+        "displayName": "Lava Vent",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "flooded-debris",
+        "category": "obstacle",
+        "displayName": "Flooded Debris",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      }
+    ],
+    "supplies": [
+      {
+        "id": "gun-upgrade-station",
+        "category": "supply",
+        "displayName": "Weapon Upgrade Station",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "ammunition-supply-crate",
+        "category": "supply",
+        "displayName": "Ammunition Supply Crate",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      }
+    ],
+    "tactical": [
+      {
+        "id": "frag",
+        "category": "tactical",
+        "displayName": "Fragmentation Grenade",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "flash",
+        "category": "tactical",
+        "displayName": "Flash Charge",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      },
+      {
+        "id": "stim",
+        "category": "tactical",
+        "displayName": "Stim Injector",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      }
+    ],
+    "chest": [
+      {
+        "id": "upgrade-chest",
+        "category": "shared-chest",
+        "displayName": "Shared Upgrade Chest",
+        "sourceType": "procedural-runtime-mesh",
+        "status": "ready",
+        "missing": [],
+        "required": []
+      }
+    ]
+  },
+  "maps": [
+    {
+      "id": "wasteland",
+      "bounds": {
+        "radius": 112,
+        "width": 210,
+        "depth": 210
+      },
+      "obstacles": {
+        "min": 18,
+        "max": 24
+      },
+      "status": "ready"
+    },
+    {
+      "id": "toxic-pond",
+      "bounds": {
+        "radius": 124,
+        "width": 220,
+        "depth": 230
+      },
+      "obstacles": {
+        "min": 16,
+        "max": 22
+      },
+      "status": "ready"
+    },
+    {
+      "id": "icy-mountain",
+      "bounds": {
+        "radius": 118,
+        "width": 206,
+        "depth": 232
+      },
+      "obstacles": {
+        "min": 17,
+        "max": 23
+      },
+      "status": "ready"
+    },
+    {
+      "id": "fiery-inferno",
+      "bounds": {
+        "radius": 120,
+        "width": 218,
+        "depth": 218
+      },
+      "obstacles": {
+        "min": 15,
+        "max": 21
+      },
+      "status": "ready"
+    }
+  ],
+  "renderLab": {
+    "status": "ready",
+    "families": [
+      "character",
+      "enemy",
+      "weapon",
+      "environment",
+      "supply",
+      "tactical",
+      "chest"
+    ],
+    "bundledLocalOnly": true
+  },
+  "gameplayIntegration": {
+    "dedicatedEnemyFactoryImported": true,
+    "enemySpawnPassesType": true,
+    "enemyConceptReferencesBundled": true,
+    "armorIntegratedIntoSurvivorRigs": true,
+    "tacticalModelsInspectable": true
+  },
+  "androidBundle": {
+    "exists": true,
+    "syncedFiles": [
+      "enemy-models.mjs",
+      "game3d.js",
+      "render-lab.js",
+      "render-lab.html"
+    ]
+  },
+  "summary": {
+    "totalTrackedAssets": 33,
+    "readyAssets": 33,
+    "missingAssets": [],
+    "proceduralFamilies": [
+      "weapons",
+      "environments",
+      "supplies",
+      "chest"
+    ],
+    "authoredFamilies": [
+      "characters"
+    ],
+    "dedicatedEnemyFamily": "enemies"
+  }
+}

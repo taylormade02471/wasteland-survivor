@@ -1,0 +1,36 @@
+/* Android-only presentation overrides. The web application keeps its approved
+   layout in public/style.css; this file is added only to the packaged APK. */
+#aimStick,
+#touchLockBtn,
+#touchAdsBtn,
+#touchWeaponBtn,
+#touchInteractBtn { display: none; }
+.touch-aim-cluster { display: none; }
+.touch-primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.touch-primary-actions .primary-action { grid-column: auto; min-height: 44px; font-size: 9px; opacity: .92; }
+.android-app #touchUtilityTray { display: none !important; }
+.android-app .touch-primary-actions { grid-template-columns: repeat(2, minmax(58px, 1fr)); }
+.android-app .touch-primary-actions button { min-height: 46px; }
+
+@media (pointer: coarse) and (orientation: landscape) {
+  .profile-step > .full-button { display: none; }
+  .profile-step > .text-button { bottom: max(10px, env(safe-area-inset-bottom)); min-height: 38px; background: rgba(5,12,15,.94); }
+  #returnStep { padding-bottom: 86px; }
+  #returnStep > .full-button { display: block; bottom: max(10px, env(safe-area-inset-bottom)); }
+  #returnStep > .text-button { position: static; width: 100%; margin-top: 7px; }
+  .mobile-entry-dock { position: fixed; left: max(18px, env(safe-area-inset-left)); right: max(18px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); z-index: 55; display: none; min-height: 54px; border: 1px solid #ffdf52; background: linear-gradient(90deg, #b74f32, #d47a3b); color: #fff8e6; box-shadow: 0 8px 28px rgba(0,0,0,.6); font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+  body.mobile-profile-ready .mobile-entry-dock { display: block; }
+  body:has(#returnStep:not(.hidden)) .mobile-entry-dock,
+  body:has(#linkProfileStep:not(.hidden)) .mobile-entry-dock,
+  body:has(#phoneCodeStep:not(.hidden)) .mobile-entry-dock { display: none; }
+
+  .game-menu { overflow-y: auto; align-items: start; padding: max(18px, env(safe-area-inset-top)) 12px max(18px, env(safe-area-inset-bottom)); }
+  .game-menu-panel { width: min(760px, calc(100% - 4px)); max-height: calc(100dvh - max(36px, env(safe-area-inset-top) + env(safe-area-inset-bottom) + 18px)); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 18px; }
+  .game-menu-actions { padding-bottom: 4px; }
+
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 700px) {
+  .android-app .touch-action-zone { width: min(196px, 48vw); }
+  .android-app .touch-primary-actions { gap: 6px; }
+}

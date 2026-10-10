@@ -1,0 +1,435 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Wasteland Survivor</title>
+  <meta name="theme-color" content="#090d10" />
+  <meta property="og:title" content="Wasteland Survivor" />
+  <meta property="og:image" content="assets/nightfall/thumbnails/wasteland-survivor-share-v1.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Wasteland Survivor" />
+  <meta name="twitter:image" content="assets/nightfall/thumbnails/wasteland-survivor-share-v1.png" />
+  <link rel="icon" href="assets/nightfall/icons/icon-512-v1.png" />
+  <link rel="apple-touch-icon" href="assets/nightfall/icons/icon-512-v1.png" />
+  <link rel="manifest" href="site.webmanifest" />
+  <link rel="stylesheet" href="style.css" /><link rel="stylesheet" href="android-platform.css" />
+  <link rel="stylesheet" href="graphics-qa.css" />
+</head>
+<body>
+  <canvas id="game" aria-label="Wasteland Survivor battlefield"></canvas>
+  <div id="aimReticle" class="aim-reticle" aria-hidden="true"><i></i><b></b></div>
+  <aside id="controllerDebug" class="controller-debug hidden" aria-live="polite"><b>CONTROLLER DEBUG</b><span id="debugPadName">No controller detected</span><span id="debugAxes">LX 0.00 Â· LY 0.00 Â· RX 0.00 Â· RY 0.00</span><span id="debugButtons">Buttons: none</span><span id="debugAction">Action: waiting</span></aside>
+  <div id="nightfallBackground" aria-hidden="true"></div>
+  <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline preload="auto" poster="./assets/nightfall/backgrounds/nightfall-loading-v1.webp" aria-hidden="true">
+    <source src="./assets/nightfall/video/nightfall-water-walk-v1.mp4" type="video/mp4" />
+  </video>
+  <audio id="bundledMusic" class="bundled-music" preload="auto" loop src="./assets/nightfall/audio/nightfall-ambient-v1.mp3" aria-hidden="true"></audio>
+  <div id="matchCountdown" class="match-countdown hidden"><span id="countdownLabel">ENTERING NIGHTFALL</span><b id="countdownNumber">15</b></div>
+  <aside id="inputRecoveryNotice" class="input-recovery-notice hidden" role="status" aria-live="assertive" aria-atomic="true">
+    <div class="input-recovery-panel">
+      <span>LOCAL INPUT SAFETY</span>
+      <strong id="inputRecoveryTitle">AIMING PAUSED</strong>
+      <p id="inputRecoveryText">Click the battlefield to resume mouse aim.</p>
+    </div>
+  </aside>
+
+  <section id="controlsTourModal" class="controls-tour-modal hidden" role="dialog" aria-labelledby="controlsTourTitle" aria-describedby="controlsTourInstruction">
+    <div class="controls-tour-card">
+      <p class="eyebrow">Safe Training // No Damage</p>
+      <div class="controls-tour-heading"><div><h2 id="controlsTourTitle">Controls Check</h2><span id="controlsTourFamily">Keyboard and mouse</span></div><b id="controlsTourProgress">1 / 5</b></div>
+      <ol id="controlsTourSteps" aria-live="polite"></ol>
+      <p id="controlsTourInstruction" class="controls-tour-instruction">Use the highlighted control to continue.</p>
+      <button id="closeControlsTourBtn" class="text-button hidden" type="button">Close Practice</button>
+    </div>
+  </section>
+
+  <aside id="controlsMiniTourOffer" class="controls-mini-tour hidden" role="status">
+    <div><b>New controls detected</b><small id="controlsMiniTourText">Practice this input without leaving the match.</small></div>
+    <button id="startControlsMiniTourBtn" type="button">Practice</button>
+    <button id="dismissControlsMiniTourBtn" type="button" aria-label="Dismiss controls practice">&#10005;</button>
+  </aside>
+
+  <section id="welcomeScreen" class="welcome-screen">
+    <button id="profileBackBtn" class="screen-back-button screen-back-control" type="button" aria-label="Back to saved profiles">&#8592; Back</button>
+    <div class="welcome-panel">
+      <header class="title-hero">
+        <img class="title-cover-art" src="./assets/nightfall/backgrounds/nightfall-six-survivors-v2.png" alt="" aria-hidden="true" />
+        <div class="title-hero-copy">
+          <p class="nightfall-crown">Nightfall</p>
+          <div class="survivor-title-plate"><h1>Wasteland Survivor</h1></div>
+          <p class="hero-tagline">No one is coming. Hold the line.</p>
+          <p class="welcome-copy">Build your survivor profile with a name, birthday, and local PIN, then enter the lobby.</p>
+        </div>
+        <div class="title-survivor" aria-hidden="true">
+          <span class="title-survivor-glow"></span>
+          <img src="./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" alt="" />
+          <b>RANGER // 02</b>
+        </div>
+        <div class="menu-joystick-rail menu-joystick-left" aria-hidden="true"><span>LEFT STICK</span><i></i><small>MOVE</small></div>
+        <div class="menu-joystick-rail menu-joystick-right" aria-hidden="true"><span>RIGHT STICK</span><i></i><small>LOOK</small></div>
+      </header>
+      <div id="profileStep" class="profile-step">
+        <label for="profileName">Player name <input id="profileName" type="text" maxlength="24" autocomplete="nickname" placeholder="Survivor name" /></label>
+        <label for="profileBirthDate">Date of birth <input id="profileBirthDate" type="date" autocomplete="bday" /></label>
+        <fieldset class="avatar-picker">
+          <legend>Choose your survivor</legend>
+          <div class="avatar-selection-grid">
+            <button class="avatar-choice selected" type="button" data-avatar="scout"><img src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Dust Scout"><span><b>Dust Scout</b><small>Scout Blaster Â· Fleet Foot</small><em>Ability: Dash</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="ranger"><img src="./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" alt="Ranger"><span><b>Ranger</b><small>Scout Blaster Â· Steady Aim</small><em>Ability: Focus Lock</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="heavy"><img src="./assets/nightfall/characters/renders/heavy-v2-isolated.png" alt="Heavy"><span><b>Heavy</b><small>Breach Cannon Â· Reinforced</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="tech"><img src="./assets/nightfall/characters/renders/tech-runner-v2-isolated.png" alt="Tech Runner"><span><b>Tech Runner</b><small>Inferno Repeater Â· Extra Scrap</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="medic"><img src="./assets/nightfall/characters/renders/field-medic-v2-isolated.png" alt="Field Medic"><span><b>Field Medic</b><small>Scout Blaster Â· Recovery Kit</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="warden"><img src="./assets/nightfall/characters/renders/warden-v2-isolated.png" alt="Warden"><span><b>Warden</b><small>Breach Cannon Â· Fortified</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
+          </div>
+        </fieldset>
+        <label class="avatar-select-fallback" for="profileAvatar">Selected survivor <select id="profileAvatar"><option value="scout">Dust Scout</option><option value="ranger">Ranger</option><option value="heavy">Heavy</option><option value="tech">Tech Runner</option><option value="medic">Field Medic</option><option value="warden">Warden</option></select></label>
+        <label for="profilePin">Create a 4-digit PIN <input id="profilePin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="â€¢â€¢â€¢â€¢" /></label>
+        <label class="consent-line" for="ageConfirm"><input id="ageConfirm" type="checkbox" /> I confirm this birth date is accurate.</label>
+        <div id="parentSetup" class="parent-setup hidden">
+          <b>Parent controls required</b>
+          <small>Players under 14 start with voice and online-network features restricted.</small>
+          <label for="parentPin">Parent 4-digit PIN <input id="parentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="â€¢â€¢â€¢â€¢" /></label>
+        </div>
+        <button id="enterWastlandBtn" class="full-button" type="button">Enter Wasteland</button>
+        <button id="guestOfflineBtn" class="text-button" type="button">Play offline as guest</button>
+        <p id="profileMessage" class="form-message" role="status"></p>
+      </div>
+      <button id="mobileEntryBtn" class="mobile-entry-dock" type="button">Enter Wasteland</button>
+      <div id="returnStep" class="profile-step hidden">
+        <p id="returningPlayer" class="returning-player"></p>
+        <label for="profileSelector">Saved player <select id="profileSelector"></select></label>
+        <label for="returnPin">4-digit PIN <input id="returnPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="â€¢â€¢â€¢â€¢" /></label>
+        <button id="returnWastlandBtn" class="full-button" type="button">Continue</button>
+        <button id="storyGuestBtn" class="text-button" type="button">Play Story Survival Offline</button>
+        <button id="newProfileBtn" class="text-button" type="button">Use a different profile</button>
+        <p id="returnMessage" class="form-message" role="status"></p>
+      </div>
+    </div>
+  </section>
+  <section id="termsModal" class="terms-modal hidden" role="dialog" aria-modal="true" aria-labelledby="termsTitle" aria-describedby="termsBody">
+    <div class="terms-card">
+      <p class="eyebrow">Profile setup // Terms review</p>
+      <h2 id="termsTitle">Wasteland Survivor Terms</h2>
+      <p id="termsBody">This is a fictional action game with combat, weapons, and intense scenes. You agree to play responsibly and understand that the game is not responsible for actions taken outside the game or for misuse of its fictional content, including excessively violent actions.</p>
+      <p class="terms-window">This acceptance remains valid for 2 hours on this device, then the terms review appears again.</p>
+      <label class="consent-line" for="termsConfirm"><input id="termsConfirm" type="checkbox" /> I have read and accept these terms.</label>
+      <div class="terms-actions"><button id="termsCancelBtn" class="text-button" type="button">Cancel</button><button id="termsAcceptBtn" class="full-button" type="button">Accept and continue</button></div>
+    </div>
+  </section>
+
+  <section id="lobbyScreen" class="welcome-screen hidden">
+    <img id="lobbyBackdropArt" class="lobby-backdrop-art" src="./assets/nightfall/backgrounds/nightfall-lobby-squad-v1.png" alt="" aria-hidden="true">
+    <button id="lobbyBackBtn" data-lobby-control class="screen-back-button screen-back-control" type="button" aria-label="Back to profile selection">&#8592; Back</button>
+    <header class="lobby-title-plate">
+      <p class="eyebrow">Nightfall Operations</p>
+      <h1>Choose Your Fight</h1>
+      <p id="lobbyPlayer" class="welcome-copy"></p>
+      <p id="replayStatus" class="replay-status">Nightfall feed ready.</p>
+    </header>
+    <section class="lobby-survivor-hero" aria-label="Active survivor">
+      <button id="lobbyAvatarButton" data-lobby-control class="lobby-avatar-button" type="button" aria-controls="dashboardModal">
+        <span class="lobby-avatar-glow" aria-hidden="true"></span>
+        <img id="lobbyAvatarImage" class="lobby-avatar-image" src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Dust Scout">
+        <span class="lobby-avatar-action">Open loadout</span>
+      </button>
+      <button id="lobbyProfileReadout" data-lobby-control class="lobby-profile-readout" type="button" aria-controls="dashboardModal">
+        <span class="lobby-identity-line"><strong id="lobbyProfileName">Survivor</strong><em id="lobbyOnlineState">Local / Offline</em></span>
+        <span id="lobbyPlayerTag" class="lobby-player-tag">TAG UNAVAILABLE</span>
+        <span class="lobby-level-line"><b>LV <i id="lobbyLevel">1</i></b><span id="lobbyXpText">0 / 500 XP</span></span>
+        <span class="lobby-xp-track" aria-hidden="true"><i id="lobbyXpBar"></i></span>
+        <span class="lobby-readout-grid">
+          <span><small>Class</small><b id="lobbyClass">Scout</b></span>
+          <span><small>Skill</small><b id="lobbySkill">Light Footed</b></span>
+          <span><small>Ability</small><b id="lobbyAbility">Dash</b></span>
+          <span><small>Weapon</small><b id="lobbyWeapon">Scout L0</b></span>
+          <span><small>Shield</small><b id="lobbyShield">Unreinforced</b></span>
+        </span>
+      </button>
+    </section>
+    <nav id="lobbyNavigation" aria-label="Lobby commands">
+      <div id="fightCommands" class="floating-command-field" aria-label="Fight modes">
+        <button id="survivalLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Survival Mode</b><small>Enter the all-out story survival timeline.</small></button>
+        <button id="teamLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="teamSizeChoices"><b>Multiplayer</b><small>Choose an online 1v1, 2v2, or 3v3 room.</small></button>
+        <button id="ctf6LobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="ctfPlayerChoices"><b>Capture the Flag</b><small>Choose a four-player or six-player flag match.</small></button>
+      </div>
+      <button id="onlineSurvivalBtn" data-lobby-control class="floating-command hidden" type="button"><b>Online Survival Pair</b><small>Legacy online survival route.</small></button>
+      <div id="teamSizeChoices" class="team-size-choices hidden" aria-label="Multiplayer team size">
+        <button id="teamSize1Btn" data-lobby-control class="floating-command team-size-choice" type="button" data-team-size="1"><b>1v1</b><small>2 seats</small></button>
+        <button id="teamSize2Btn" data-lobby-control class="floating-command team-size-choice" type="button" data-team-size="2"><b>2v2</b><small>4 seats</small></button>
+        <button id="teamSize3Btn" data-lobby-control class="floating-command team-size-choice" type="button" data-team-size="3"><b>3v3</b><small>6 seats</small></button>
+      </div>
+      <div id="ctfPlayerChoices" class="ctf-player-choices hidden" aria-label="Capture the Flag player count">
+        <button id="ctf4PlayersLobbyBtn" data-lobby-control class="floating-command ctf-player-choice" type="button" data-lobby-ctf-players="4"><b>4 Players</b><small>Fast squad match</small></button>
+        <button id="ctf6PlayersLobbyBtn" data-lobby-control class="floating-command ctf-player-choice" type="button" data-lobby-ctf-players="6"><b>6 Players</b><small>Full field match</small></button>
+      </div>
+      <div class="lobby-edge-controls" aria-label="Profile and system actions">
+        <button id="dashboardBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Loadout</button>
+        <button id="editProfileBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Profile</button>
+        <button id="lobbyConnectionsBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Connections</button>
+        <button id="renderLabBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">3D Render Lab</button>
+        <button id="lobbySettingsBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Settings</button>
+        <button id="signOutProfileBtn" data-lobby-control class="floating-command floating-command-secondary lobby-edge-action" type="button">Switch Profile</button>
+      </div>
+      <details id="lobbyGameOptions" class="lobby-game-options">
+        <summary id="lobbyGameOptionsSummary" data-lobby-control>Game Options</summary>
+        <div class="lobby-settings-row">
+          <label for="botTeamSize">Team size <select id="botTeamSize" data-lobby-control><option value="1">1v1</option><option value="2" selected>2v2</option><option value="3">3v3</option></select></label>
+          <label for="botDifficulty">Difficulty <select id="botDifficulty" data-lobby-control><option value="0.10">Easy</option><option value="0.22" selected>Medium</option><option value="0.35">Expert</option><option value="0.75">Insane</option></select></label>
+          <label for="storyMapSelect">Map <select id="storyMapSelect" data-lobby-control><option value="wasteland">Wasteland</option><option value="toxic">Toxic Ponds</option><option value="ice">Icy Mountain</option><option value="inferno">Fire Inferno</option></select></label>
+          <label for="riskLevel">Risk and reward <select id="riskLevel" data-lobby-control><option value="protected">Protected</option><option value="standard" selected>Standard</option><option value="high">High Risk</option></select></label>
+        </div>
+        <p id="riskPreview" class="risk-preview"></p>
+      </details>
+    </nav>
+  </section>
+
+  <section id="hud">
+    <aside id="combatRail" aria-label="Combat status">
+      <div class="brand">WASTELAND SURVIVOR</div>
+      <div class="meters">
+        <label>HP <span id="hpText">100</span></label>
+        <div class="bar"><i id="hpBar"></i></div>
+        <label>Shield <span id="shieldText">0</span></label>
+        <div class="bar shield"><i id="shieldBar"></i></div>
+        <label>Heat <span id="heatText">0</span></label>
+        <div class="bar heat"><i id="heatBar"></i></div>
+      </div>
+      <div class="hud-readout hud-ammo"><span>AMMO</span><b id="ammoText">30 / 30</b></div>
+      <div class="hud-readout hud-ability"><span id="abilityText">DASH READY</span><div class="bar"><i id="abilityBar"></i></div></div>
+      <div class="hud-team">
+        <span id="teamText">SOLO OPERATION</span>
+        <b id="teamName" class="hud-text-ellipsis">UNKNOWN OPERATOR</b>
+        <div class="bar"><i id="teamHealthBar"></i></div>
+        <small id="teamHealthText">100%</small>
+      </div>
+      <div class="stats">
+        <span>Scrap <b id="scrapText">0</b></span>
+        <span>Kills <b id="killsText">0</b></span>
+        <span>Wave <b id="waveText">1</b></span>
+        <span id="weaponText">Scout L0</span>
+        <span>Level <b id="levelText">1</b></span>
+        <span>Stage <b id="stageText">1</b></span>
+      </div>
+    </aside>
+    <section id="objectiveRail" aria-label="Mission objective">
+      <div class="match-strip">
+        <span id="mapText">WASTELAND</span><span id="explorationText">EXPLORE 0/14</span><span id="phaseText">COMBAT</span><span id="timerText">01:00</span><span id="chapterText">Chapter 1: First Watch</span><span id="missionText">Mission: Survive the cycle</span>
+        <span class="blue">BLUE <b id="blueScore">0</b></span><span class="red">RED <b id="redScore">0</b></span>
+      </div>
+      <p id="objectiveText" class="hud-text-ellipsis">Survive the cycle</p>
+    </section>
+    <div id="combatFeedback" class="combat-feedback hidden" role="status" aria-live="polite"></div>
+  </section>
+
+  <aside id="discoveryToast" class="discovery-toast hidden" role="status" aria-live="polite" aria-atomic="true">
+    <b id="discoveryTitle">Location Discovered</b>
+    <span id="discoveryReward">+0 SCORE / +0 SCRAP</span>
+  </aside>
+
+  <div id="topRightMenu">
+    <button id="menuToggle" type="button">Menu</button>
+  </div>
+
+  <section id="gameMenu" class="game-menu hidden" aria-label="In-game menu">
+    <div class="game-menu-panel">
+      <div class="desktop-game-header"><span>WASTELAND SURVIVOR</span><small id="menuMatchStatus">MATCH ACTIVE</small></div>
+      <label class="mobile-menu-label" for="mobileMenuSelect">Game options</label>
+      <select id="mobileMenuSelect" class="mobile-menu-select">
+        <option value="resume">Resume game</option>
+        <option value="settings">Settings</option>
+        <option value="front">Front view</option>
+        <option value="lobby">Return to lobby</option>
+      </select>
+      <div class="game-menu-match-controls" aria-label="Match setup">
+        <div class="mode-control"><button id="soloMode" type="button" class="active">Solo</button><button id="teamMode" type="button">2v2</button><button id="ctfMode" type="button">CTF</button></div>
+        <div id="ctfPlayerControl" class="mode-control hidden"><button data-ctf-players="4" type="button" class="active">4 Players</button><button data-ctf-players="6" type="button">6 Players</button></div>
+        <div class="map-control"><button data-map="wasteland" type="button" class="active">Wasteland</button><button data-map="toxic" type="button">Toxic</button><button data-map="ice" type="button">Ice</button><button data-map="inferno" type="button">Inferno</button></div>
+      </div>
+      <div class="game-menu-actions">
+        <button id="resumeGameBtn" type="button">Back to Game</button>
+        <button id="frontViewBtn" type="button">Arena View</button>
+        <button id="openShopBtn" type="button">Armory</button>
+        <button id="menuSettingsBtn" type="button">Settings</button>
+        <button id="settingsBtn" class="hidden" type="button" aria-hidden="true">Settings</button>
+        <button id="saveExitStoryBtn" class="hidden" type="button">Save Story &amp; Exit</button>
+        <button id="exitGameBtn" class="danger-button" type="button">Exit to Lobby</button>
+      </div>
+      <p id="graceStatus" class="grace-status hidden">Control reconnecting: <b>3</b></p>
+    </div>
+  </section>
+
+  <div id="chestLocator" class="chest-locator hidden"><b>SUPPLY</b><span id="chestDirection">N Â· 0m</span></div>
+  <div id="chestPrompt" class="chest-prompt hidden"><b>SHARED SUPPLY CHEST</b><span id="chestOccupancy">Access slots: 0/2</span><span>Prep phase ends in <i id="prepTimer">01:00</i></span><button id="openChestBtn" type="button">Access Chest</button></div>
+
+  <section id="loadoutRoomModal" class="modal hidden" aria-label="Pre-match loadout room">
+    <div class="modal-card loadout-room-card">
+      <p class="eyebrow">Match Room</p>
+      <h2>Final Loadout</h2>
+      <p>Players are assembling. This is your final arsenal change before Round 1.</p>
+      <div class="loadout-room-status"><span id="loadoutMode">SURVIVAL</span><span id="loadoutMap">WASTELAND</span><span>ROUND 1</span></div>
+      <div class="loadout-room-actions"><button id="loadoutArmoryBtn" type="button">Edit Arsenal</button><button id="loadoutReadyBtn" class="full-button" type="button">Ready For Nightfall</button></div>
+    </div>
+  </section>
+
+  <section id="shopModal" class="modal hidden" aria-label="Wasteland Armory">
+    <div class="modal-card">
+      <p class="eyebrow">Wasteland Survivor</p>
+      <h2>Scavenger Armory</h2>
+      <div class="armory-overview">
+        <div class="armory-avatar">
+          <img id="armoryAvatarImage" src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Selected survivor">
+          <div><small>Selected survivor</small><b id="armoryAvatarName">Dust Scout</b><span id="armoryAvatarSkill">Fast movement</span></div>
+        </div>
+        <div class="armory-resource-grid" aria-label="Current supplies">
+          <div><small>Scrap</small><b id="armoryScrap">0</b></div>
+          <div><small>Ammo</small><b id="armoryAmmo">0 / 0</b></div>
+          <div><small>Armor</small><b id="armoryArmor">0 / 0</b></div>
+        </div>
+      </div>
+      <div class="armory-tabs" role="tablist" aria-label="Armory filters">
+        <button class="armory-tab active" type="button" role="tab" aria-selected="true" data-armory-tab="weapons">Weapons</button>
+        <button class="armory-tab" type="button" role="tab" aria-selected="false" data-armory-tab="protection">Ammo &amp; Armor</button>
+        <button class="armory-tab" type="button" role="tab" aria-selected="false" data-armory-tab="tactical">Tactical</button>
+      </div>
+      <div class="armory-folder" data-armory-folder="weapons" role="tabpanel">
+        <div class="shop-item">
+        <div><b>Scout Blaster <span id="scoutLevel">L0</span></b><small>Fast, low-power fire. Upgrade track unlocks at 3 kills. Pierces after level 25.</small></div>
+        <div class="shop-actions"><button id="equipScoutBtn" type="button">Equip</button><button id="upgradeScoutBtn" type="button">12 scrap</button></div>
+        </div>
+        <div class="shop-item">
+        <div><b>Breach Cannon <span id="cannonLevel">L0</span></b><small>Unlocks at 6 kills. Slow, piercing shots with extra barrels at 50, 75, and 100.</small></div>
+        <div class="shop-actions"><button id="equipCannonBtn" type="button">Equip</button><button id="upgradeCannonBtn" type="button">28 scrap</button></div>
+        </div>
+        <div class="shop-item">
+        <div><b>Inferno Repeater <span id="infernoLevel">L0</span></b><small>Unlocks at 9 kills. Harder-hitting piercing fire, max level 50.</small></div>
+        <div class="shop-actions"><button id="equipInfernoBtn" type="button">Equip</button><button id="upgradeInfernoBtn" type="button">42 scrap</button></div>
+        </div>
+      </div>
+      <div class="armory-folder hidden" data-armory-folder="protection" role="tabpanel" aria-hidden="true">
+        <div class="shop-item">
+          <div><b>Ammo reserve</b><small>Magazine capacity follows the equipped weapon and its upgrade level.</small></div>
+          <b id="armoryAmmoDetail">0 / 0</b>
+        </div>
+        <div class="shop-item">
+          <div><b>Scrap Shield <span id="shieldLevel">L0</span></b><small>Adds armor before health takes damage.</small></div>
+          <button id="upgradeShieldBtn" type="button">24 scrap</button>
+        </div>
+      </div>
+      <div class="armory-folder hidden" data-armory-folder="tactical" role="tabpanel" aria-hidden="true">
+        <div class="shop-item"><div><b>Ability loadout</b><small id="armoryAbilityDetail">Choose a survivor to view their passive and active ability.</small></div><b>READY</b></div>
+        <div class="shop-item"><div><b>Fire control</b><small>Desktop keeps manual aim. Android keeps the assisted touch profile.</small></div><b id="armoryAimDetail">AIM ASSIST</b></div>
+      </div>
+      <p id="armoryStatus" class="armory-status" role="status" aria-live="polite">Select an upgrade to view the result.</p>
+      <button id="closeShopBtn" class="full-button" type="button">Back</button>
+    </div>
+  </section>
+
+  <section id="gameOverModal" class="modal hidden" aria-label="Survivor eliminated">
+    <div class="modal-card game-over-card">
+      <p class="eyebrow danger">Survivor Eliminated</p>
+      <h2>Wasteland Claimed Another</h2>
+      <p class="final-stats">Kills <b id="finalKills">0</b> <span></span> Scrap <b id="finalScrap">0</b> <span></span> Score <b id="finalScore">0</b></p>
+      <p id="rewardSummary" class="reward-summary"></p>
+      <div class="game-over-actions">
+        <button id="restartBtn" class="full-button danger-button" type="button">Play Again</button>
+        <button id="endMatchBtn" class="full-button" type="button">End Match - Back To Lobby</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="dashboardModal" class="modal hidden" aria-label="Player dashboard">
+    <div class="modal-card dashboard-card">
+      <p class="eyebrow">Survivor Profile</p>
+      <div class="dashboard-heading"><div><h2 id="dashboardName">Survivor</h2><small id="dashboardAvatar">Dust Scout</small></div><b id="dashboardKingdom">Frontier Camp</b></div>
+      <div class="dashboard-stats"><div><small>Level</small><b id="dashboardLevel">1</b></div><div><small>Experience</small><b id="dashboardXp">0 XP</b></div><div><small>Stage</small><b id="dashboardStage">1</b></div><div><small>Scrap</small><b id="dashboardScrap">0</b></div></div>
+      <div class="dashboard-section"><b>Weapons And Shields</b><div id="dashboardLoadout" class="dashboard-list"></div></div>
+      <div class="dashboard-section"><b>Tactical Upgrades</b><div id="dashboardTactics" class="dashboard-list"></div></div>
+      <div class="dashboard-section"><b>Story Timeline</b><p id="dashboardMission" class="dashboard-copy"></p></div>
+      <div class="dashboard-section character-gallery"><b>Survivor Roster</b><img src="./assets/nightfall/characters/survivor-roster-v1.png" alt="Available Wasteland Survivor avatars"></div>
+      <div class="dashboard-actions"><button id="dashboardEditBtn" type="button">Edit Avatar</button><button id="dashboardStoreBtn" type="button">Open Store</button><button id="closeDashboardBtn" class="full-button" type="button">&#8592; Back To Lobby</button></div>
+    </div>
+  </section>
+
+  <section id="settingsModal" class="modal hidden" aria-label="Game settings">
+    <div class="modal-card settings-card">
+      <p class="eyebrow">Wasteland Survivor</p>
+      <h2>Input And Comms</h2>
+      <div class="settings-block">
+        <div><b>Bluetooth Controller</b><small id="controllerStatus">No controller connected</small></div>
+        <label class="switch-control"><input id="controllerOnlyToggle" type="checkbox" disabled /><span>Controller only</span></label>
+      </div>
+      <div class="aim-settings" aria-label="Aim settings">
+        <label for="aimPreset">Aim preset<select id="aimPreset"><option value="full">Full Auto-Aim</option><option value="assist">Aim Assist</option><option value="manual">Manual</option></select></label>
+        <label for="aimSensitivity">Look sensitivity <output id="aimSensitivityValue">1.00</output><input id="aimSensitivity" type="range" min="0.5" max="2" step="0.05" value="1" /></label>
+        <label for="adsSensitivity">ADS sensitivity <output id="adsSensitivityValue">0.75</output><input id="adsSensitivity" type="range" min="0.5" max="2" step="0.05" value="0.75" /></label>
+        <label for="aimAssistStrength">Aim assist <output id="aimAssistStrengthValue">65%</output><input id="aimAssistStrength" type="range" min="0" max="1" step="0.05" value="0.65" /></label>
+        <label for="graphicsTier">Graphics<select id="graphicsTier"><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+      </div>
+      <div class="settings-block">
+        <div><b>Game Audio</b><small>Sound effects</small></div>
+        <label class="switch-control"><input id="soundToggle" type="checkbox" /><span>On</span></label>
+      </div>
+      <label class="volume-control" for="volumeSlider">Volume <input id="volumeSlider" type="range" min="0" max="100" value="55" /></label>
+      <div class="settings-block">
+        <div><b>Music</b><small id="musicStatus">Built-in wasteland soundtrack</small></div>
+        <label class="switch-control"><input id="musicToggle" type="checkbox" /><span>On</span></label>
+      </div>
+      <label class="volume-control" for="musicVolumeSlider">Music volume <input id="musicVolumeSlider" type="range" min="0" max="100" value="36" /></label>
+      <div class="music-source-controls">
+        <label for="musicSource">Music source</label>
+        <select id="musicSource"><option value="builtin">Game soundtrack</option><option value="local">My downloaded tracks</option><option value="api" disabled>Streaming API (connection required)</option></select>
+        <label id="localTrackPicker" class="track-picker hidden">Choose tracks<input id="localTrackInput" type="file" accept="audio/*" multiple /></label>
+        <div class="music-actions"><button id="previousTrackBtn" type="button" title="Previous track">&#9664;</button><button id="playMusicBtn" type="button">Play</button><button id="nextTrackBtn" type="button" title="Next track">&#9654;</button><button id="shuffleMusicBtn" type="button">Shuffle</button></div>
+      </div>
+      <div class="settings-block voice-block">
+        <div><b>Team Voice</b><small id="voiceStatus">Mic is off</small></div>
+        <div class="voice-actions"><button id="joinVoiceBtn" type="button">Join Voice</button><button id="muteVoiceBtn" class="hidden" type="button">Mute</button><button id="leaveVoiceBtn" class="hidden" type="button">Leave</button></div>
+      </div>
+      <div class="settings-block network-block">
+        <div><b>Network</b><small id="networkStatus">Online lobby and voice available</small></div>
+        <label class="switch-control"><input id="offlineToggle" type="checkbox" /><span>Offline mode</span></label>
+      </div>
+      <div class="device-link-card">
+        <div><b>Device Profile</b><small id="verifiedPhoneStatus">Your profile, birthday confirmation, and four-digit PIN are stored locally on this device.</small></div>
+      </div>
+      <div class="settings-block controls-tour-setting">
+        <div><b>Controls Tour</b><small>Replay the safe move, aim, fire, menu, and ability checklist.</small></div>
+        <button id="controlsTourReplayBtn" type="button">Replay Tour</button>
+      </div>
+      <p class="permission-status network-note">Offline mode blocks lobby and voice connections. A parent can also lock this setting with the device or browser parental controls.</p>
+      <div class="permission-status"><span>Microphone: when joining voice</span><span>Storage: game settings only</span><span>Location: off</span></div>
+      <button id="closeSettingsBtn" class="full-button" type="button">&#8592; Back</button>
+    </div>
+  </section>
+
+  <div id="remoteAudio" aria-hidden="true"></div>
+
+  <div id="touchControls" aria-hidden="true">
+    <div class="touch-move-zone"><span>Move</span><div id="moveStick" class="touch-stick"><i></i></div></div>
+    <div class="touch-action-zone">
+      <div id="touchAssistStatus" class="touch-assist-status" role="status">AIM ON TARGET Â· AUTO FIRE</div>
+      <div class="touch-aim-cluster">
+        <div id="aimStick" class="touch-stick aim-swipe"><i></i><span>Look</span></div>
+        <button id="touchLockBtn" type="button" aria-label="Lock onto the next target">Lock</button>
+      </div>
+      <div id="touchPrimaryActions" class="touch-primary-actions" aria-label="Primary combat controls">
+        <button id="touchFireBtn" class="primary-action" type="button">Fire</button>
+        <button id="touchAbilityBtn" type="button">Ability</button>
+        <button id="touchUtilityBtn" type="button" aria-expanded="false" aria-controls="touchUtilityTray">More</button>
+      </div>
+      <div id="touchUtilityTray" class="touch-utility-tray hidden" aria-hidden="true" aria-label="Utility controls">
+        <button id="touchReloadBtn" type="button">Reload</button>
+        <button id="touchWeaponBtn" type="button">Swap</button>
+        <button id="touchInteractBtn" type="button">Use</button>
+        <button id="touchAdsBtn" type="button">ADS</button>
+        <button id="touchPauseBtn" type="button">Menu</button>
+      </div>
+    </div>
+  </div>
+  <div id="landscapeHint" class="landscape-hint hidden" role="status">Rotate to landscape for the best combat view.</div>
+
+  <script type="module" src="game3d.js"></script><script type="module" src="android-platform.js"></script>
+</body>
+</html>
+

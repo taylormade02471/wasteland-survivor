@@ -1,0 +1,8 @@
+{
+  "generatedAt": "2026-10-07T20:41:18.745Z",
+  "model": "veo-3.1-fast-generate-preview",
+  "operationName": "models/veo-3.1-fast-generate-preview/operations/yjkcp2ujphi1",
+  "sourceImage": "C:\\Users\\kylet\\Documents\\Codex\\2026-10-06\\i\\work\\ruin-runners\\.worktrees\\cinematic-military-ui\\public\\assets\\nightfall\\backgrounds\\nightfall-six-survivors-v2.png",
+  "output": "C:\\Users\\kylet\\Documents\\Codex\\2026-10-06\\i\\work\\ruin-runners\\.worktrees\\cinematic-military-ui\\public\\assets\\nightfall\\video\\nightfall-water-walk-v1.mp4",
+  "prompt": "Cinematic realistic 3D game footage using the supplied frame as the exact opening composition. The central survivor walks forward alone through shallow radioactive floodwater while the other five survivors remain farther behind and subtly fall out of focus. Heavy boots push through the water with believable splashes and ripples. Wet fabric, armor straps, smoke, ash, toxic green mist, distant fires, and water reflections move naturally. The camera performs a very slow stable backward tracking move at chest height, keeping the central survivor framed for a premium action-game menu. Preserve the survivor's identity, clothing, equipment, proportions, ruined city, bright storm-break lighting, and teen-safe tone. No dialogue, no captions, no logo, no UI, no new people, no disappearing characters, no camera shake, no cuts, no gore. End on a composition and body stride visually close to the opening so the clip can crossfade into a seamless looping hero background."
+}

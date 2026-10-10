@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071217">
+  <title>Nightfall | 3D Render Lab</title>
+  <link rel="icon" href="./assets/nightfall/icons/icon-512-v1.png">
+  <link rel="stylesheet" href="./render-lab.css">
+</head>
+<body>
+  <main class="render-lab">
+    <header class="lab-header">
+      <div>
+        <p class="eyebrow">NIGHTFALL / WASTELAND SURVIVOR</p>
+        <h1>3D Render Lab</h1>
+        <p class="lab-copy">Inspect the live game meshes, animation poses, lighting, and mobile budgets before they enter a match.</p>
+      </div>
+      <button id="backToGame" class="lab-button lab-button-secondary" type="button">Back to game</button>
+    </header>
+
+    <section class="lab-shell" aria-label="3D asset inspection">
+      <div class="render-stage-wrap">
+        <canvas id="renderStage" aria-label="Interactive 3D preview"></canvas>
+        <div class="stage-readout"><span id="stageMode">LIVE PREVIEW</span><span id="stageHint">Drag to orbit · wheel to zoom</span></div>
+        <div id="stageError" class="stage-error hidden" role="alert"></div>
+      </div>
+
+      <aside class="lab-controls">
+        <div class="control-heading"><span class="eyebrow">INSPECTION DECK</span><strong id="assetName">Dust Scout</strong><small id="assetDescription">Character rig</small><small id="referenceDescription">Reference board loading</small></div>
+        <label>Asset family<select id="assetFamily"><option value="character">Survivors</option><option value="enemy">Enemies</option><option value="weapon">Weapons</option><option value="environment">Obstacles</option><option value="supply">Supply stations</option><option value="tactical">Tactical items</option><option value="chest">Shared chest</option></select></label>
+        <label>Asset<select id="assetSelect"></select></label>
+        <label>Animation<select id="animationSelect"><option value="idle">Idle</option><option value="wade">Walk through water</option><option value="walk">Walk</option><option value="run">Run</option><option value="aim">Aim</option><option value="fire">Fire</option><option value="reload">Reload</option><option value="downed">Downed</option></select></label>
+        <div class="control-row"><button id="autoRotate" class="lab-button is-active" type="button" aria-pressed="true">Auto rotate</button><button id="resetCamera" class="lab-button lab-button-secondary" type="button">Reset view</button></div>
+        <button id="characterView" class="lab-button lab-button-secondary" type="button" aria-pressed="false">Show live rig</button>
+        <div class="stats-panel">
+          <div><span>Geometry</span><strong id="meshStats">0 meshes</strong></div>
+          <div><span>Materials</span><strong id="materialStats">0</strong></div>
+          <div><span>Triangles</span><strong id="triangleStats">0</strong></div>
+          <div><span>Budget</span><strong id="budgetStats">--</strong></div>
+        </div>
+      <p class="lab-note">Character mode starts with the authored <code>characters/3d</code> GLB mesh and no concept-art backdrop. Use <b>Show procedural rig</b> to compare the live animation controls; authored mesh motion previews idle, wade, walk, aim, fire, reload, and downed poses.</p>
+      </aside>
+    </section>
+
+    <section class="art-board" aria-labelledby="artBoardTitle">
+      <div class="art-board-heading">
+        <div>
+          <p class="eyebrow">VISUAL TARGET DECK</p>
+          <h2 id="artBoardTitle">Nightfall art direction</h2>
+        </div>
+        <p>Character mode shows the survivor alone in a neutral 3D studio. Weapon, map, supply, and chest modes keep their environment reference boards so scale and material context remain visible.</p>
+      </div>
+      <div class="art-board-grid">
+        <figure class="art-board-card art-board-card-wide">
+          <img src="./assets/nightfall/backgrounds/nightfall-first-person-water-v2.png" alt="First-person survivor wading through a radioactive flooded industrial wasteland with a rifle in view">
+          <figcaption><strong>First-person water intro</strong><span>New visual target · weapon, wet surfaces, cover scale, playable negative space</span></figcaption>
+        </figure>
+        <figure class="art-board-card">
+          <img src="./assets/nightfall/backgrounds/nightfall-lobby-squad-v1.png" alt="Nightfall survivor squad moving through flooded ruins">
+          <figcaption><strong>Lobby / squad backdrop</strong><span>Integrated concept art · menu hero and social staging</span></figcaption>
+        </figure>
+        <figure class="art-board-card">
+          <img src="./assets/nightfall/characters/survivor-roster-v1.png" alt="Six Nightfall survivor avatar concepts">
+          <figcaption><strong>Six survivor identities</strong><span>Integrated roster art · individual silhouette and class language</span></figcaption>
+        </figure>
+        <figure class="art-board-card">
+          <img src="./assets/nightfall/enemies/radioactive-enemy-roster-v1.png" alt="Radioactive mutated enemy roster concepts">
+          <figcaption><strong>Mutated enemy roster</strong><span>Integrated enemy art · archetypes for the tactical AI pass</span></figcaption>
+        </figure>
+      </div>
+      <p class="art-board-note"><b>Build status:</b> six authored character meshes are now bundled under <code>characters/3d</code> and loaded as the primary 3D view. The isolated PNG renders under <code>characters/renders</code> remain as a graceful fallback, while the procedural rig stays available for animation comparison.</p>
+    </section>
+  </main>
+  <script type="module" src="./render-lab.js?v=3"></script>
+</body>
+</html>
