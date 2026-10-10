@@ -1211,7 +1211,7 @@ function start() {
   ensureLobbyRoom();
   phase = "loadout";
   timer = 0;
-  $("loadoutMode").textContent = mode === "solo" ? "STORY SURVIVAL" : mode === "teams" ? `${botTeamSize}V${botTeamSize}` : `${ctfPlayers}-PLAYER CTF`;
+  $("loadoutMode").textContent = mode === "solo" ? "SURVIVAL" : mode === "teams" ? `${botTeamSize}V${botTeamSize}` : `${ctfPlayers}-PLAYER CTF`;
   $("loadoutMap").textContent = MAPS[mapKey].label.toUpperCase();
   $("loadoutRoomModal").classList.remove("hidden");
   document.body.classList.add("loadout-active");
@@ -2239,7 +2239,7 @@ function renderHud() {
   ui.wave.textContent = wave;
   ui.level.textContent = playerLevel;
   ui.stage.textContent = storyStage;
-  ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${chapter.title}`;
+  ui.chapter.textContent = `Level ${storyStage}: ${chapter.title}`;
   ui.mission.textContent = hud.mission.label;
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
   ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
