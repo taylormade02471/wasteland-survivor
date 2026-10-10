@@ -8,7 +8,7 @@ export const WEAPON_FAMILIES = freeze({
     damagePerLevel: 1.6, baseFireDelayMs: 160, minimumFireDelayMs: 75,
     baseSpreadDegrees: 0.9, minimumSpreadDegrees: 0.2,
     baseRecoil: 0.92, minimumRecoil: 0.28,
-    falloffStart: 18, falloffEnd: 52, minimumDamageMultiplier: 0.58,
+    falloffStart: 20, falloffEnd: 60, minimumDamageMultiplier: 0.58,
   }),
   cannon: freeze({
     id: "cannon", name: "Cannon", unlockKills: 6, maxLevel: 100,
@@ -16,7 +16,7 @@ export const WEAPON_FAMILIES = freeze({
     reloadMs: 900, automaticReloadMs: 1100, baseDamage: 52,
     damagePerLevel: 4, fireDelayMs: 520, spreadDegrees: 5.73, recoil: 1.65,
     penetration: 2, barrelLevels: freeze([50, 75, 100]),
-    falloffStart: 22, falloffEnd: 60, minimumDamageMultiplier: 0.6,
+    falloffStart: 26, falloffEnd: 72, minimumDamageMultiplier: 0.6,
   }),
   inferno: freeze({
     id: "inferno", name: "Inferno", unlockKills: 9, maxLevel: 50,
@@ -24,7 +24,7 @@ export const WEAPON_FAMILIES = freeze({
     reloadMs: 900, automaticReloadMs: 1100, baseDamage: 74,
     damagePerLevel: 5.2, fireDelayMs: 660, spreadDegrees: 7.45, recoil: 2.15,
     penetration: 3, barrelLevels: freeze([25, 38, 50]),
-    falloffStart: 16, falloffEnd: 48, minimumDamageMultiplier: 0.66,
+    falloffStart: 19, falloffEnd: 58, minimumDamageMultiplier: 0.66,
   }),
 });
 

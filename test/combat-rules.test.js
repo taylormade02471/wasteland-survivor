@@ -39,7 +39,7 @@ test("uses deterministic upgrade scaling and established barrel milestones", () 
     id: "scout", name: "Scout", level: 25, damage: 52, fireDelayMs: 135,
     projectiles: 1, penetration: 1, spreadDegrees: 0.65, recoil: 0.72,
     magazineSize: 30, reloadMs: 900, automaticReloadMs: 1100,
-    falloffStart: 18, falloffEnd: 52, minimumDamageMultiplier: 0.58,
+    falloffStart: 20, falloffEnd: 60, minimumDamageMultiplier: 0.58,
   });
   assert.equal(getWeaponProfile("cannon", 50).projectiles, 2);
   assert.equal(getWeaponProfile("cannon", 75).projectiles, 3);
@@ -49,6 +49,18 @@ test("uses deterministic upgrade scaling and established barrel milestones", () 
   assert.equal(getWeaponProfile("inferno", 38).projectiles, 3);
   assert.equal(getWeaponProfile("inferno", 50).projectiles, 4);
   assert.throws(() => getWeaponProfile("inferno", 51), /level/i);
+});
+
+test("weapon families have distinct extended engagement ranges", () => {
+  const scout = getWeaponProfile("scout", 0);
+  const cannon = getWeaponProfile("cannon", 0);
+  const inferno = getWeaponProfile("inferno", 0);
+  assert.deepEqual(
+    [scout.falloffStart, scout.falloffEnd, cannon.falloffStart, cannon.falloffEnd, inferno.falloffStart, inferno.falloffEnd],
+    [20, 60, 26, 72, 19, 58],
+  );
+  assert.ok(cannon.falloffEnd > scout.falloffEnd);
+  assert.ok(inferno.minimumDamageMultiplier > scout.minimumDamageMultiplier);
 });
 
 test("unlocks at 3, 6, and 9 kills and applies upgrades without mutation", () => {
@@ -108,7 +120,7 @@ test("produces deterministic recoil and spread from shot index and seed", () => 
 test("applies range falloff and penetration loss deterministically", () => {
   const profile = getWeaponProfile("cannon", 0);
   assert.equal(calculateDamage(profile, { distance: 10, penetrations: 0 }), 52);
-  assert.equal(calculateDamage(profile, { distance: 60, penetrations: 0 }), 31.2);
+  assert.equal(calculateDamage(profile, { distance: 60, penetrations: 0 }), 36.63);
   assert.equal(calculateDamage(profile, { distance: 10, penetrations: 2 }), 33.28);
   assert.equal(calculateDamage(profile, { distance: 10, penetrations: 3 }), 0);
 });
