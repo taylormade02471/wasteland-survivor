@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Wasteland Survivor</title>
   <meta name="theme-color" content="#090d10" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta property="og:title" content="Wasteland Survivor" />
   <meta property="og:image" content="assets/nightfall/thumbnails/wasteland-survivor-share-v1.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -430,5 +433,10 @@
   <div id="landscapeHint" class="landscape-hint hidden" role="status">Rotate to landscape for the best combat view.</div>
 
   <script type="module" src="game3d.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+    }
+  </script>
 </body>
 </html>

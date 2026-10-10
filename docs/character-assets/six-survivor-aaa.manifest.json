@@ -1,0 +1,546 @@
+{
+  "schemaVersion": 1,
+  "contractId": "wasteland-survivor.six-survivor-aaa.v1",
+  "deliveryStatus": "contract-only",
+  "purpose": "Production authoring, review, and export acceptance contract for the six playable survivors.",
+  "runtimeIntegration": {
+    "included": false,
+    "currentAssetsRemainPlaceholders": true,
+    "integrationRequiresSeparateReview": true
+  },
+  "coordinateSystem": {
+    "units": "meters",
+    "metersPerUnit": 1,
+    "handedness": "right",
+    "upAxis": "+Y",
+    "forwardAxis": "-Z"
+  },
+  "sharedContract": {
+    "highResolutionSculpt": {
+      "sourceFormat": "blend",
+      "targetPolygonRange": {
+        "minimum": 15000000,
+        "maximum": 40000000
+      },
+      "requiredPasses": [
+        "anatomy",
+        "garments",
+        "hard-surface-gear",
+        "surface-damage",
+        "microdetail"
+      ],
+      "requirements": [
+        "non-destructive subdivision history",
+        "separate removable equipment",
+        "neutral facial expression",
+        "clean bake cage source",
+        "school-project-appropriate non-gory damage"
+      ]
+    },
+    "retopology": {
+      "sourceFormat": "blend",
+      "lod0TriangleRange": {
+        "minimum": 45000,
+        "maximum": 80000
+      },
+      "deformationZones": [
+        "shoulders",
+        "elbows",
+        "wrists",
+        "jaw",
+        "eyelids",
+        "hips",
+        "knees",
+        "ankles"
+      ],
+      "requireClosedManifoldBody": true,
+      "requireSilhouettePreservation": true,
+      "requirements": [
+        "deformation loops follow joint rotation",
+        "hard edges align with UV seams",
+        "no zero-area faces",
+        "no duplicate vertices",
+        "separate swappable equipment topology"
+      ]
+    },
+    "uvPbrTextures": {
+      "workflow": "metallic-roughness",
+      "uvSets": [
+        {
+          "name": "UV0",
+          "purpose": "materials",
+          "overlap": "forbidden"
+        },
+        {
+          "name": "UV1",
+          "purpose": "baked-lighting",
+          "overlap": "forbidden"
+        }
+      ],
+      "texelDensityPixelsPerMeter": 1024,
+      "resolution": {
+        "cinematic": 4096,
+        "gameplay": 2048,
+        "lod3": 1024
+      },
+      "paddingPixelsAt4k": 16,
+      "channels": [
+        {
+          "name": "baseColor",
+          "colorSpace": "sRGB",
+          "format": "png"
+        },
+        {
+          "name": "normal",
+          "colorSpace": "linear",
+          "format": "png",
+          "orientation": "OpenGL"
+        },
+        {
+          "name": "orm",
+          "colorSpace": "linear",
+          "format": "png",
+          "packing": "R=ambientOcclusion,G=roughness,B=metallic"
+        },
+        {
+          "name": "emissive",
+          "colorSpace": "sRGB",
+          "format": "png"
+        }
+      ],
+      "bakeRequirements": [
+        "tangent-space normal from approved high-resolution sculpt",
+        "cage artifact review at cinematic distance",
+        "no unintended mirrored text or insignia",
+        "roughness variation remains legible under neutral lighting"
+      ]
+    },
+    "facialRig": {
+      "rigStandard": "facs-inspired",
+      "enabledLods": [
+        "LOD0",
+        "LOD1"
+      ],
+      "requiredBones": [
+        "face_root",
+        "jaw",
+        "eye_l",
+        "eye_r"
+      ],
+      "requiredBlendShapes": [
+        "blink_l",
+        "blink_r",
+        "jaw_open",
+        "brow_up_l",
+        "brow_up_r",
+        "brow_down_l",
+        "brow_down_r",
+        "mouth_smile_l",
+        "mouth_smile_r",
+        "mouth_frown_l",
+        "mouth_frown_r",
+        "mouth_pucker",
+        "viseme_aa",
+        "viseme_ee",
+        "viseme_oh"
+      ],
+      "requirements": [
+        "eye aim remains independent of head aim",
+        "jaw deformation does not collapse teeth or lips",
+        "paired shapes remain usable independently",
+        "helmeted survivors retain the same facial interface"
+      ]
+    },
+    "skeletonSkin": {
+      "skeletonId": "ws_humanoid_v1",
+      "bindPose": "a-pose",
+      "rootMotionBone": "root",
+      "maxInfluencesPerVertex": 4,
+      "requireNormalizedWeights": true,
+      "maximumWeightSumError": 0.001,
+      "allowedUnweightedVertices": 0,
+      "requiredBones": [
+        "root",
+        "pelvis",
+        "spine_01",
+        "spine_02",
+        "spine_03",
+        "neck",
+        "head",
+        "clavicle_l",
+        "upperarm_l",
+        "lowerarm_l",
+        "hand_l",
+        "thigh_l",
+        "calf_l",
+        "foot_l",
+        "clavicle_r",
+        "upperarm_r",
+        "lowerarm_r",
+        "hand_r",
+        "thigh_r",
+        "calf_r",
+        "foot_r",
+        "face_root",
+        "jaw",
+        "eye_l",
+        "eye_r"
+      ],
+      "requirements": [
+        "one shared humanoid hierarchy across all survivors",
+        "inverse bind matrices are finite",
+        "equipment weights do not leak into anatomy",
+        "twist distribution prevents candy-wrapper deformation",
+        "bind pose and bone names remain identical across LODs"
+      ]
+    },
+    "sockets": {
+      "requireZeroedLocalTransform": true,
+      "requireUnitScale": true,
+      "required": [
+        {
+          "name": "socket_weapon_r",
+          "parent": "hand_r"
+        },
+        {
+          "name": "socket_weapon_l",
+          "parent": "hand_l"
+        },
+        {
+          "name": "socket_back",
+          "parent": "spine_03"
+        },
+        {
+          "name": "socket_hip_l",
+          "parent": "pelvis"
+        },
+        {
+          "name": "socket_hip_r",
+          "parent": "pelvis"
+        },
+        {
+          "name": "socket_shoulder_l",
+          "parent": "clavicle_l"
+        },
+        {
+          "name": "socket_shoulder_r",
+          "parent": "clavicle_r"
+        },
+        {
+          "name": "socket_head_fx",
+          "parent": "head"
+        },
+        {
+          "name": "socket_camera",
+          "parent": "head"
+        }
+      ]
+    },
+    "lods": [
+      {
+        "name": "LOD0",
+        "maxTriangles": 80000,
+        "maxMaterials": 6,
+        "minimumScreenHeight": 0.6,
+        "skeletonId": "ws_humanoid_v1",
+        "facialRig": "full",
+        "preserveRequiredSockets": true
+      },
+      {
+        "name": "LOD1",
+        "maxTriangles": 45000,
+        "maxMaterials": 5,
+        "minimumScreenHeight": 0.3,
+        "skeletonId": "ws_humanoid_v1",
+        "facialRig": "reduced",
+        "preserveRequiredSockets": true
+      },
+      {
+        "name": "LOD2",
+        "maxTriangles": 22000,
+        "maxMaterials": 4,
+        "minimumScreenHeight": 0.12,
+        "skeletonId": "ws_humanoid_v1",
+        "facialRig": "none",
+        "preserveRequiredSockets": true
+      },
+      {
+        "name": "LOD3",
+        "maxTriangles": 8000,
+        "maxMaterials": 2,
+        "minimumScreenHeight": 0.04,
+        "skeletonId": "ws_humanoid_v1",
+        "facialRig": "none",
+        "preserveRequiredSockets": true
+      }
+    ],
+    "exportValidation": {
+      "format": "glb",
+      "gltfVersion": "2.0",
+      "requireSingleScene": true,
+      "requireSingleSkin": true,
+      "requireEmbeddedBuffers": true,
+      "requireEmbeddedTextures": true,
+      "requireNoUnsupportedExtensions": true,
+      "maximumFileSizeMiB": 48,
+      "requiredAnimationClips": [
+        "idle",
+        "walk",
+        "run",
+        "aim",
+        "fire",
+        "hit",
+        "downed",
+        "wade"
+      ],
+      "failOn": [
+        "root-transform-identity",
+        "finite-transforms",
+        "no-negative-scale",
+        "skeleton-bone-set",
+        "normalized-skin-weights",
+        "no-unweighted-vertices",
+        "required-sockets",
+        "lod-budget",
+        "pbr-texture-channels",
+        "animation-clip-set"
+      ]
+    }
+  },
+  "survivors": [
+    {
+      "id": "scout",
+      "displayName": "Dust Scout",
+      "classId": "scout",
+      "silhouetteTag": "light-hooded-runner",
+      "currentRuntimeAsset": "./assets/nightfall/characters/3d/scout-operator-v1.glb",
+      "sources": {
+        "highResolutionSculpt": "art-source/characters/scout/scout-sculpt-v1.blend",
+        "retopology": "art-source/characters/scout/scout-retopo-v1.blend",
+        "textureRoot": "art-source/characters/scout/textures"
+      },
+      "exportTarget": "art-delivery/characters/scout/scout-operator-aaa-v1.glb",
+      "materialSets": [
+        "scout_body",
+        "scout_cloth",
+        "scout_gear",
+        "scout_emissive"
+      ],
+      "silhouettePreservation": [
+        "teal hood",
+        "ragged side cloak",
+        "radio whip",
+        "compact survival kit"
+      ],
+      "classAttachmentSocket": {
+        "name": "socket_class_scout_radio",
+        "parent": "clavicle_l"
+      },
+      "stageStatus": {
+        "highResolutionSculpt": "required",
+        "retopology": "required",
+        "uvPbrTextures": "required",
+        "facialRig": "required",
+        "skeletonSkin": "required",
+        "sockets": "required",
+        "lods": "required",
+        "exportValidation": "required"
+      }
+    },
+    {
+      "id": "ranger",
+      "displayName": "Ranger",
+      "classId": "ranger",
+      "silhouetteTag": "long-coat-marksman",
+      "currentRuntimeAsset": "./assets/nightfall/characters/3d/ranger-operator-v1.glb",
+      "sources": {
+        "highResolutionSculpt": "art-source/characters/ranger/ranger-sculpt-v1.blend",
+        "retopology": "art-source/characters/ranger/ranger-retopo-v1.blend",
+        "textureRoot": "art-source/characters/ranger/textures"
+      },
+      "exportTarget": "art-delivery/characters/ranger/ranger-operator-aaa-v1.glb",
+      "materialSets": [
+        "ranger_body",
+        "ranger_coat",
+        "ranger_gear",
+        "ranger_emissive"
+      ],
+      "silhouettePreservation": [
+        "wide brim hat",
+        "rust scarf",
+        "long coat tail",
+        "rifle sling and scope pack"
+      ],
+      "classAttachmentSocket": {
+        "name": "socket_class_ranger_scope",
+        "parent": "spine_03"
+      },
+      "stageStatus": {
+        "highResolutionSculpt": "required",
+        "retopology": "required",
+        "uvPbrTextures": "required",
+        "facialRig": "required",
+        "skeletonSkin": "required",
+        "sockets": "required",
+        "lods": "required",
+        "exportValidation": "required"
+      }
+    },
+    {
+      "id": "heavy",
+      "displayName": "Heavy",
+      "classId": "heavy",
+      "silhouetteTag": "wide-armored-bruiser",
+      "currentRuntimeAsset": "./assets/nightfall/characters/3d/heavy-operator-v1.glb",
+      "sources": {
+        "highResolutionSculpt": "art-source/characters/heavy/heavy-sculpt-v1.blend",
+        "retopology": "art-source/characters/heavy/heavy-retopo-v1.blend",
+        "textureRoot": "art-source/characters/heavy/textures"
+      },
+      "exportTarget": "art-delivery/characters/heavy/heavy-operator-aaa-v1.glb",
+      "materialSets": [
+        "heavy_body",
+        "heavy_armor",
+        "heavy_gear",
+        "heavy_emissive"
+      ],
+      "silhouettePreservation": [
+        "sealed helmet",
+        "massive chest armor",
+        "breach slab shield",
+        "drum-fed heavy weapon"
+      ],
+      "classAttachmentSocket": {
+        "name": "socket_class_heavy_shield",
+        "parent": "spine_03"
+      },
+      "stageStatus": {
+        "highResolutionSculpt": "required",
+        "retopology": "required",
+        "uvPbrTextures": "required",
+        "facialRig": "required",
+        "skeletonSkin": "required",
+        "sockets": "required",
+        "lods": "required",
+        "exportValidation": "required"
+      }
+    },
+    {
+      "id": "tech",
+      "displayName": "Tech Runner",
+      "classId": "tech",
+      "silhouetteTag": "antenna-salvage-tech",
+      "currentRuntimeAsset": "./assets/nightfall/characters/3d/tech-operator-v1.glb",
+      "sources": {
+        "highResolutionSculpt": "art-source/characters/tech/tech-sculpt-v1.blend",
+        "retopology": "art-source/characters/tech/tech-retopo-v1.blend",
+        "textureRoot": "art-source/characters/tech/textures"
+      },
+      "exportTarget": "art-delivery/characters/tech/tech-operator-aaa-v1.glb",
+      "materialSets": [
+        "tech_body",
+        "tech_cloth",
+        "tech_gear",
+        "tech_emissive"
+      ],
+      "silhouettePreservation": [
+        "blue diagnostic glow",
+        "antenna backpack",
+        "tool-frame pack",
+        "side repair case"
+      ],
+      "classAttachmentSocket": {
+        "name": "socket_class_tech_tools",
+        "parent": "spine_03"
+      },
+      "stageStatus": {
+        "highResolutionSculpt": "required",
+        "retopology": "required",
+        "uvPbrTextures": "required",
+        "facialRig": "required",
+        "skeletonSkin": "required",
+        "sockets": "required",
+        "lods": "required",
+        "exportValidation": "required"
+      }
+    },
+    {
+      "id": "medic",
+      "displayName": "Field Medic",
+      "classId": "tech",
+      "silhouetteTag": "clean-pack-support",
+      "currentRuntimeAsset": "./assets/nightfall/characters/3d/medic-operator-v1.glb",
+      "sources": {
+        "highResolutionSculpt": "art-source/characters/medic/medic-sculpt-v1.blend",
+        "retopology": "art-source/characters/medic/medic-retopo-v1.blend",
+        "textureRoot": "art-source/characters/medic/textures"
+      },
+      "exportTarget": "art-delivery/characters/medic/medic-operator-aaa-v1.glb",
+      "materialSets": [
+        "medic_body",
+        "medic_jacket",
+        "medic_gear",
+        "medic_emissive"
+      ],
+      "silhouettePreservation": [
+        "white field jacket",
+        "red medical harness",
+        "cross-marked med pack",
+        "triage pouch"
+      ],
+      "classAttachmentSocket": {
+        "name": "socket_class_medic_pack",
+        "parent": "spine_03"
+      },
+      "stageStatus": {
+        "highResolutionSculpt": "required",
+        "retopology": "required",
+        "uvPbrTextures": "required",
+        "facialRig": "required",
+        "skeletonSkin": "required",
+        "sockets": "required",
+        "lods": "required",
+        "exportValidation": "required"
+      }
+    },
+    {
+      "id": "warden",
+      "displayName": "Warden",
+      "classId": "heavy",
+      "silhouetteTag": "tall-shield-keeper",
+      "currentRuntimeAsset": "./assets/nightfall/characters/3d/warden-operator-v1.glb",
+      "sources": {
+        "highResolutionSculpt": "art-source/characters/warden/warden-sculpt-v1.blend",
+        "retopology": "art-source/characters/warden/warden-retopo-v1.blend",
+        "textureRoot": "art-source/characters/warden/textures"
+      },
+      "exportTarget": "art-delivery/characters/warden/warden-operator-aaa-v1.glb",
+      "materialSets": [
+        "warden_body",
+        "warden_cloak",
+        "warden_armor",
+        "warden_emissive"
+      ],
+      "silhouettePreservation": [
+        "high collar",
+        "long split cloak",
+        "tower shield",
+        "guard shotgun stance"
+      ],
+      "classAttachmentSocket": {
+        "name": "socket_class_warden_shield",
+        "parent": "spine_03"
+      },
+      "stageStatus": {
+        "highResolutionSculpt": "required",
+        "retopology": "required",
+        "uvPbrTextures": "required",
+        "facialRig": "required",
+        "skeletonSkin": "required",
+        "sockets": "required",
+        "lods": "required",
+        "exportValidation": "required"
+      }
+    }
+  ]
+}
