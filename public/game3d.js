@@ -4421,7 +4421,7 @@ canvas.addEventListener("pointermove", event => {
         width: canvasRect.width || canvas.clientWidth,
         height: canvasRect.height || canvas.clientHeight,
       });
-    viewYaw = normalizeYaw(viewYaw + event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity));
+    viewYaw = normalizeYaw(viewYaw - event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity));
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }
     if (localGameplayInputPaused()) return;
