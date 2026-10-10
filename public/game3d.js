@@ -2263,7 +2263,7 @@ function renderHud() {
     teamHealthMax,
     mission: `Mission: ${objective}`,
     round: wave,
-    timer: phase === "loadout" ? "WAITING" : mode === "solo" && ["combat", "paused", "dialogue"].includes(phase) ? "CLEAR WAVE" : formatTime(timer),
+    timer: phase === "loadout" ? "WAITING" : phase === "prep" ? formatTime(timer) : mode === "solo" && ["combat", "paused", "dialogue"].includes(phase) ? "WAVE ACTIVE" : formatTime(timer),
     objective,
     score: { blue: mode === "ctf" ? Math.floor(blue) : blue, red: mode === "ctf" ? Math.floor(red) : red },
   });
