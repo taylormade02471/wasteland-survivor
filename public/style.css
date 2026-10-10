@@ -436,6 +436,10 @@ body[data-reduced-motion="true"] .floating-command:hover::before, body[data-redu
 body[data-input-mode="touch"] #touchControls { display: flex; }
 body.loadout-active #touchControls { display: none !important; visibility: hidden; pointer-events: none; }
 body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, body[data-input-mode="controller"] #touchControls { display: none; }
+body.story-dialogue-active #touch-move-zone,
+body.story-dialogue-active .touch-move-zone { opacity: .35; pointer-events: none; }
+body.story-dialogue-active #touchFireBtn { display: none; }
+body.story-dialogue-active #hud { opacity: .72; }
 @media (pointer: coarse) {
   .chest-prompt { bottom: 144px; }
   .floating-command small { max-height: 0; overflow: hidden; opacity: 0; }

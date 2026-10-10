@@ -14,6 +14,7 @@ function hasLiveTarget(target) {
  */
 export function decideAndroidTouchAutoFire(input = {}) {
   const manualFire = input.manualFire === true;
+  const mobileTouch = input.mobileTouch === true || input.isAndroidApp === true;
   if (!gameplayIsActive(input)) {
     return {
       targetMayBeAcquired: false,
@@ -24,13 +25,13 @@ export function decideAndroidTouchAutoFire(input = {}) {
 
   if (manualFire) {
     return {
-      targetMayBeAcquired: Boolean(input.isAndroidApp === true && input.inputMode === "touch" && hasLiveTarget(input.target)),
+      targetMayBeAcquired: Boolean(mobileTouch && input.inputMode === "touch" && hasLiveTarget(input.target)),
       firingRequested: true,
       reason: "manual-fire",
     };
   }
 
-  const autoFireAllowed = input.isAndroidApp === true
+  const autoFireAllowed = mobileTouch
     && input.inputMode === "touch"
     && hasLiveTarget(input.target);
   return {

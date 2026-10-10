@@ -25,6 +25,12 @@ $("touchFireBtn")?.setAttribute("aria-label", "Manual Fire");
 const androidPrimaryActions = $("touchPrimaryActions");
 const androidUtilityTray = $("touchUtilityTray");
 const androidReloadButton = $("touchReloadBtn");
+const androidInteractButton = $("touchInteractBtn");
+if (androidPrimaryActions && androidInteractButton) {
+  androidInteractButton.replaceChildren(document.createTextNode("Action"));
+  androidInteractButton.setAttribute("aria-label", "Interact with chest or objective");
+  androidPrimaryActions.append(androidInteractButton);
+}
 const androidMenuButton = $("touchUtilityBtn");
 if (androidPrimaryActions && androidReloadButton) androidPrimaryActions.append(androidReloadButton);
 androidUtilityTray?.classList.add("hidden");

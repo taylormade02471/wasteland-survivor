@@ -1933,6 +1933,12 @@ function update(dt) {
   let mz = inputPaused || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
   if (!inputPaused && (touch.mx || touch.mz)) { mx = touch.mx; mz = touch.mz; }
   if (!inputPaused && (controller.mx || controller.mz)) { mx = controller.mx; mz = controller.mz; }
+  if (phase === "dialogue") {
+    mx = 0;
+    mz = 0;
+    firing = false;
+    touch.fire = false;
+  }
   const androidSingleStick = isAndroidApp && inputMode === "touch" && !inputPaused && !menuOpen
     ? resolveAndroidSingleStick({
       x: touch.mx,
@@ -1994,11 +2000,13 @@ function update(dt) {
     aim.copy(player.g.position).add(new THREE.Vector3(direction.x, direction.y, direction.z).multiplyScalar(35));
   }
   const touchCrosshairTarget = inputMode === "touch" && touch.aiming ? touchTargetInCrosshair() : null;
-  const androidAutoTarget = isAndroidApp && inputMode === "touch"
+  const mobileTouchAutoFire = inputMode === "touch" && coarsePointer.matches && (isAndroidApp || document.fullscreenElement || innerWidth <= 700);
+  const androidAutoTarget = mobileTouchAutoFire
     ? androidTouchTarget(touchCrosshairTarget)
     : null;
   const androidAutoFire = decideAndroidTouchAutoFire({
     isAndroidApp,
+    mobileTouch: mobileTouchAutoFire,
     inputMode,
     phase,
     target: androidAutoTarget,
@@ -2160,6 +2168,8 @@ function formatTime(seconds) {
 }
 
 function renderHud() {
+  document.body.dataset.phase = phase;
+  updateMobileContextAction();
   const weapon = weaponProfile();
   const classDefinition = getClassDefinition(classProgress.classId);
   const classStats = getClassStats(classProgress);
@@ -4271,6 +4281,36 @@ const touchFireButton = bindHoldButton("touchFireBtn", active => {
 const touchAdsButton = bindHoldButton("touchAdsBtn", active => { adsActive = active; });
 const touchUtilityTray = $("touchUtilityTray");
 const touchUtilityButton = $("touchUtilityBtn");
+const touchInteractButton = $("touchInteractBtn");
+if (coarsePointer.matches && touchInteractButton && touchUtilityTray?.parentElement) {
+  touchUtilityTray.parentElement.querySelector("#touchPrimaryActions")?.append(touchInteractButton);
+}
+
+function updateMobileContextAction() {
+  const button = $("touchInteractBtn");
+  if (!button || !player) return;
+  const nearChest = phase === "prep" && canAccessChest(player.g.position, chests);
+  const label = nearChest ? "Open Chest" : phase === "dialogue" ? "Continue" : "Reload";
+  button.textContent = label;
+  button.setAttribute("aria-label", label === "Open Chest" ? "Open nearby upgrade chest" : label);
+}
+
+function performMobileContextAction() {
+  setInputMode("touch");
+  const nearChest = phase === "prep" && canAccessChest(player.g.position, chests);
+  if (nearChest) return interact();
+  if (phase === "dialogue") return;
+  reloadWeapon(true);
+}
+
+function setStoryDialogueMode(active) {
+  phase = active ? "dialogue" : "combat";
+  document.body.classList.toggle("story-dialogue-active", Boolean(active));
+  firing = false;
+  touch.fire = false;
+  if (active) setNightfallScene("dialogue");
+  else setNightfallScene("game");
+}
 function setTouchUtilityOpen(open) {
   const next = Boolean(open);
   touchUtilityTray.classList.toggle("hidden", !next);
@@ -4292,7 +4332,7 @@ $('touchLockBtn').onclick = () => { setInputMode("touch"); switchLockedTarget();
 $('touchUtilityBtn').onclick = () => { setInputMode("touch"); setTouchUtilityOpen(touchUtilityTray.classList.contains("hidden")); };
 $("touchReloadBtn").onclick = () => { setInputMode("touch"); reloadWeapon(true); };
 $("touchWeaponBtn").onclick = () => { setInputMode("touch"); cycleWeapon(1); };
-$("touchInteractBtn").onclick = () => { setInputMode("touch"); interact(); };
+$("touchInteractBtn").onclick = performMobileContextAction;
 $("touchAbilityBtn").onclick = () => { setInputMode("touch"); if (!handleControlsTourSignal({ source: "touch-button", control: "ability" })) triggerAbility(); };
 $("touchPauseBtn").onclick = () => { setInputMode("touch"); setTouchUtilityOpen(false); if (!handleControlsTourSignal({ source: "touch-button", control: "pause" })) menuOpen ? closeGameMenu() : openGameMenu(); };
 $("soloMode").onclick = () => requestMatchStart(() => { document.body.classList.remove("menu-active"); mode = "solo"; $("soloMode").classList.add("active"); $("teamMode").classList.remove("active"); $("ctfMode").classList.remove("active"); $("ctfPlayerControl").classList.add("hidden"); lobbyChanged(); start(); });

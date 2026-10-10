@@ -20,6 +20,14 @@ test("Android touch combat may acquire a live target and auto-fire", () => {
   });
 });
 
+test("full-screen phone web combat shares the target-based auto-fire contract", () => {
+  assert.deepEqual(decideAndroidTouchAutoFire({ ...base, isAndroidApp: false, mobileTouch: true }), {
+    targetMayBeAcquired: true,
+    firingRequested: true,
+    reason: "android-touch-auto-fire",
+  });
+});
+
 test("manual fire is an explicit override during active touch combat", () => {
   assert.deepEqual(decideAndroidTouchAutoFire({ ...base, isAndroidApp: false, manualFire: true }), {
     targetMayBeAcquired: false,
@@ -28,9 +36,9 @@ test("manual fire is an explicit override during active touch combat", () => {
   });
 });
 
-test("auto-fire cannot run without an Android touch session or live target", () => {
+test("auto-fire cannot run without a mobile touch session or live target", () => {
   for (const input of [
-    { ...base, isAndroidApp: false },
+    { ...base, isAndroidApp: false, mobileTouch: false },
     { ...base, inputMode: "controller" },
     { ...base, target: null },
     { ...base, target: { alive: false } },

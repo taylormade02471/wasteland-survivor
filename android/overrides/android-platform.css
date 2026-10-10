@@ -3,8 +3,7 @@
 #aimStick,
 #touchLockBtn,
 #touchAdsBtn,
-#touchWeaponBtn,
-#touchInteractBtn { display: none; }
+#touchWeaponBtn { display: none; }
 .touch-aim-cluster { display: none; }
 .touch-primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .touch-primary-actions .primary-action { grid-column: auto; min-height: 44px; font-size: 9px; opacity: .92; }
