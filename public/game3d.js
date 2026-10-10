@@ -51,7 +51,9 @@ import { createExplorationState, evaluateExploration, explorationProgress } from
 import { biomeAt, createConnectedWorldLayout, createTerrainGrid, createWorldScatter, resolveWorldMovement, sampleWorldElevation } from "./world-layout.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createWeaponModel, createWeaponPoseController } from "./weapon-models.mjs";
-import { CHARACTER_ARCHETYPE_IDS, createCharacterModel, createPoseController } from "./character-models.mjs";
+import { CHARACTER_ARCHETYPE_IDS, createCharacterModel, createPoseController, getCharacterArchetype } from "./character-models.mjs";
+import { GLTFLoader } from "./vendor/GLTFLoader.js";
+import { loadCharacterAsset } from "./character-asset-loader.mjs";
 import { createEnemyModel } from "./enemy-models.mjs";
 import { createEnvironmentModel, sampleArenaPlacements } from "./environment-models.mjs";
 import { normalizeTouchStick, resolveAndroidSingleStick, shouldAutoFireFromTouch } from "./touch-control-rules.mjs";
@@ -132,6 +134,18 @@ let heldWeaponPresentation = createWeaponPresentationState("scout");
 let reloadStartedAt = 0;
 let reloadDurationMs = 0;
 const heldWeaponModelIds = { scout: "compact-smg", cannon: "riot-shotgun", inferno: "coil-carbine" };
+const authoredCharacterLoader = new GLTFLoader();
+const authoredCharacterCache = new Map();
+
+function loadAuthoredCharacter(id) {
+  const archetype = getCharacterArchetype(id);
+  if (!authoredCharacterCache.has(id)) {
+    authoredCharacterCache.set(id, loadCharacterAsset({ archetype, loader: authoredCharacterLoader, scale: 1.12, groundY: 0 })
+      .then(result => result.ok ? result : null)
+      .catch(() => null));
+  }
+  return authoredCharacterCache.get(id);
+}
 
 function createHeldWeapon(gunName = "scout") {
   while (heldWeapon.children.length) heldWeapon.remove(heldWeapon.children[0]);
@@ -607,7 +621,7 @@ function unit(color, x, z, avatarType = "scout", enemyType = null) {
   group.add(model.root);
   group.position.set(x, 0, z);
   world.add(group);
-  return { g: group, hp: 100, maxHp: 100, shield: 0,
+  const actor = { g: group, hp: 100, maxHp: 100, shield: 0,
     shieldMax: 0,
     cooldown: 0,
     alive: true,
@@ -620,6 +634,28 @@ function unit(color, x, z, avatarType = "scout", enemyType = null) {
     visualFire: 0,
     visualLastPosition: new THREE.Vector3(x, 0, z),
   };
+  if (!enemyType) {
+    loadAuthoredCharacter(archetypeId).then(asset => {
+      if (!asset?.scene || !actor.alive || !actor.g.parent) return;
+      const authoredRoot = asset.scene;
+      authoredRoot.rotation.y = Math.PI;
+      while (group.children.length) group.remove(group.children[0]);
+      group.add(authoredRoot);
+      actor.visualModel = { root: authoredRoot, metadata: { id: archetypeId }, authored: true };
+      actor.visualController = {
+        time: 0,
+        update(delta = 0, input = {}) {
+          this.time += Math.min(.25, Math.max(0, delta));
+          const moving = input.speed > .08;
+          authoredRoot.position.y = input.downed ? 0.12 : moving ? Math.abs(Math.sin(this.time * 9)) * .025 : 0;
+          authoredRoot.rotation.z = input.downed ? -1.35 : 0;
+          authoredRoot.rotation.x = input.downed ? .22 : Math.sin(this.time * 5) * .008;
+        },
+        resetTerminalState() { authoredRoot.rotation.z = 0; authoredRoot.rotation.x = 0; authoredRoot.position.y = 0; },
+      };
+    });
+  }
+  return actor;
 }
 
 function reviveUnitVisual(unit) {
