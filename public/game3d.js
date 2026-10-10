@@ -4168,6 +4168,22 @@ addEventListener("keydown", event => {
     event.preventDefault();
     return;
   }
+  // Keyboard activation must work before the canvas has focus and while the
+  // profile or lobby screens are open.
+  if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (!welcomeScreen.classList.contains("hidden")) {
+      event.preventDefault();
+      if (!returnStep.classList.contains("hidden")) returnProfile();
+      else if (!$("termsModal").classList.contains("hidden")) $("termsAcceptBtn").click();
+      else enterProfile();
+      return;
+    }
+    if (!lobbyScreen.classList.contains("hidden") && document.activeElement?.matches?.("[data-lobby-control]")) {
+      event.preventDefault();
+      activateLobbyCommand();
+      return;
+    }
+  }
   if (event.key === "Escape") {
     if (phase === "over") { endFinishedMatch(); return; }
     if (!ui.settings.classList.contains("hidden")) { closeSettings(); return; }
@@ -4279,20 +4295,6 @@ canvas.addEventListener("pointerdown", event => {
   if (pointerHandoff.consumesCanvasAction) {
     wakeAudio();
     return;
-  }
-  if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) {
-    if (!welcomeScreen.classList.contains("hidden")) {
-      event.preventDefault();
-      if (!returnStep.classList.contains("hidden")) returnProfile();
-      else if (!$("termsModal").classList.contains("hidden")) $("termsAcceptBtn").click();
-      else enterProfile();
-      return;
-    }
-    if (!lobbyScreen.classList.contains("hidden") && event.target?.matches?.("[data-lobby-control]")) {
-      event.preventDefault();
-      activateLobbyCommand();
-      return;
-    }
   }
   const resumingPointer = pointerResumeRequired;
   wakeAudio();
