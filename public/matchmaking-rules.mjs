@@ -1,4 +1,5 @@
 const SUPPORTED_TEAM_SIZE = 4;
+export const SUPPORTED_FFA_PLAYERS = 6;
 
 export function normalizeTeamSize(value) {
   return SUPPORTED_TEAM_SIZE;
@@ -14,6 +15,7 @@ export function createTeamRoomId(map, teamSize) {
 
 export function createLobbyRoomId({ map, mode, teamSize, ctfPlayers } = {}) {
   if (mode === "teams") return createTeamRoomId(map, teamSize);
+  if (mode === "ffa") return `immersive-ffa-${SUPPORTED_FFA_PLAYERS}`;
   if (mode === "ctf") return `immersive-ctf-${Number(ctfPlayers) === 6 ? 6 : 4}`;
   return "immersive-solo";
 }
@@ -34,6 +36,29 @@ export function parseTeamRoomId(roomId) {
   const match = String(roomId ?? "").match(/^immersive-teams-4v4(?:-([A-Z0-9]{6}))?$/);
   if (!match) return null;
   return { map: "immersive", teamSize: SUPPORTED_TEAM_SIZE, capacity: teamCapacity(SUPPORTED_TEAM_SIZE) };
+}
+
+export function parseFfaRoomId(roomId) {
+  if (String(roomId ?? "") !== `immersive-ffa-${SUPPORTED_FFA_PLAYERS}`) return null;
+  return { map: "immersive", players: SUPPORTED_FFA_PLAYERS, capacity: SUPPORTED_FFA_PLAYERS };
+}
+
+export function createFreeForAllPlan(playerIds = []) {
+  const humans = Array.isArray(playerIds) ? playerIds.slice(0, SUPPORTED_FFA_PLAYERS) : [];
+  let botNumber = 0;
+  const slots = Array.from({ length: SUPPORTED_FFA_PLAYERS }, (_, slot) => {
+    const playerId = humans[slot];
+    const playerType = playerId === undefined ? "bot" : "human";
+    if (playerType === "bot") botNumber++;
+    return {
+      slot,
+      team: "free-for-all",
+      teamSlot: slot,
+      playerType,
+      playerId: playerType === "human" ? playerId : `bot-${botNumber}`,
+    };
+  });
+  return { mode: "ffa", capacity: SUPPORTED_FFA_PLAYERS, humanPlayers: humans.length, botPlayers: SUPPORTED_FFA_PLAYERS - humans.length, slots };
 }
 
 export function createMatchPlan(teamSize, playerIds = []) {

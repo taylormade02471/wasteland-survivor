@@ -130,6 +130,7 @@
       <p id="lobbyPlayer" class="welcome-copy"></p>
       <p id="replayStatus" class="replay-status">Nightfall feed ready.</p>
     </header>
+    <button id="lobbyEnterWastelandBtn" data-lobby-control class="full-button lobby-enter-wasteland" type="button">Enter Wasteland</button>
     <section class="lobby-survivor-hero" aria-label="Active survivor">
       <button id="lobbyAvatarButton" data-lobby-control class="lobby-avatar-button" type="button" aria-controls="dashboardModal">
         <span class="lobby-avatar-glow" aria-hidden="true"></span>
@@ -152,11 +153,12 @@
     </section>
     <nav id="lobbyNavigation" aria-label="Lobby commands">
       <div id="fightCommands" class="floating-command-field" aria-label="Fight modes">
-        <button id="survivalLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Survival Mode</b><small>Enter an escalating solo run. Each level expands the map and raises the threat.</small></button>
-        <button id="teamLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Team Match</b><small>Invite up to 3 friends for a 4-player squad against another team of 4. Open slots fill with bots when the match starts.</small></button>
+        <button id="survivalLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Solo Survival</b><small>Enter an escalating solo run. Each level expands the map and raises the threat.</small></button>
+        <button id="ffaLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Free For All</b><small>Join a six-player online room. Open seats fill with bots after 45 seconds.</small></button>
+        <button id="teamLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Team Play</b><small>Invite friends, join with a code, or enter a randomized team room.</small></button>
         <button id="ctf6LobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="ctfPlayerChoices"><b>Capture the Flag</b><small>Choose a four-player or six-player flag match.</small></button>
       </div>
-      <div id="roomTools" class="room-tools" aria-label="Online room tools">
+      <div id="roomTools" class="room-tools hidden" aria-label="Team room tools">
         <button id="createRoomBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Open Room</b><small>Share a code and invite friends.</small></button>
         <button id="joinRoomBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Join Room</b><small>Enter a friend's room code.</small></button>
         <button id="quickMatchBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Random Room</b><small>Join the next open team room.</small></button>

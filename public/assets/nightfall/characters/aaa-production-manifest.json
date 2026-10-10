@@ -83,11 +83,11 @@
     { "id": "lod3-crowd", "triangleRange": "1500-6000", "use": "distant-players-and-menu-background" }
   ],
   "characters": [
-    { "id": "scout", "displayName": "Dust Scout", "currentGlb": "3d/scout-operator-v1.glb", "referenceImage": "index/scout-v1.webp", "productionPackage": "scout-aaa-v1" },
-    { "id": "ranger", "displayName": "Ranger", "currentGlb": "3d/ranger-operator-v1.glb", "referenceImage": "index/ranger-v1.webp", "productionPackage": "ranger-aaa-v1" },
-    { "id": "heavy", "displayName": "Heavy", "currentGlb": "3d/heavy-operator-v1.glb", "referenceImage": "index/heavy-v1.webp", "productionPackage": "heavy-aaa-v1" },
-    { "id": "tech", "displayName": "Tech Runner", "currentGlb": "3d/tech-operator-v1.glb", "referenceImage": "index/tech-runner-v1.webp", "productionPackage": "tech-aaa-v1" },
-    { "id": "medic", "displayName": "Field Medic", "currentGlb": "3d/medic-operator-v1.glb", "referenceImage": "index/field-medic-v1.webp", "productionPackage": "medic-aaa-v1" },
-    { "id": "warden", "displayName": "Warden", "currentGlb": "3d/warden-operator-v1.glb", "referenceImage": "index/warden-v1.webp", "productionPackage": "warden-aaa-v1" }
+    { "id": "scout", "displayName": "Dust Scout", "status": "blockout", "currentGlb": "3d/scout-operator-v1.glb", "referenceImage": "index/scout-v1.webp", "productionPackage": "scout-aaa-v1" },
+    { "id": "ranger", "displayName": "Ranger", "status": "blockout", "currentGlb": "3d/ranger-operator-v1.glb", "referenceImage": "index/ranger-v1.webp", "productionPackage": "ranger-aaa-v1" },
+    { "id": "heavy", "displayName": "Heavy", "status": "blockout", "currentGlb": "3d/heavy-operator-v1.glb", "referenceImage": "index/heavy-v1.webp", "productionPackage": "heavy-aaa-v1" },
+    { "id": "tech", "displayName": "Tech Runner", "status": "blockout", "currentGlb": "3d/tech-operator-v1.glb", "referenceImage": "index/tech-runner-v1.webp", "productionPackage": "tech-aaa-v1" },
+    { "id": "medic", "displayName": "Field Medic", "status": "blockout", "currentGlb": "3d/medic-operator-v1.glb", "referenceImage": "index/field-medic-v1.webp", "productionPackage": "medic-aaa-v1" },
+    { "id": "warden", "displayName": "Warden", "status": "blockout", "currentGlb": "3d/warden-operator-v1.glb", "referenceImage": "index/warden-v1.webp", "productionPackage": "warden-aaa-v1" }
   ]
 }

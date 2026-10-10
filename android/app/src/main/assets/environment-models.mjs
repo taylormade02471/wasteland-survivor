@@ -359,20 +359,27 @@ export function createEnvironmentModel(THREE, id = "barricade", options = {}) {
   const root = part(THREE, `environment:${metadata.id}`);
   const colliderMarker = part(THREE, `collider:${metadata.id}`);
   root.userData.environmentId = metadata.id;
+  root.userData.renderPipeline = "threejs-pbr-runtime-v2";
+  root.userData.assetContract = "Three.js PBR environment mesh with deterministic biome variation and authored-ready collision metadata.";
   root.rotation.y = variant.yaw;
   root.scale.set(variant.scale, variant.scale, variant.scale);
   colliderMarker.userData.collider = clone(metadata.collider);
   addObstacleMeshes(THREE, root, materials, metadata, variant);
   root.add(colliderMarker);
+  const interactionSocket = part(THREE, `socket:interaction:${metadata.id}`);
+  interactionSocket.position.set(0, Math.min(metadata.footprint.height, 1), -metadata.footprint.depth * .55);
+  interactionSocket.userData.socket = "interaction";
+  root.add(interactionSocket);
   return {
     root,
-    parts: { root, colliderMarker },
+    parts: { root, colliderMarker, interactionSocket },
     metadata,
     variant,
     materials,
     collider: clone(metadata.collider),
     footprint: clone(metadata.footprint),
     budget: clone(metadata.budget),
+    sockets: { interaction: interactionSocket },
   };
 }
 

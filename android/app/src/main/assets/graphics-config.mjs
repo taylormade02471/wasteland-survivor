@@ -1,4 +1,4 @@
-﻿const GRAPHICS_TIERS = new Set(["low", "medium", "high"]);
+const GRAPHICS_TIERS = new Set(["low", "medium", "high"]);
 
 export function selectGraphicsTier({
   deviceMemory,

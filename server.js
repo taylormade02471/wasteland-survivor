@@ -38,7 +38,8 @@ const mimeTypes = {
   ".svg": "image/svg+xml",
   ".webp": "image/webp"
 };
-const roomPattern = /^immersive-(?:solo|ctf-(?:4|6)|teams-4v4(?:-[A-Z0-9]{6})?)$/;
+const matchFillDelayMs = 45_000;
+const roomPattern = /^immersive-(?:solo|ffa-6|ctf-(?:4|6)|teams-4v4(?:-[A-Z0-9]{6})?)$/;
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
@@ -47,16 +48,18 @@ function send(socket, message) {
 function roomCapacity(room) {
   const teamRoom = matchmakingRules.parseTeamRoomId(room);
   if (teamRoom) return teamRoom.capacity;
+  const ffaRoom = matchmakingRules.parseFfaRoomId(room);
+  if (ffaRoom) return ffaRoom.capacity;
   const parts = room.split("-");
   if (parts[1] === "ctf") return Number(parts[2] || 4);
   return 4;
 }
 
 function matchStateFor(roomName) {
-  if (!matchmakingRules.parseTeamRoomId(roomName)) return null;
+  if (!matchmakingRules.parseTeamRoomId(roomName) && !matchmakingRules.parseFfaRoomId(roomName)) return null;
   let state = roomMatchStates.get(roomName);
   if (!state) {
-    state = { phase: "forming", generation: 0, readyPlayerIds: new Set(), payload: null };
+    state = { phase: "forming", generation: 0, readyPlayerIds: new Set(), payload: null, fillTimer: null };
     roomMatchStates.set(roomName, state);
   }
   return state;
@@ -382,6 +385,7 @@ function removeClient(socket) {
   }
   for (const peer of room.values()) send(peer, { type: "chest-status", ...chestStatus });
   if (!room.size) {
+    if (matchState?.fillTimer) clearTimeout(matchState.fillTimer);
     rooms.delete(client.room);
     roomMatchStates.delete(client.room);
   }
@@ -392,14 +396,19 @@ function emitMatchReady(roomName, room) {
   if (!matchState) return null;
   if (matchState.phase === "active" && matchState.payload) return matchState.payload;
   const teamRoom = matchmakingRules.parseTeamRoomId(roomName);
+  const ffaRoom = matchmakingRules.parseFfaRoomId(roomName);
   matchState.generation++;
   const payload = {
     type: "match-ready",
     generation: matchState.generation,
-    ...matchmakingRules.createMatchPlan(teamRoom.teamSize, [...room.keys()]),
+    ...(ffaRoom
+      ? matchmakingRules.createFreeForAllPlan([...room.keys()])
+      : matchmakingRules.createMatchPlan(teamRoom.teamSize, [...room.keys()])),
     startsAt: Date.now() + matchCountdownMs,
   };
   matchState.phase = "active";
+  if (matchState.fillTimer) clearTimeout(matchState.fillTimer);
+  matchState.fillTimer = null;
   matchState.readyPlayerIds.clear();
   matchState.payload = payload;
   for (const peer of room.values()) send(peer, payload);
@@ -408,6 +417,26 @@ function emitMatchReady(roomName, room) {
 
 function joinRoom(socket, roomName) {
   if (!roomPattern.test(roomName)) return send(socket, { type: "error", message: "Invalid lobby" });
+  const current = clients.get(socket);
+  const currentRoom = current ? rooms.get(current.room) : null;
+  if (current && currentRoom?.get(current.id) === socket) {
+    if (current.room === roomName) {
+      const matchState = roomMatchStates.get(roomName);
+      send(socket, {
+        type: "welcome",
+        id: current.id,
+        peers: [...currentRoom.keys()].filter(id => id !== current.id),
+        capacity: roomCapacity(roomName),
+        awaitingRematch: matchState?.phase === "awaiting-rematch",
+      });
+      return;
+    }
+    const requestedRoom = rooms.get(roomName);
+    const requestedState = roomMatchStates.get(roomName);
+    if (requestedState?.phase === "active" || requestedRoom?.size >= roomCapacity(roomName)) {
+      return send(socket, { type: "room-full" });
+    }
+  }
   removeClient(socket);
   let room = rooms.get(roomName);
   if (!room) {
@@ -425,7 +454,16 @@ function joinRoom(socket, roomName) {
   send(socket, { type: "welcome", id, peers, capacity, awaitingRematch: matchState?.phase === "awaiting-rematch" });
   for (const peer of room.values()) if (peer !== socket) send(peer, { type: "peer-joined", id, capacity });
   if (matchState?.phase === "awaiting-rematch") notifyMatchWaiting(roomName, room, "roster-changed");
-  else if (matchState?.phase === "forming" && room.size === capacity) emitMatchReady(roomName, room);
+  else if (matchState?.phase === "forming") {
+    if (room.size === capacity) emitMatchReady(roomName, room);
+    else if (!matchState.fillTimer) {
+      matchState.fillTimer = setTimeout(() => {
+        const currentRoom = rooms.get(roomName);
+        const currentState = roomMatchStates.get(roomName);
+        if (currentRoom?.size && currentState?.phase === "forming") emitMatchReady(roomName, currentRoom);
+      }, matchFillDelayMs);
+    }
+  }
 }
 
 function handleMessage(socket, raw) {

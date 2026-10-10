@@ -77,7 +77,7 @@ import {
   visibleLobbyControlDescriptors,
 } from "./menu-navigation.mjs";
 import { reduceClientMatchLifecycle } from "./matchmaking-client.mjs";
-import { createLobbyRoomId, createMatchPlan, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
+import { createFreeForAllPlan, createLobbyRoomId, createMatchPlan, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
 import {
   beginLocalPinAttempts,
   beginPhoneChallenge,
@@ -1213,14 +1213,16 @@ function spawnMatchBots(plan = activeMatchPlan) {
   ally = null;
   const matchPlan = plan || (mode === "teams"
     ? createMatchPlan(TEAM_SIZE, [lobbyId || activeProfile?.profileId || "local-player"])
-    : null);
-  if (mode !== "teams" || !matchPlan?.slots?.length) return;
+    : mode === "ffa"
+      ? createFreeForAllPlan([lobbyId || activeProfile?.profileId || "local-player"])
+      : null);
+  if (!["teams", "ffa"].includes(mode) || !matchPlan?.slots?.length) return;
 
   const localSlot = matchPlan.slots.find(slot => slot.playerType === "human" && slot.playerId === lobbyId)
     || matchPlan.slots.find(slot => slot.playerType === "human");
   const localTeam = localSlot?.team || "alpha";
   for (const slot of matchPlan.slots.filter(item => item.playerType === "bot")) {
-    if (slot.team === localTeam) {
+    if (mode === "teams" && slot.team === localTeam) {
       allies.push(unit(0x3985ff, 2.5 + allies.length * 2, 1.5, slotSurvivorArchetype(slot, allies.length + 1)));
     } else {
       spawnEnemy(enemies.length, "shooter", slotSurvivorArchetype(slot, enemies.length + 3));
@@ -1254,7 +1256,7 @@ function start() {
   ensureLobbyRoom();
   phase = "loadout";
   timer = 0;
-  $("loadoutMode").textContent = mode === "solo" ? "SURVIVAL" : mode === "teams" ? "4V4 TEAM MATCH" : String(ctfPlayers) + "-PLAYER CTF";
+  $("loadoutMode").textContent = mode === "solo" ? "SURVIVAL" : mode === "ffa" ? "6-PLAYER FREE FOR ALL" : mode === "teams" ? "4V4 TEAM MATCH" : String(ctfPlayers) + "-PLAYER CTF";
   $("loadoutMap").textContent = MAPS[mapKey].label.toUpperCase();
   $("loadoutRoomModal").classList.remove("hidden");
   document.body.classList.add("loadout-active");
@@ -1338,7 +1340,7 @@ function nextCombat() {
   player.hp = player.maxHp || 100;
   player.shield = player.shieldMax;
   player.alive = true;
-  if (mode === "teams") {
+  if (mode === "teams" || mode === "ffa") {
     spawnMatchBots();
     enemySpawnTypes = [];
   } else {
@@ -3127,6 +3129,9 @@ function openLobby(contact) {
   lobbyScreen.classList.remove("hidden");
   document.body.classList.add("lobby-active");
   $("ctfPlayerChoices").classList.add("hidden");
+  $("fightCommands").classList.add("hidden");
+  $("lobbyEnterWastelandBtn").classList.remove("hidden");
+  $("roomTools").classList.add("hidden");
   $("teamLobbyBtn").setAttribute("aria-expanded", "false");
   $("ctf6LobbyBtn").setAttribute("aria-expanded", "false");
   $("lobbyGameOptions").open = false;
@@ -3140,6 +3145,14 @@ function openLobby(contact) {
   syncPublicPlayer();
   controlsPreferencesPromise = syncControlsTourPreferences();
   initializeMenuBackdrop().then(updateMenuReplayStatus);
+}
+
+function openFightMenu() {
+  $("lobbyEnterWastelandBtn").classList.add("hidden");
+  $("fightCommands").classList.remove("hidden");
+  $("roomTools").classList.add("hidden");
+  $("ctfPlayerChoices").classList.add("hidden");
+  refreshLobbyNavigation("survivalLobbyBtn");
 }
 
 function renderLobbyProfile(fallbackName = "Offline Guest") {
@@ -4573,7 +4586,11 @@ $('loadoutLobbyBtn').onclick = exitToLobby;
 $("loadoutArmoryBtn").onclick = () => { setMenuSection("armory"); selectArmoryTab("weapons"); updateArmory(); ui.shop.classList.remove("hidden"); };
 $("loadoutReadyBtn").onclick = event => {
   ui.shop.classList.add("hidden");
-  if (mode === "teams" && !offlineMode) {
+  if ((mode === "teams" || mode === "ffa") && !offlineMode) {
+    if (mode === "ffa") {
+      updateNetworkStatus("Searching for Free For All players. Empty seats fill after 45 seconds...");
+      return;
+    }
     if (lobbySocket?.readyState === WebSocket.OPEN) {
       updateNetworkStatus(awaitingRematch ? "Ready. Waiting for every player..." : "Starting match and filling open seats...");
       lobbySocket.send(JSON.stringify({ type: "start-match" }));
@@ -4776,11 +4793,19 @@ $("profileBackBtn").onclick = () => {
 };
 $("dashboardEditBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); editActiveProfile(); };
 $("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") { setMenuSection("armory"); ui.shop.classList.remove("hidden"); } else openDashboard(); };
+$("lobbyEnterWastelandBtn").onclick = openFightMenu;
 $("survivalLobbyBtn").onclick = () => { restoreStorySession(); lobbyScreen.classList.add("hidden"); $("soloMode").click(); };
+$("ffaLobbyBtn").onclick = () => {
+  lobbyScreen.classList.add("hidden");
+  mode = "ffa";
+  lobbyChanged();
+  start();
+};
 $("teamLobbyBtn").onclick = () => {
   $("ctfPlayerChoices").classList.add("hidden");
-  lobbyScreen.classList.add("hidden");
-  $("teamMode").click();
+  $("roomTools").classList.toggle("hidden");
+  $("teamLobbyBtn").setAttribute("aria-expanded", String(!$("roomTools").classList.contains("hidden")));
+  refreshLobbyNavigation($("roomTools").classList.contains("hidden") ? "teamLobbyBtn" : "createRoomBtn");
 };
 $("createRoomBtn")?.addEventListener("click", () => openTeamRoom({ create: true }));
 $("quickMatchBtn")?.addEventListener("click", () => openTeamRoom({ random: true }));

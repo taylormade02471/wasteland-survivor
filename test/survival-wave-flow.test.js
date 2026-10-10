@@ -31,11 +31,30 @@ test("Survival difficulty increases enemy strength by 20 percent per cleared wav
     >= scaleEnemy("shooter", { wave: 1, difficulty: "medium", playerSkill: 1 }).health * 1.2);
 });
 
+test("menu-to-survival keeps movement and camera resumable after prep and chest return", () => {
+  const updateStart = game.indexOf("function update(dt)");
+  const updateEnd = game.indexOf("function formatTime", updateStart);
+  const update = game.slice(updateStart, updateEnd);
+  const prepStart = game.indexOf("function prep()");
+  const prepEnd = game.indexOf("function finishRound", prepStart);
+  const prep = game.slice(prepStart, prepEnd);
+
+  assert.match(html, /id="lobbyEnterWastelandBtn"/);
+  assert.match(html, /id="survivalLobbyBtn"/);
+  assert.match(game, /\$\("lobbyEnterWastelandBtn"\)\.onclick = openFightMenu;/);
+  assert.match(game, /function openFightMenu\(\) \{[\s\S]*?refreshLobbyNavigation\("survivalLobbyBtn"\);/);
+  assert.match(game, /\$\("survivalLobbyBtn"\)\.onclick = \(\) => \{[\s\S]*?\$\("soloMode"\)\.click\(\);/);
+  assert.match(game, /\$\("loadoutReadyBtn"\)\.onclick = event => \{[\s\S]*?beginCountdown\(\);[\s\S]*?requestGameplayPointerLock\(event\);/);
+  assert.match(game, /\$\("closeShopBtn"\)\.onclick = \(\) => \{[\s\S]*?restoreVisibleMenuSection\(\);[\s\S]*?chestAccessGranted = false;/);
+  assert.match(prep, /phase = "prep";[\s\S]*?menuOpen = false;[\s\S]*?firing = false;/);
+  assert.match(update, /if \(phase === "paused" && mode === "solo"\) return;[\s\S]*?const prepActive = phase === "prep";[\s\S]*?let mx = inputPaused \|\| menuOpen \? 0/);
+  assert.match(update, /const manualTouchAim = !inputPaused[\s\S]*?const manualControllerAim = !inputPaused[\s\S]*?viewYaw = normalizeYaw/);
+});
+
 test("lobby exposes only the connected-world team flow and does not expose map or legacy size selectors", () => {
-  assert.match(html, /id="teamLobbyBtn"[\s\S]*?Invite up to 3 friends[\s\S]*?team of 4/);
+  assert.match(html, /id="teamLobbyBtn"[\s\S]*?Invite friends[\s\S]*?team room/);
   assert.doesNotMatch(html, /id="teamSize[123]Btn"/);
   assert.doesNotMatch(html, /id="botTeamSize"/);
   assert.doesNotMatch(html, /id="storyMapSelect"/);
   assert.doesNotMatch(html, /data-map=/);
 });
-

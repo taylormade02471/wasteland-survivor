@@ -14,6 +14,7 @@ test("lobby visual shell preserves existing action hooks and primary modes", () 
     "lobbyAvatarButton",
     "lobbyProfileReadout",
     "survivalLobbyBtn",
+    "ffaLobbyBtn",
     "teamLobbyBtn",
     "ctf6LobbyBtn",
     "ctfPlayerChoices",
@@ -30,12 +31,14 @@ test("lobby visual shell preserves existing action hooks and primary modes", () 
   }
 
   assert.match(html, /id="survivalLobbyBtn"[^>]*data-lobby-control/);
+  assert.match(html, /id="ffaLobbyBtn"[^>]*data-lobby-control/);
   assert.match(html, /id="teamLobbyBtn"[^>]*data-lobby-control/);
   assert.match(html, /id="ctf6LobbyBtn"[^>]*data-lobby-control/);
-  assert.match(html, />Survival(?: Mode)?</);
-  assert.match(html, />Team Match</);
+  assert.match(html, />Solo Survival</);
+  assert.match(html, />Free For All</);
+  assert.match(html, />Team Play</);
   assert.match(html, />Capture the Flag</);
-  assert.match(html, /Invite up to 3 friends/);
+  assert.match(html, /Invite friends, join with a code/);
   assert.doesNotMatch(html, /1v1|2v2|3v3/);
   assert.doesNotMatch(html, /id="storyMapSelect"|data-map=/);
 });

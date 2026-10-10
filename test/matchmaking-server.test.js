@@ -87,6 +87,12 @@ function waitForMessage(client, type, predicate = () => true, timeoutMs = 3000) 
   });
 }
 
+async function roomStatus(port, room) {
+  const response = await fetch(`http://127.0.0.1:${port}/room-status?room=${encodeURIComponent(room)}`);
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
 function closeClient(client) {
   if (!client || client.socket.readyState === WebSocket.CLOSED) return Promise.resolve();
   return new Promise(resolve => {
@@ -94,6 +100,136 @@ function closeClient(client) {
     client.socket.close();
   });
 }
+
+test("rejecting a join into an active room preserves the current client's source membership", async t => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-join-reconnect-"));
+  const port = await availablePort();
+  const server = await startServer(port, path.join(tempDirectory, "state.json"));
+  const clients = [];
+  t.after(async () => {
+    await Promise.all(clients.map(closeClient));
+    server.kill();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  });
+
+  const sourceRoom = "immersive-teams-4v4";
+  const activeDestination = "immersive-ffa-6";
+  const sourceClient = await connectClient(port, sourceRoom);
+  const destinationClient = await connectClient(port, activeDestination);
+  clients.push(sourceClient, destinationClient);
+
+  destinationClient.socket.send(JSON.stringify({ type: "start-match" }));
+  const destinationPlan = await waitForMessage(destinationClient, "match-ready");
+  assert.equal(destinationPlan.mode, "ffa");
+
+  sourceClient.socket.send(JSON.stringify({ type: "join", room: activeDestination }));
+  await waitForMessage(sourceClient, "room-full");
+  await wait(100);
+
+  assert.equal((await roomStatus(port, sourceRoom)).players, 1);
+  assert.equal((await roomStatus(port, activeDestination)).players, 1);
+});
+
+test("server starts a six-player FFA with individual slots and no team assignment", async t => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-ffa-full-"));
+  const port = await availablePort();
+  const server = await startServer(port, path.join(tempDirectory, "state.json"));
+  const clients = [];
+  t.after(async () => {
+    await Promise.all(clients.map(closeClient));
+    server.kill();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  });
+
+  for (let index = 0; index < 6; index += 1) clients.push(await connectClient(port, "immersive-ffa-6"));
+  const plans = await Promise.all(clients.map(client => waitForMessage(client, "match-ready")));
+  const plan = plans[0];
+
+  assert.ok(plans.every(candidate => candidate.startsAt === plan.startsAt));
+  assert.equal(plan.mode, "ffa");
+  assert.equal(plan.capacity, 6);
+  assert.equal(plan.humanPlayers, 6);
+  assert.equal(plan.botPlayers, 0);
+  assert.equal(plan.slots.length, 6);
+  assert.ok(plan.slots.every(slot => slot.playerType === "human" && slot.team === "free-for-all"));
+  assert.ok(plan.slots.every(slot => slot.team !== "alpha" && slot.team !== "bravo"));
+  assert.equal(new Set(plan.slots.map(slot => slot.playerId)).size, 6);
+});
+
+test("an underfilled FFA waits 45 seconds before filling five bot seats", { timeout: 50_000 }, async t => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-ffa-underfill-"));
+  const port = await availablePort();
+  const server = await startServer(port, path.join(tempDirectory, "state.json"));
+  const clients = [];
+  t.after(async () => {
+    await Promise.all(clients.map(closeClient));
+    server.kill();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  });
+
+  const solo = await connectClient(port, "immersive-ffa-6");
+  clients.push(solo);
+  await wait(250);
+  assert.equal(solo.messages.some(message => message.type === "match-ready"), false);
+
+  const plan = await waitForMessage(solo, "match-ready", () => true, 46_000);
+  assert.equal(plan.mode, "ffa");
+  assert.equal(plan.capacity, 6);
+  assert.equal(plan.humanPlayers, 1);
+  assert.equal(plan.botPlayers, 5);
+  assert.equal(plan.slots.filter(slot => slot.playerType === "human").length, 1);
+  assert.equal(plan.slots.filter(slot => slot.playerType === "bot").length, 5);
+  assert.ok(plan.slots.every(slot => slot.team === "free-for-all"));
+  assert.ok(plan.slots.every(slot => slot.team !== "alpha" && slot.team !== "bravo"));
+  assert.ok(plan.startsAt >= Date.now() + 13_000);
+});
+
+test("lobby reaches match-ready, a fifteen-second countdown, active room, and return to lobby", async t => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-lifecycle-"));
+  const port = await availablePort();
+  const server = await startServer(port, path.join(tempDirectory, "state.json"));
+  const clients = [];
+  t.after(async () => {
+    await Promise.all(clients.map(closeClient));
+    server.kill();
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  });
+
+  const { reduceClientMatchLifecycle } = await import("../public/matchmaking-client.mjs");
+  const { resolveMatchCountdown } = await import("../public/matchmaking-rules.mjs");
+  const room = "immersive-teams-4v4";
+  const first = await connectClient(port, room);
+  const second = await connectClient(port, room);
+  clients.push(first, second);
+  assert.equal((await roomStatus(port, room)).players, 2);
+
+  first.socket.send(JSON.stringify({ type: "start-match" }));
+  const [firstPlan, secondPlan] = await Promise.all([
+    waitForMessage(first, "match-ready"),
+    waitForMessage(second, "match-ready"),
+  ]);
+  assert.equal(firstPlan.startsAt, secondPlan.startsAt);
+  assert.ok(firstPlan.startsAt >= Date.now() + 13_000);
+
+  const countdownTransition = reduceClientMatchLifecycle({
+    phase: "loadout",
+    activeMatchPlan: null,
+    awaitingRematch: true,
+  }, firstPlan);
+  assert.equal(countdownTransition.action, "start-countdown");
+  assert.equal(resolveMatchCountdown(firstPlan.startsAt, firstPlan.startsAt - 15_000).secondsRemaining, 15);
+  assert.equal(resolveMatchCountdown(firstPlan.startsAt, firstPlan.startsAt).expired, true);
+  assert.equal((await roomStatus(port, room)).players, 2);
+
+  await closeClient(second);
+  const reset = await waitForMessage(first, "match-reset");
+  assert.equal(reset.awaitingRematch, true);
+  assert.equal((await roomStatus(port, room)).players, 1);
+
+  await closeClient(first);
+  await wait(100);
+  assert.equal((await roomStatus(port, room)).players, 0);
+});
 
 test("server queues a replacement until every current player readies for the rematch", async t => {
   const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "wasteland-matchmaking-"));

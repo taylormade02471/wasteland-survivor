@@ -6,9 +6,11 @@ const NEXT_KEYS = new Set(["arrowdown", "arrowright"]);
 const ACTIVATE_KEYS = new Set(["enter", " "]);
 
 export const LOBBY_CONTROL_ORDER = Object.freeze([
+  "lobbyEnterWastelandBtn",
   "lobbyAvatarButton",
   "lobbyProfileReadout",
   "survivalLobbyBtn",
+  "ffaLobbyBtn",
   "teamLobbyBtn",
   "ctf6LobbyBtn",
   "onlineSurvivalBtn",

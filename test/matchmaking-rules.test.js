@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 
 import {
   createLobbyRoomId,
+  createFreeForAllPlan,
   createMatchPlan,
   createTeamRoomId,
   normalizeTeamSize,
   parseTeamRoomId,
+  parseFfaRoomId,
   resolveMatchCountdown,
   teamCapacity,
 } from "../public/matchmaking-rules.mjs";
@@ -32,6 +34,17 @@ test("routes all modes through the connected immersive world", () => {
   assert.equal(createLobbyRoomId({ map: "ice", mode: "solo", teamSize: 3, ctfPlayers: 6 }), "immersive-solo");
   assert.equal(createLobbyRoomId({ map: "toxic", mode: "teams", teamSize: 3, ctfPlayers: 4 }), "immersive-teams-4v4");
   assert.equal(createLobbyRoomId({ map: "inferno", mode: "ctf", teamSize: 2, ctfPlayers: 6 }), "immersive-ctf-6");
+  assert.equal(createLobbyRoomId({ map: "wasteland", mode: "ffa" }), "immersive-ffa-6");
+  assert.deepEqual(parseFfaRoomId("immersive-ffa-6"), { map: "immersive", players: 6, capacity: 6 });
+});
+
+test("free-for-all fills the six-player room without teams", () => {
+  const plan = createFreeForAllPlan(["p1"]);
+  assert.deepEqual({ mode: plan.mode, capacity: plan.capacity, humanPlayers: plan.humanPlayers, botPlayers: plan.botPlayers }, {
+    mode: "ffa", capacity: 6, humanPlayers: 1, botPlayers: 5,
+  });
+  assert.ok(plan.slots.every(slot => slot.team === "free-for-all"));
+  assert.equal(plan.slots.filter(slot => slot.playerType === "bot").length, 5);
 });
 
 test("derives synchronized countdown state from the authoritative start deadline", () => {

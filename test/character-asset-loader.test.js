@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { getCharacterArchetype } from "../public/character-models.mjs";
-import { loadCharacterAsset, normalizeCharacterAsset } from "../public/character-asset-loader.mjs";
+import { inspectCharacterAsset, loadCharacterAsset, normalizeCharacterAsset } from "../public/character-asset-loader.mjs";
 
 function object3d({ name = "", children = [], position = { x: 0, y: 0, z: 0 }, scale = { x: 1, y: 1, z: 1 } } = {}) {
-  return { name, children, position, scale, traverse(callback) { callback(this); children.forEach(child => child.traverse(callback)); } };
+  const node = { name, children, position, scale, traverse(callback) { callback(this); children.forEach(child => child.traverse(callback)); } };
+  return Object.assign(node, arguments[0] || {});
 }
 
 test("normalizes a valid loaded scene with the roster asset identity", () => {
@@ -44,6 +45,37 @@ test("loadCharacterAsset is loader-injected and applies shadows, scale, and grou
   assert.equal(scene.receiveShadow, true);
   assert.equal(scene.children[0].castShadow, true);
   assert.equal(scene.children[0].receiveShadow, true);
+});
+
+test("Ranger pilot reports rigged only when skeleton sockets and pilot clips are present", async () => {
+  const scene = object3d({ name: "character:ranger", children: [
+    object3d({ name: "weaponAnchor", isSkinnedMesh: true, skeleton: {} }),
+    object3d({ name: "muzzle" }),
+  ] });
+  const result = await loadCharacterAsset({
+    archetype: getCharacterArchetype("ranger"),
+    loader: { loadAsync: async () => ({ scene, animations: [{ name: "idle" }, { name: "walk" }, { name: "aim" }, { name: "fire" }] }) },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.assetStatus.status, "rigged");
+  assert.deepEqual(result.assetStatus.missingSockets, []);
+  assert.deepEqual(result.assetStatus.missingAnimations, []);
+});
+
+test("Ranger falls back cleanly and reports blockout when the rigged package is absent", async () => {
+  const fallback = object3d({ name: "procedural:ranger" });
+  const staticScene = object3d({ name: "character:ranger", children: [object3d({ name: "weaponAnchor" })] });
+  const result = await loadCharacterAsset({
+    archetype: getCharacterArchetype("ranger"),
+    loader: { loadAsync: async () => ({ scene: staticScene }) },
+    fallbackFactory: () => fallback,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.assetStatus.status, "blockout");
+  assert.deepEqual(result.assetStatus.missingAnimations, ["idle", "walk", "aim", "fire"]);
+  assert.deepEqual(inspectCharacterAsset({ scene: staticScene }).status, "blockout");
 });
 
 test("invalid scene and loader failures use the procedural fallback without throwing", async () => {

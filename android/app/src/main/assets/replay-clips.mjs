@@ -2,6 +2,40 @@ const DATABASE = "wasteland-survivor-replays";
 const STORE = "clips";
 const MAX_CLIPS = 6;
 
+export function buildReplayLibrary(clips = [], { maxClips = MAX_CLIPS } = {}) {
+  const limit = Math.max(0, Math.floor(Number(maxClips) || MAX_CLIPS));
+  return [...(Array.isArray(clips) ? clips : [])]
+    .sort((left, right) => (Number(right?.createdAt) || 0) - (Number(left?.createdAt) || 0))
+    .slice(0, limit)
+    .map(clip => ({ ...clip }));
+}
+
+export function toggleReplayFavorite(clips = [], id) {
+  return (Array.isArray(clips) ? clips : []).map(clip => clip?.id === id
+    ? { ...clip, favorite: !Boolean(clip.favorite) }
+    : { ...clip });
+}
+
+export function removeReplayClip(clips = [], id) {
+  return (Array.isArray(clips) ? clips : [])
+    .filter(clip => clip?.id !== id)
+    .map(clip => ({ ...clip }));
+}
+
+export function selectNextReplayClip(clips = [], currentId, direction = 1) {
+  const items = Array.isArray(clips) ? clips : [];
+  if (!items.length) return null;
+  const currentIndex = items.findIndex(clip => clip?.id === currentId);
+  const step = Number(direction) < 0 ? -1 : 1;
+  const nextIndex = (currentIndex < 0 ? 0 : currentIndex + step + items.length) % items.length;
+  return items[nextIndex] || null;
+}
+
+export function normalizeAutoRecordPreference(value) {
+  if (typeof value === "string") return !["", "false", "0", "no", "off"].includes(value.trim().toLowerCase());
+  return Boolean(value);
+}
+
 function openDatabase() {
   return new Promise((resolve, reject) => {
     if (!globalThis.indexedDB) return reject(new Error("IndexedDB unavailable"));

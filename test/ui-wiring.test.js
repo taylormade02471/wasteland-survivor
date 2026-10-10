@@ -16,10 +16,11 @@ test("mobile entry dock follows the same profile entry path", () => {
 });
 
 test("visible match actions have an explicit route", () => {
-  for (const id of ["survivalLobbyBtn", "teamLobbyBtn", "ctf6LobbyBtn", "createRoomBtn", "joinRoomBtn", "quickMatchBtn"]) {
+  for (const id of ["survivalLobbyBtn", "ffaLobbyBtn", "teamLobbyBtn", "ctf6LobbyBtn", "createRoomBtn", "joinRoomBtn", "quickMatchBtn"]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(game, /\$\("survivalLobbyBtn"\)\.onclick/);
+  assert.match(game, /\$\("ffaLobbyBtn"\)\.onclick/);
   assert.match(game, /\$\("teamLobbyBtn"\)\.onclick/);
   assert.match(game, /\$\("ctf6LobbyBtn"\)\.onclick/);
   assert.match(game, /\$\("createRoomBtn"\)\?\.addEventListener\("click"/);

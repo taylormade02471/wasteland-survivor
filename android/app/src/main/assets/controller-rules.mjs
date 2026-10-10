@@ -48,6 +48,10 @@ export function neutralGamepadSample() {
     dpadDown: false,
     dpadLeft: false,
     dpadRight: false,
+    dpadUpHeld: false,
+    dpadDownHeld: false,
+    dpadLeftHeld: false,
+    dpadRightHeld: false,
     active: false,
     buttonLatch: [],
   };
@@ -108,6 +112,10 @@ export function sampleGamepad(gamepad, previousButtons = []) {
     dpadDown: justPressed(13),
     dpadLeft: justPressed(14),
     dpadRight: justPressed(15),
+    dpadUpHeld: Boolean(buttonLatch[12]),
+    dpadDownHeld: Boolean(buttonLatch[13]),
+    dpadLeftHeld: Boolean(buttonLatch[14]),
+    dpadRightHeld: Boolean(buttonLatch[15]),
     active: move.magnitude > 0 || look.magnitude > 0 || fire || ads || buttonLatch.some(Boolean),
     buttonLatch,
   };
@@ -125,6 +133,8 @@ export function advanceControllerLook(
   const horizontal = numberOrZero(look.x);
   const vertical = numberOrZero(look.y) * (invertY ? 1 : -1);
   return {
+    // Preserve the established first-person aim response. Movement axes are
+    // normalized separately, so changing this sign must not affect strafing.
     yaw: normalizeYaw(numberOrZero(view.yaw) - horizontal * speed * dt),
     pitch: Math.max(-pitchLimit, Math.min(pitchLimit, numberOrZero(view.pitch) + vertical * speed * dt)),
   };

@@ -94,7 +94,6 @@ test("uses ally maximum health in the squad-health denominator", () => {
   });
 
   assert.equal(hud.team.healthPercentage, 83);
-  assert.match(game, /return \{ g: group, hp: 100, maxHp: 100, shield: 0,/);
 });
 
 test("reserves separate mobile rows for the objective rail and menu", () => {

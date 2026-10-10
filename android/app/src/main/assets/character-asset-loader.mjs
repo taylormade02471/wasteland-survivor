@@ -34,6 +34,43 @@ function containsNamedDescendant(scene, name) {
   return found;
 }
 
+const PILOT_ANIMATION_NAMES = Object.freeze(["idle", "walk", "aim", "fire"]);
+const PILOT_SOCKET_NAMES = Object.freeze(["weaponAnchor", "muzzle"]);
+
+function namedDescendantSet(scene) {
+  const names = new Set();
+  if (!scene || typeof scene.traverse !== "function") return names;
+  scene.traverse(node => {
+    if (node?.name) names.add(String(node.name));
+  });
+  return names;
+}
+
+function hasSkeleton(scene) {
+  let found = false;
+  if (scene && typeof scene.traverse === "function") scene.traverse(node => {
+    if (node?.isSkinnedMesh || node?.skeleton || node?.userData?.skeleton) found = true;
+  });
+  return found;
+}
+
+export function inspectCharacterAsset({ scene, animations = [], requiredSockets = PILOT_SOCKET_NAMES, requiredAnimations = PILOT_ANIMATION_NAMES } = {}) {
+  const names = namedDescendantSet(scene);
+  const animationNames = new Set((Array.isArray(animations) ? animations : []).map(clip => String(clip?.name || clip || "").toLowerCase()));
+  const sockets = requiredSockets.filter(name => names.has(name));
+  const clips = requiredAnimations.filter(name => animationNames.has(name.toLowerCase()));
+  const skeleton = hasSkeleton(scene);
+  const rigged = skeleton && sockets.length === requiredSockets.length && clips.length === requiredAnimations.length;
+  return {
+    status: rigged ? "rigged" : "blockout",
+    skeleton,
+    sockets,
+    missingSockets: requiredSockets.filter(name => !names.has(name)),
+    animations: clips,
+    missingAnimations: requiredAnimations.filter(name => !animationNames.has(name.toLowerCase())),
+  };
+}
+
 function setScale(scene, scale) {
   if (!Number.isFinite(scale) || scale <= 0) return;
   if (typeof scene.scale?.set === "function") scene.scale.set(scale, scale, scale);
@@ -86,7 +123,10 @@ export async function loadCharacterAsset({ archetype, loader, fallbackFactory, s
   try {
     const loaded = await loadWith(loader, path);
     const normalized = normalizeCharacterAsset({ scene: loaded?.scene, archetype, scale, groundY });
-    if (normalized.ok) return { ...normalized, path, animations: Array.isArray(loaded?.animations) ? loaded.animations : [] };
+    if (normalized.ok) {
+      const animations = Array.isArray(loaded?.animations) ? loaded.animations : [];
+      return { ...normalized, path, animations, assetStatus: inspectCharacterAsset({ scene: normalized.scene, animations }) };
+    }
     return { ...fallbackResult(fallbackFactory, normalized.reason, archetypeId), path };
   } catch (error) {
     return { ...fallbackResult(fallbackFactory, error?.message || "character asset load failed", archetypeId), path };

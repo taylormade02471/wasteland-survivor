@@ -59,9 +59,16 @@ export function createTacticalModel(THREE, id = "frag") {
   }
   root.add(parts);
   root.userData.tacticalId = definition.id;
-  root.userData.assetContract = "Bundled procedural tactical mesh matched to the gameplay item definition.";
+  const interactionSocket = new THREE.Group();
+  interactionSocket.name = "socket:tactical-use";
+  interactionSocket.position.set(0, .18, -.16);
+  interactionSocket.userData.socket = "tactical-use";
+  root.add(interactionSocket);
+  root.userData.renderPipeline = "threejs-pbr-runtime-v2";
+  root.userData.sockets = { interaction: "socket:tactical-use" };
+  root.userData.assetContract = "Three.js PBR tactical mesh with gameplay interaction socket and mobile budget metadata.";
   const materials = new Set();
   let triangles = 0;
   parts.traverse?.((node) => { if (!node.geometry) return; triangles += triangleCount(node.geometry); materials.add(node.material); });
-  return { root, parts, metadata: definition, budget: { meshes: parts.children.length, materials: materials.size, triangles }, declaredBudget: clone(MOBILE_TACTICAL_BUDGET) };
+  return { root, parts, interactionSocket, sockets: { interaction: interactionSocket }, metadata: definition, budget: { meshes: parts.children.length, materials: materials.size, triangles }, declaredBudget: clone(MOBILE_TACTICAL_BUDGET) };
 }

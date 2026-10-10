@@ -100,6 +100,14 @@ function part(THREE, name) {
   return group;
 }
 
+function socket(THREE, name, position = [0, 0, 0]) {
+  const node = new THREE.Group();
+  node.name = name;
+  node.position.set(...position);
+  node.userData.socket = name;
+  return node;
+}
+
 function mesh(THREE, name, geometry, material, position = [0, 0, 0], scale = [1, 1, 1]) {
   const object = new THREE.Mesh(geometry, material);
   object.name = name;
@@ -167,7 +175,17 @@ export function createWeaponModel(THREE, id = "compact-smg") {
   sight.add(mesh(THREE, metadata.id === "ranger-rifle" ? "sight:scope" : "sight:iron", metadata.id === "ranger-rifle" ? new THREE.CylinderGeometry(0.045, 0.045, 0.22, 8) : new THREE.BoxGeometry(0.16, 0.045, 0.055), materials.accent, [0.08, d.height * 0.42, 0]));
   if (metadata.id === "ranger-rifle") sight.children.at(-1).rotation.z = Math.PI / 2;
 
+  const detailRail = mesh(THREE, "receiver:picatinny-rail", new THREE.BoxGeometry(d.receiver * .72, .035, d.width * .74), materials.dark, [d.receiver * .08, d.height * .34, 0]);
+  const detailPin = mesh(THREE, "receiver:service-pin", new THREE.SphereGeometry(.022, 6, 4), materials.warning, [-d.receiver * .28, d.height * .08, -d.width * .52]);
+  receiver.add(detailRail, detailPin);
+
   root.add(receiver, trigger, bolt, magazine, barrel, muzzle, stock, sight);
+  const muzzleSocket = socket(THREE, "socket:muzzle", [d.receiver * .5 + d.barrel + .08, .03, 0]);
+  const handSocket = socket(THREE, "socket:forward-hand", [d.receiver * .5 + d.barrel * .42, -.08, 0]);
+  root.add(muzzleSocket, handSocket);
+  root.userData.renderPipeline = "threejs-pbr-runtime-v2";
+  root.userData.sockets = { muzzle: "socket:muzzle", forwardHand: "socket:forward-hand" };
+  root.userData.collisionBounds = { kind: "box", length: d.length, width: d.width, height: d.height };
   return {
     root,
     parts: { root, receiver, trigger, bolt, magazine, muzzle, stock, barrel, sight },
@@ -175,6 +193,8 @@ export function createWeaponModel(THREE, id = "compact-smg") {
     materials,
     budget: clone(metadata.budget),
     effects: createEffects(metadata),
+    sockets: { muzzle: muzzleSocket, forwardHand: handSocket },
+    collisionBounds: clone(root.userData.collisionBounds),
   };
 }
 

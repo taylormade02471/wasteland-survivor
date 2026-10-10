@@ -177,13 +177,14 @@ test("uses honest local fallbacks for missing or malformed state", () => {
   assert.deepEqual(view.network, { online: false, label: "Local / Offline" });
 });
 
-test("renders exactly three equal-weight primary fight commands with exact labels", () => {
+test("renders the approved primary fight commands with exact labels", () => {
   const fightCommands = html.match(/<div id="fightCommands"[\s\S]*?<\/div>/)?.[0] || "";
   const buttons = [...fightCommands.matchAll(/<button id="([^"]+)"[^>]*class="[^"]*lobby-fight-command[^"]*"[^>]*>[\s\S]*?<b>([^<]+)<\/b>[\s\S]*?<\/button>/g)];
 
   assert.deepEqual(buttons.map(match => [match[1], match[2]]), [
-    ["survivalLobbyBtn", "Survival Mode"],
-    ["teamLobbyBtn", "Team Match"],
+    ["survivalLobbyBtn", "Solo Survival"],
+    ["ffaLobbyBtn", "Free For All"],
+    ["teamLobbyBtn", "Team Play"],
     ["ctf6LobbyBtn", "Capture the Flag"],
   ]);
   assert.match(css, /#fightCommands\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);

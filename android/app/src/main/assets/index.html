@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -22,7 +22,7 @@
 <body>
   <canvas id="game" aria-label="Wasteland Survivor battlefield"></canvas>
   <div id="aimReticle" class="aim-reticle" aria-hidden="true"><i></i><b></b></div>
-  <aside id="controllerDebug" class="controller-debug hidden" aria-live="polite"><b>CONTROLLER DEBUG</b><span id="debugPadName">No controller detected</span><span id="debugAxes">LX 0.00 Â· LY 0.00 Â· RX 0.00 Â· RY 0.00</span><span id="debugButtons">Buttons: none</span><span id="debugAction">Action: waiting</span></aside>
+  <aside id="controllerDebug" class="controller-debug hidden" aria-live="polite"><b>CONTROLLER DEBUG</b><span id="debugPadName">No controller detected</span><span id="debugAxes">LX 0.00 · LY 0.00 · RX 0.00 · RY 0.00</span><span id="debugButtons">Buttons: none</span><span id="debugAction">Action: waiting</span></aside>
   <div id="nightfallBackground" aria-hidden="true"></div>
   <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline preload="auto" poster="./assets/nightfall/backgrounds/nightfall-loading-v1.webp" aria-hidden="true">
     <source src="./assets/nightfall/video/nightfall-water-walk-v1.mp4" type="video/mp4" />
@@ -78,21 +78,21 @@
         <fieldset class="avatar-picker">
           <legend>Choose your survivor</legend>
           <div class="avatar-selection-grid">
-            <button class="avatar-choice selected" type="button" data-avatar="scout"><img src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Dust Scout"><span><b>Dust Scout</b><small>Scout Blaster Â· Fleet Foot</small><em>Ability: Dash</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="ranger"><img src="./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" alt="Ranger"><span><b>Ranger</b><small>Scout Blaster Â· Steady Aim</small><em>Ability: Focus Lock</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="heavy"><img src="./assets/nightfall/characters/renders/heavy-v2-isolated.png" alt="Heavy"><span><b>Heavy</b><small>Breach Cannon Â· Reinforced</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="tech"><img src="./assets/nightfall/characters/renders/tech-runner-v2-isolated.png" alt="Tech Runner"><span><b>Tech Runner</b><small>Inferno Repeater Â· Extra Scrap</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="medic"><img src="./assets/nightfall/characters/renders/field-medic-v2-isolated.png" alt="Field Medic"><span><b>Field Medic</b><small>Scout Blaster Â· Recovery Kit</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
-            <button class="avatar-choice" type="button" data-avatar="warden"><img src="./assets/nightfall/characters/renders/warden-v2-isolated.png" alt="Warden"><span><b>Warden</b><small>Breach Cannon Â· Fortified</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice selected" type="button" data-avatar="scout"><img src="./assets/nightfall/characters/renders/scout-v2-isolated.png" alt="Dust Scout"><span><b>Dust Scout</b><small>Scout Blaster · Fleet Foot</small><em>Ability: Dash</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="ranger"><img src="./assets/nightfall/characters/renders/ranger-v2-isolated-clean.png" alt="Ranger"><span><b>Ranger</b><small>Scout Blaster · Steady Aim</small><em>Ability: Focus Lock</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="heavy"><img src="./assets/nightfall/characters/renders/heavy-v2-isolated.png" alt="Heavy"><span><b>Heavy</b><small>Breach Cannon · Reinforced</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="tech"><img src="./assets/nightfall/characters/renders/tech-runner-v2-isolated.png" alt="Tech Runner"><span><b>Tech Runner</b><small>Inferno Repeater · Extra Scrap</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="medic"><img src="./assets/nightfall/characters/renders/field-medic-v2-isolated.png" alt="Field Medic"><span><b>Field Medic</b><small>Scout Blaster · Recovery Kit</small><em>Ability: Repair Pulse</em><i>Secret ability: Locked</i></span></button>
+            <button class="avatar-choice" type="button" data-avatar="warden"><img src="./assets/nightfall/characters/renders/warden-v2-isolated.png" alt="Warden"><span><b>Warden</b><small>Breach Cannon · Fortified</small><em>Ability: Shield Brace</em><i>Secret ability: Locked</i></span></button>
           </div>
         </fieldset>
         <label class="avatar-select-fallback" for="profileAvatar">Selected survivor <select id="profileAvatar"><option value="scout">Dust Scout</option><option value="ranger">Ranger</option><option value="heavy">Heavy</option><option value="tech">Tech Runner</option><option value="medic">Field Medic</option><option value="warden">Warden</option></select></label>
-        <label for="profilePin">Create a 4-digit PIN <input id="profilePin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="â€¢â€¢â€¢â€¢" /></label>
+        <label for="profilePin">Create a 4-digit PIN <input id="profilePin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" /></label>
         <label class="consent-line" for="ageConfirm"><input id="ageConfirm" type="checkbox" /> I confirm this birth date is accurate.</label>
         <div id="parentSetup" class="parent-setup hidden">
           <b>Parent controls required</b>
           <small>Players under 14 start with voice and online-network features restricted.</small>
-          <label for="parentPin">Parent 4-digit PIN <input id="parentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="â€¢â€¢â€¢â€¢" /></label>
+          <label for="parentPin">Parent 4-digit PIN <input id="parentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" /></label>
         </div>
         <button id="enterWastlandBtn" class="full-button" type="button">Enter Wasteland</button>
         <button id="guestOfflineBtn" class="text-button" type="button">Play offline as guest</button>
@@ -102,7 +102,7 @@
       <div id="returnStep" class="profile-step hidden">
         <p id="returningPlayer" class="returning-player"></p>
         <label for="profileSelector">Saved player <select id="profileSelector"></select></label>
-        <label for="returnPin">4-digit PIN <input id="returnPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="â€¢â€¢â€¢â€¢" /></label>
+        <label for="returnPin">4-digit PIN <input id="returnPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="••••" /></label>
         <button id="returnWastlandBtn" class="full-button" type="button">Continue</button>
         <button id="storyGuestBtn" class="text-button" type="button">Play Survival Offline</button>
         <button id="newProfileBtn" class="text-button" type="button">Use a different profile</button>
@@ -130,6 +130,7 @@
       <p id="lobbyPlayer" class="welcome-copy"></p>
       <p id="replayStatus" class="replay-status">Nightfall feed ready.</p>
     </header>
+    <button id="lobbyEnterWastelandBtn" data-lobby-control class="full-button lobby-enter-wasteland" type="button">Enter Wasteland</button>
     <section class="lobby-survivor-hero" aria-label="Active survivor">
       <button id="lobbyAvatarButton" data-lobby-control class="lobby-avatar-button" type="button" aria-controls="dashboardModal">
         <span class="lobby-avatar-glow" aria-hidden="true"></span>
@@ -152,11 +153,12 @@
     </section>
     <nav id="lobbyNavigation" aria-label="Lobby commands">
       <div id="fightCommands" class="floating-command-field" aria-label="Fight modes">
-        <button id="survivalLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Survival Mode</b><small>Enter an escalating solo run. Each level expands the map and raises the threat.</small></button>
-        <button id="teamLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Team Match</b><small>Invite up to 3 friends for a 4-player squad against another team of 4. Open slots fill with bots when the match starts.</small></button>
+        <button id="survivalLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Solo Survival</b><small>Enter an escalating solo run. Each level expands the map and raises the threat.</small></button>
+        <button id="ffaLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Free For All</b><small>Join a six-player online room. Open seats fill with bots after 45 seconds.</small></button>
+        <button id="teamLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Team Play</b><small>Invite friends, join with a code, or enter a randomized team room.</small></button>
         <button id="ctf6LobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="ctfPlayerChoices"><b>Capture the Flag</b><small>Choose a four-player or six-player flag match.</small></button>
       </div>
-      <div id="roomTools" class="room-tools" aria-label="Online room tools">
+      <div id="roomTools" class="room-tools hidden" aria-label="Team room tools">
         <button id="createRoomBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Open Room</b><small>Share a code and invite friends.</small></button>
         <button id="joinRoomBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Join Room</b><small>Enter a friend's room code.</small></button>
         <button id="quickMatchBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Random Room</b><small>Join the next open team room.</small></button>
@@ -265,7 +267,7 @@
     </div>
   </section>
 
-  <div id="chestLocator" class="chest-locator hidden"><i id="chestArrow" aria-hidden="true">âž¤</i><b>SUPPLY</b><span id="chestDirection">N Â· 0m</span></div>
+  <div id="chestLocator" class="chest-locator hidden"><i id="chestArrow" aria-hidden="true">➤</i><b>SUPPLY</b><span id="chestDirection">N · 0m</span></div>
   <div id="chestPrompt" class="chest-prompt hidden"><b>SHARED SUPPLY CHEST</b><span id="chestOccupancy">Access slots: 0/2</span><span>Prep phase ends in <i id="prepTimer">01:00</i></span><button id="openChestBtn" type="button">Access Chest</button></div>
 
   <section id="loadoutRoomModal" class="modal hidden" aria-label="Pre-match loadout room">
@@ -274,7 +276,7 @@
       <h2>Final Loadout</h2>
       <p>Players are assembling. This is your final arsenal change before Round 1.</p>
       <div class="loadout-room-status"><span id="loadoutMode">SURVIVAL</span><span id="loadoutMap">WASTELAND</span><span>ROUND 1</span></div>
-      <div class="loadout-room-actions"><button id="loadoutArmoryBtn" type="button">Edit Arsenal</button><button id="loadoutReadyBtn" class="full-button" type="button">Ready For Nightfall</button></div>
+      <div class="loadout-room-actions"><button id="loadoutLobbyBtn" class="text-button" type="button">Return to Lobby</button><button id="loadoutArmoryBtn" type="button">Edit Arsenal</button><button id="loadoutReadyBtn" class="full-button" type="button">Ready For Nightfall</button></div>
     </div>
   </section>
 
@@ -414,7 +416,7 @@
   <div id="touchControls" aria-hidden="true">
     <div class="touch-move-zone"><span>Move</span><div id="moveStick" class="touch-stick"><i></i></div></div>
     <div class="touch-action-zone">
-      <div id="touchAssistStatus" class="touch-assist-status" role="status">AIM ON TARGET Â· AUTO FIRE</div>
+      <div id="touchAssistStatus" class="touch-assist-status" role="status">AIM ON TARGET · AUTO FIRE</div>
       <div class="touch-aim-cluster">
         <div id="aimStick" class="touch-stick aim-swipe"><i></i><span>Look</span></div>
         <button id="touchLockBtn" type="button" aria-label="Lock onto the next target">Lock</button>
