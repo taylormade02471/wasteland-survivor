@@ -38,7 +38,7 @@ const mimeTypes = {
   ".svg": "image/svg+xml",
   ".webp": "image/webp"
 };
-const roomPattern = /^(wasteland|toxic|ice|inferno)-(?:solo|ctf-(?:4|6)|teams-(?:1v1|2v2|3v3))$/;
+const roomPattern = /^immersive-(?:solo|ctf-(?:4|6)|teams-4v4(?:-[A-Z0-9]{6})?)$/;
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));

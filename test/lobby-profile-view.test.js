@@ -183,7 +183,7 @@ test("renders exactly three equal-weight primary fight commands with exact label
 
   assert.deepEqual(buttons.map(match => [match[1], match[2]]), [
     ["survivalLobbyBtn", "Survival Mode"],
-    ["teamLobbyBtn", "Multiplayer"],
+    ["teamLobbyBtn", "Team Match"],
     ["ctf6LobbyBtn", "Capture the Flag"],
   ]);
   assert.match(css, /#fightCommands\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
@@ -191,13 +191,13 @@ test("renders exactly three equal-weight primary fight commands with exact label
 
 test("keeps mode choices and game options subordinate and closed by default", () => {
   assert.match(html, /id="onlineSurvivalBtn"[^>]*class="[^"]*hidden/);
-  assert.match(html, /id="teamSizeChoices"[^>]*class="[^"]*hidden/);
   assert.match(html, /id="ctfPlayerChoices"[^>]*class="[^"]*hidden/);
   assert.match(html, /<details id="lobbyGameOptions"(?![^>]*\sopen)[^>]*>/);
 
-  for (const id of ["teamSize1Btn", "teamSize2Btn", "teamSize3Btn", "botTeamSize", "botDifficulty", "storyMapSelect", "riskLevel"]) {
+  for (const id of ["botDifficulty", "riskLevel"]) {
     assert.match(html, new RegExp(`id="${id}"`), `missing preserved subordinate control #${id}`);
   }
+  assert.doesNotMatch(html, /1v1|2v2|3v3|id="storyMapSelect"|data-map=/);
 });
 
 test("preserves edge routes and makes the survivor avatar and readout open the dashboard", () => {

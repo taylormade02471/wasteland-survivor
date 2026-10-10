@@ -16,7 +16,6 @@ test("lobby visual shell preserves existing action hooks and primary modes", () 
     "survivalLobbyBtn",
     "teamLobbyBtn",
     "ctf6LobbyBtn",
-    "teamSizeChoices",
     "ctfPlayerChoices",
     "dashboardBtn",
     "editProfileBtn",
@@ -24,9 +23,7 @@ test("lobby visual shell preserves existing action hooks and primary modes", () 
     "lobbySettingsBtn",
     "signOutProfileBtn",
     "lobbyGameOptions",
-    "botTeamSize",
     "botDifficulty",
-    "storyMapSelect",
     "riskLevel",
   ]) {
     assert.match(html, new RegExp(`id="${id}"`), `${id} remains present`);
@@ -36,8 +33,11 @@ test("lobby visual shell preserves existing action hooks and primary modes", () 
   assert.match(html, /id="teamLobbyBtn"[^>]*data-lobby-control/);
   assert.match(html, /id="ctf6LobbyBtn"[^>]*data-lobby-control/);
   assert.match(html, />Survival(?: Mode)?</);
-  assert.match(html, />Multiplayer</);
+  assert.match(html, />Team Match</);
   assert.match(html, />Capture the Flag</);
+  assert.match(html, /Invite up to 3 friends/);
+  assert.doesNotMatch(html, /1v1|2v2|3v3/);
+  assert.doesNotMatch(html, /id="storyMapSelect"|data-map=/);
 });
 
 test("lobby CSS implements slim combined rails and avoids blocky card layout", () => {

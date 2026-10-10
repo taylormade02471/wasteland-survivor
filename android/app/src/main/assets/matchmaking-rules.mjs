@@ -1,10 +1,7 @@
-const supportedTeamSizes = new Set([1, 2, 3]);
-const supportedMaps = new Set(["wasteland", "toxic", "ice", "inferno"]);
+const SUPPORTED_TEAM_SIZE = 4;
 
 export function normalizeTeamSize(value) {
-  const match = String(value ?? "").match(/^([123])(?:v\1)?$/);
-  const teamSize = Number(match?.[1]);
-  return supportedTeamSizes.has(teamSize) ? teamSize : 2;
+  return SUPPORTED_TEAM_SIZE;
 }
 
 export function teamCapacity(value) {
@@ -12,16 +9,13 @@ export function teamCapacity(value) {
 }
 
 export function createTeamRoomId(map, teamSize) {
-  const normalizedMap = supportedMaps.has(map) ? map : "wasteland";
-  const normalizedSize = normalizeTeamSize(teamSize);
-  return `${normalizedMap}-teams-${normalizedSize}v${normalizedSize}`;
+  return "immersive-teams-4v4";
 }
 
 export function createLobbyRoomId({ map, mode, teamSize, ctfPlayers } = {}) {
-  const normalizedMap = supportedMaps.has(map) ? map : "wasteland";
-  if (mode === "teams") return createTeamRoomId(normalizedMap, teamSize);
-  if (mode === "ctf") return `${normalizedMap}-ctf-${Number(ctfPlayers) === 6 ? 6 : 4}`;
-  return `${normalizedMap}-solo`;
+  if (mode === "teams") return createTeamRoomId(map, teamSize);
+  if (mode === "ctf") return `immersive-ctf-${Number(ctfPlayers) === 6 ? 6 : 4}`;
+  return "immersive-solo";
 }
 
 export function resolveMatchCountdown(startsAt, now = Date.now()) {
@@ -37,10 +31,9 @@ export function resolveMatchCountdown(startsAt, now = Date.now()) {
 }
 
 export function parseTeamRoomId(roomId) {
-  const match = String(roomId ?? "").match(/^(wasteland|toxic|ice|inferno)-teams-([123])v\2$/);
+  const match = String(roomId ?? "").match(/^immersive-teams-4v4(?:-([A-Z0-9]{6}))?$/);
   if (!match) return null;
-  const teamSize = Number(match[2]);
-  return { map: match[1], teamSize, capacity: teamCapacity(teamSize) };
+  return { map: "immersive", teamSize: SUPPORTED_TEAM_SIZE, capacity: teamCapacity(SUPPORTED_TEAM_SIZE) };
 }
 
 export function createMatchPlan(teamSize, playerIds = []) {
@@ -54,8 +47,8 @@ export function createMatchPlan(teamSize, playerIds = []) {
     if (playerType === "bot") botNumber++;
     return {
       slot,
-      team: slot % 2 === 0 ? "alpha" : "bravo",
-      teamSlot: Math.floor(slot / 2),
+      team: slot < normalizedSize ? "alpha" : "bravo",
+      teamSlot: slot % normalizedSize,
       playerType,
       playerId: playerType === "human" ? playerId : `bot-${botNumber}`,
     };

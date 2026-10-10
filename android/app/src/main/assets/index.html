@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Wasteland Survivor</title>
   <meta name="theme-color" content="#090d10" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta property="og:title" content="Wasteland Survivor" />
   <meta property="og:image" content="assets/nightfall/thumbnails/wasteland-survivor-share-v1.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -101,7 +104,7 @@
         <label for="profileSelector">Saved player <select id="profileSelector"></select></label>
         <label for="returnPin">4-digit PIN <input id="returnPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="â€¢â€¢â€¢â€¢" /></label>
         <button id="returnWastlandBtn" class="full-button" type="button">Continue</button>
-        <button id="storyGuestBtn" class="text-button" type="button">Play Story Survival Offline</button>
+        <button id="storyGuestBtn" class="text-button" type="button">Play Survival Offline</button>
         <button id="newProfileBtn" class="text-button" type="button">Use a different profile</button>
         <p id="returnMessage" class="form-message" role="status"></p>
       </div>
@@ -149,16 +152,21 @@
     </section>
     <nav id="lobbyNavigation" aria-label="Lobby commands">
       <div id="fightCommands" class="floating-command-field" aria-label="Fight modes">
-        <button id="survivalLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Survival Mode</b><small>Enter the all-out story survival timeline.</small></button>
-        <button id="teamLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="teamSizeChoices"><b>Multiplayer</b><small>Choose an online 1v1, 2v2, or 3v3 room.</small></button>
+        <button id="survivalLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Survival Mode</b><small>Enter an escalating solo run. Each level expands the map and raises the threat.</small></button>
+        <button id="teamLobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button"><b>Team Match</b><small>Invite up to 3 friends for a 4-player squad against another team of 4. Open slots fill with bots when the match starts.</small></button>
         <button id="ctf6LobbyBtn" data-lobby-control class="floating-command lobby-fight-command" type="button" aria-expanded="false" aria-controls="ctfPlayerChoices"><b>Capture the Flag</b><small>Choose a four-player or six-player flag match.</small></button>
       </div>
-      <button id="onlineSurvivalBtn" data-lobby-control class="floating-command hidden" type="button"><b>Online Survival Pair</b><small>Legacy online survival route.</small></button>
-      <div id="teamSizeChoices" class="team-size-choices hidden" aria-label="Multiplayer team size">
-        <button id="teamSize1Btn" data-lobby-control class="floating-command team-size-choice" type="button" data-team-size="1"><b>1v1</b><small>2 seats</small></button>
-        <button id="teamSize2Btn" data-lobby-control class="floating-command team-size-choice" type="button" data-team-size="2"><b>2v2</b><small>4 seats</small></button>
-        <button id="teamSize3Btn" data-lobby-control class="floating-command team-size-choice" type="button" data-team-size="3"><b>3v3</b><small>6 seats</small></button>
+      <div id="roomTools" class="room-tools" aria-label="Online room tools">
+        <button id="createRoomBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Open Room</b><small>Share a code and invite friends.</small></button>
+        <button id="joinRoomBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Join Room</b><small>Enter a friend's room code.</small></button>
+        <button id="quickMatchBtn" data-lobby-control class="floating-command room-tool" type="button"><b>Random Room</b><small>Join the next open team room.</small></button>
       </div>
+      <div id="roomCodePanel" class="room-code-panel hidden" role="status" aria-live="polite">
+        <b id="roomCodeLabel">ROOM CODE</b><strong id="roomCodeValue">----</strong>
+        <button id="copyRoomCodeBtn" type="button">Copy code</button>
+        <button id="closeRoomCodeBtn" type="button">Close</button>
+      </div>
+      <button id="onlineSurvivalBtn" data-lobby-control class="floating-command hidden" type="button"><b>Online Survival Pair</b><small>Legacy online survival route.</small></button>
       <div id="ctfPlayerChoices" class="ctf-player-choices hidden" aria-label="Capture the Flag player count">
         <button id="ctf4PlayersLobbyBtn" data-lobby-control class="floating-command ctf-player-choice" type="button" data-lobby-ctf-players="4"><b>4 Players</b><small>Fast squad match</small></button>
         <button id="ctf6PlayersLobbyBtn" data-lobby-control class="floating-command ctf-player-choice" type="button" data-lobby-ctf-players="6"><b>6 Players</b><small>Full field match</small></button>
@@ -174,9 +182,7 @@
       <details id="lobbyGameOptions" class="lobby-game-options">
         <summary id="lobbyGameOptionsSummary" data-lobby-control>Game Options</summary>
         <div class="lobby-settings-row">
-          <label for="botTeamSize">Team size <select id="botTeamSize" data-lobby-control><option value="1">1v1</option><option value="2" selected>2v2</option><option value="3">3v3</option></select></label>
           <label for="botDifficulty">Difficulty <select id="botDifficulty" data-lobby-control><option value="0.10">Easy</option><option value="0.22" selected>Medium</option><option value="0.35">Expert</option><option value="0.75">Insane</option></select></label>
-          <label for="storyMapSelect">Map <select id="storyMapSelect" data-lobby-control><option value="wasteland">Wasteland</option><option value="toxic">Toxic Ponds</option><option value="ice">Icy Mountain</option><option value="inferno">Fire Inferno</option></select></label>
           <label for="riskLevel">Risk and reward <select id="riskLevel" data-lobby-control><option value="protected">Protected</option><option value="standard" selected>Standard</option><option value="high">High Risk</option></select></label>
         </div>
         <p id="riskPreview" class="risk-preview"></p>
@@ -220,6 +226,7 @@
       <p id="objectiveText" class="hud-text-ellipsis">Survive the cycle</p>
     </section>
     <div id="combatFeedback" class="combat-feedback hidden" role="status" aria-live="polite"></div>
+    <canvas id="worldMinimap" class="world-minimap" width="176" height="176" aria-label="World view minimap"></canvas>
   </section>
 
   <aside id="discoveryToast" class="discovery-toast hidden" role="status" aria-live="polite" aria-atomic="true">
@@ -242,9 +249,8 @@
         <option value="lobby">Return to lobby</option>
       </select>
       <div class="game-menu-match-controls" aria-label="Match setup">
-        <div class="mode-control"><button id="soloMode" type="button" class="active">Solo</button><button id="teamMode" type="button">2v2</button><button id="ctfMode" type="button">CTF</button></div>
+         <div class="mode-control"><button id="soloMode" type="button" class="active">Solo Survival</button><button id="teamMode" type="button">4v4 Team</button><button id="ctfMode" type="button">CTF</button></div>
         <div id="ctfPlayerControl" class="mode-control hidden"><button data-ctf-players="4" type="button" class="active">4 Players</button><button data-ctf-players="6" type="button">6 Players</button></div>
-        <div class="map-control"><button data-map="wasteland" type="button" class="active">Wasteland</button><button data-map="toxic" type="button">Toxic</button><button data-map="ice" type="button">Ice</button><button data-map="inferno" type="button">Inferno</button></div>
       </div>
       <div class="game-menu-actions">
         <button id="resumeGameBtn" type="button">Back to Game</button>
@@ -259,7 +265,7 @@
     </div>
   </section>
 
-  <div id="chestLocator" class="chest-locator hidden"><b>SUPPLY</b><span id="chestDirection">N Â· 0m</span></div>
+  <div id="chestLocator" class="chest-locator hidden"><i id="chestArrow" aria-hidden="true">âž¤</i><b>SUPPLY</b><span id="chestDirection">N Â· 0m</span></div>
   <div id="chestPrompt" class="chest-prompt hidden"><b>SHARED SUPPLY CHEST</b><span id="chestOccupancy">Access slots: 0/2</span><span>Prep phase ends in <i id="prepTimer">01:00</i></span><button id="openChestBtn" type="button">Access Chest</button></div>
 
   <section id="loadoutRoomModal" class="modal hidden" aria-label="Pre-match loadout room">
@@ -430,6 +436,11 @@
   <div id="landscapeHint" class="landscape-hint hidden" role="status">Rotate to landscape for the best combat view.</div>
 
   <script type="module" src="game3d.js"></script><script type="module" src="android-platform.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+    }
+  </script>
 </body>
 </html>
 

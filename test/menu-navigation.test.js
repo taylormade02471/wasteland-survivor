@@ -39,8 +39,8 @@ test("skips disabled commands and falls back to the first enabled command", () =
   assert.deepEqual(navigator.move("next", "controller"), { id: "online", input: "controller" });
 });
 
-test("disables commands nested inside a collapsed lobby choice group", () => {
-  const collapsedChoice = { id: "teamSize1Btn", disabled: false, closest: selector => selector === ".hidden, [hidden]" ? { id: "teamSizeChoices" } : null };
+test("disables commands nested inside a collapsed lobby group", () => {
+  const collapsedChoice = { id: "ctf4PlayersLobbyBtn", disabled: false, closest: selector => selector === ".hidden, [hidden]" ? { id: "ctfPlayerChoices" } : null };
   const visibleChoice = { id: "survivalLobbyBtn", disabled: false, closest: () => null };
 
   assert.equal(isMenuCommandDisabled(collapsedChoice), true);
@@ -131,10 +131,10 @@ test("registers every required lobby controller target in one explicit order", (
   const required = [
     "lobbyAvatarButton", "lobbyProfileReadout",
     "survivalLobbyBtn", "teamLobbyBtn", "ctf6LobbyBtn",
-    "teamSize1Btn", "teamSize2Btn", "teamSize3Btn",
+    "createRoomBtn", "joinRoomBtn", "quickMatchBtn",
     "ctf4PlayersLobbyBtn", "ctf6PlayersLobbyBtn",
     "dashboardBtn", "editProfileBtn", "lobbyConnectionsBtn", "lobbySettingsBtn", "signOutProfileBtn",
-    "lobbyGameOptionsSummary", "botTeamSize", "botDifficulty", "storyMapSelect", "riskLevel",
+    "lobbyGameOptionsSummary", "botDifficulty", "riskLevel",
     "lobbyBackBtn",
   ];
 
@@ -157,15 +157,12 @@ test("excludes hidden groups and closed detail contents while retaining the Game
     },
   });
   const controls = [
-    mock({ id: "teamSize1Btn", hidden: true }),
     mock({ id: "lobbyGameOptionsSummary", tagName: "SUMMARY", closedDetails: true }),
-    mock({ id: "botTeamSize", tagName: "SELECT", closedDetails: true }),
     mock({ id: "dashboardBtn" }),
   ];
 
-  assert.equal(describeLobbyControl(controls[0]).visible, false);
+  assert.equal(describeLobbyControl(controls[0]).visible, true);
   assert.equal(describeLobbyControl(controls[1]).visible, true);
-  assert.equal(describeLobbyControl(controls[2]).visible, false);
   assert.deepEqual(
     visibleLobbyControlDescriptors(controls).map(control => [control.id, control.type]),
     [["lobbyGameOptionsSummary", "summary"], ["dashboardBtn", "button"]],

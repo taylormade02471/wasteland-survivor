@@ -18,6 +18,8 @@ const DIFFICULTY = Object.freeze({
   insane: Object.freeze({ growth: 0.75, pacing: 1.5, reaction: 0.45, fireInterval: 1.45, accuracy: 0.9 })
 });
 
+export const SURVIVAL_WAVE_STRENGTH_GROWTH = 0.20;
+
 const ARCHETYPE_FIRE_MULTIPLIER = Object.freeze({
   rusher: 1.1,
   shooter: 1,
@@ -36,6 +38,11 @@ function positiveInteger(value, name) {
 
 function difficultyRules(name) {
   return DIFFICULTY[name] || DIFFICULTY.medium;
+}
+
+export function waveStrengthMultiplier(wave) {
+  positiveInteger(wave, "wave");
+  return Number((1.2 ** (wave - 1)).toFixed(6));
 }
 
 export function enemyCombatProfile(type, {
@@ -90,13 +97,16 @@ export function scaleEnemy(type, { wave = 1, difficulty = "medium", playerSkill 
 
   const skill = Math.max(0, Number(playerSkill) || 0);
   const growth = difficultyRules(difficulty).growth;
-  const multiplier = 1 + ((wave - 1) * growth * 0.12) + (skill * growth * 0.1);
+  const waveMultiplier = waveStrengthMultiplier(wave);
+  const skillMultiplier = 1 + (Math.max(0, skill - 1) * SURVIVAL_WAVE_STRENGTH_GROWTH);
+  const difficultyMultiplier = 1 + (growth * 0.15 * skill);
+  const multiplier = waveMultiplier * skillMultiplier * difficultyMultiplier;
 
   return Object.freeze({
     type,
     role: profile.role,
     health: Math.round(profile.health * multiplier),
-    damage: Math.round(profile.damage * (1 + (multiplier - 1) * 0.8) * 100) / 100,
+    damage: Math.round(profile.damage * multiplier * 100) / 100,
     speed: Math.round(profile.speed * Math.min(1.35, 1 + (multiplier - 1) * 0.18) * 100) / 100,
     range: profile.range
   });

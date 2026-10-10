@@ -75,7 +75,7 @@ import {
   visibleLobbyControlDescriptors,
 } from "./menu-navigation.mjs";
 import { reduceClientMatchLifecycle } from "./matchmaking-client.mjs";
-import { createLobbyRoomId, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
+import { createLobbyRoomId, createMatchPlan, normalizeTeamSize, resolveMatchCountdown } from "./matchmaking-rules.mjs";
 import {
   beginLocalPinAttempts,
   beginPhoneChallenge,
@@ -107,6 +107,8 @@ const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
 const storySnapshotKey = (profile = activeProfile) => task4StorageKey(`story-session-${profile?.profileId || "offline-guest"}`);
 const canvas = $("game");
 const aimReticle = $("aimReticle");
+const minimapCanvas = $("worldMinimap");
+const minimapContext = minimapCanvas?.getContext("2d");
 const controllerDebug = $("controllerDebug");
 const inputRecoveryNotice = $("inputRecoveryNotice");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -242,7 +244,8 @@ const soldierStory = [
 ];
 let activeGun = "scout";
 let ctfPlayers = 4;
-let botTeamSize = 2;
+const TEAM_SIZE = 4;
+let botTeamSize = TEAM_SIZE;
 let difficultyRatio = .22;
 let spawnQueue = 0;
 let spawnTimer = 0;
@@ -321,6 +324,7 @@ let lobbySocket = null;
 let lobbyId = null;
 let lobbyRoomName = null;
 let lobbyPeers = 0;
+let lobbyRoomOverride = "";
 let activeMatchPlan = null;
 let awaitingRematch = false;
 let chestOccupants = 0;
@@ -1103,7 +1107,7 @@ function resetMap() {
   observedPlayerVelocity.set(0, 0, 0);
   previousPlayerPosition.copy(player.g.position);
   allies = [];
-  const botCount = mode === "solo" ? 0 : mode === "ctf" ? ctfPlayers / 2 - 1 : botTeamSize - 1;
+  const botCount = mode === "ctf" ? ctfPlayers / 2 - 1 : 0;
   for (let index = 0; index < botCount; index++) {
     const bot = unit(0x3985ff, 2.5 + index * 2, 1.5, survivorArchetype(null, index + 1));
     applyWorldMovement(bot);
@@ -1171,12 +1175,15 @@ function spawnMatchBots(plan = activeMatchPlan) {
   allies = [];
   enemies = [];
   ally = null;
-  if (mode !== "teams" || !plan?.slots?.length) return;
+  const matchPlan = plan || (mode === "teams"
+    ? createMatchPlan(TEAM_SIZE, [lobbyId || activeProfile?.profileId || "local-player"])
+    : null);
+  if (mode !== "teams" || !matchPlan?.slots?.length) return;
 
-  const localSlot = plan.slots.find(slot => slot.playerType === "human" && slot.playerId === lobbyId)
-    || plan.slots.find(slot => slot.playerType === "human");
+  const localSlot = matchPlan.slots.find(slot => slot.playerType === "human" && slot.playerId === lobbyId)
+    || matchPlan.slots.find(slot => slot.playerType === "human");
   const localTeam = localSlot?.team || "alpha";
-  for (const slot of plan.slots.filter(item => item.playerType === "bot")) {
+  for (const slot of matchPlan.slots.filter(item => item.playerType === "bot")) {
     if (slot.team === localTeam) {
       allies.push(unit(0x3985ff, 2.5 + allies.length * 2, 1.5, slotSurvivorArchetype(slot, allies.length + 1)));
     } else {
@@ -1211,7 +1218,7 @@ function start() {
   ensureLobbyRoom();
   phase = "loadout";
   timer = 0;
-  $("loadoutMode").textContent = mode === "solo" ? "SURVIVAL" : mode === "teams" ? `${botTeamSize}V${botTeamSize}` : `${ctfPlayers}-PLAYER CTF`;
+  $("loadoutMode").textContent = mode === "solo" ? "SURVIVAL" : mode === "teams" ? "4V4 TEAM MATCH" : String(ctfPlayers) + "-PLAYER CTF";
   $("loadoutMap").textContent = MAPS[mapKey].label.toUpperCase();
   $("loadoutRoomModal").classList.remove("hidden");
   document.body.classList.add("loadout-active");
@@ -1351,7 +1358,6 @@ function finishRound(winner) {
   if (mode === "solo") {
     if (winner === "red") gameOver("Survivor Eliminated");
     else {
-      wave++;
       prep();
     }
     return;
@@ -1936,6 +1942,8 @@ function update(dt) {
     const angle = (Math.atan2(dx, dz) * 180 / Math.PI + 360) % 360;
     const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(angle / 45) % 8];
     $("chestDirection").textContent = `${compass} · ${Math.round(Math.hypot(dx, dz))}m`;
+    const chestArrow = $("chestArrow");
+    if (chestArrow) chestArrow.style.transform = `rotate(${angle - (viewYaw * 180 / Math.PI)}deg)`;
     if (timer <= 0) {
       wave++;
       nextCombat();
@@ -2053,7 +2061,7 @@ function update(dt) {
       ? androidAutoTarget
       : touchAutoFire && !touch.fire
         ? touchCrosshairTarget
-        : lockedTarget?.alive ? lockedTarget : nearest(player, enemies);
+      : lockedTarget?.alive ? lockedTarget : targetNearCrosshair();
     if (target) {
       lockedTarget = target;
       aim.lerp(target.g.position, Math.min(1, dt * 8));
@@ -2255,6 +2263,7 @@ function renderHud() {
   ui.prep.textContent = hud.timer.label;
   ui.blue.textContent = hud.score.blue;
   ui.red.textContent = hud.score.red;
+  renderWorldMinimap();
 }
 
 let lastProcessedRenderFrameAt = 0;
@@ -2894,6 +2903,52 @@ function startControlsTour({ family = inputMode, mode: tourMode = "required" } =
   queueMicrotask(() => $("closeControlsTourBtn").focus({ preventScroll: true }));
 }
 
+function targetNearCrosshair(maxPixels = 92) {
+  if (!player || !camera || !enemies.length) return null;
+  const viewport = new THREE.Vector2();
+  let selected = null;
+  let best = maxPixels;
+  for (const enemy of enemies) {
+    if (!enemy.alive || !enemy.g?.visible) continue;
+    const point = enemy.g.position.clone().add(new THREE.Vector3(0, 1.1, 0)).project(camera);
+    const x = (point.x * .5 + .5) * innerWidth;
+    const y = (-point.y * .5 + .5) * innerHeight;
+    const reticleX = inputMode === "mouse" ? mouseAimScreen.x : innerWidth * .5;
+    const reticleY = inputMode === "mouse" ? mouseAimScreen.y : innerHeight * .5;
+    const distance = Math.hypot(x - reticleX, y - reticleY);
+    if (point.z > 0 && distance < best) { best = distance; selected = enemy; }
+  }
+  return selected;
+}
+
+function renderWorldMinimap() {
+  if (!minimapContext || !player || !worldLayout || phase === "menu" || phase === "over") return;
+  const size = minimapCanvas.width;
+  const radius = size * .43;
+  const center = size / 2;
+  const worldSize = Math.max(1, Number(worldLayout.size) || 520);
+  const scale = radius * 2 / worldSize;
+  minimapContext.clearRect(0, 0, size, size);
+  minimapContext.save();
+  minimapContext.beginPath(); minimapContext.arc(center, center, radius, 0, Math.PI * 2); minimapContext.clip();
+  minimapContext.fillStyle = "rgba(7, 18, 21, .62)"; minimapContext.fillRect(0, 0, size, size);
+  minimapContext.strokeStyle = "rgba(151, 235, 229, .3)"; minimapContext.lineWidth = 1;
+  minimapContext.beginPath(); minimapContext.moveTo(center - radius, center); minimapContext.lineTo(center + radius, center); minimapContext.moveTo(center, center - radius); minimapContext.lineTo(center, center + radius); minimapContext.stroke();
+  const point = (x, z) => ({ x: center + THREE.MathUtils.clamp(x * scale, -radius, radius), y: center + THREE.MathUtils.clamp(z * scale, -radius, radius) });
+  for (const chest of chests) {
+    if (!chest.group.visible) continue;
+    const p = point(chest.x, chest.z); minimapContext.fillStyle = "#ffdf52"; minimapContext.beginPath(); minimapContext.arc(p.x, p.y, 4, 0, Math.PI * 2); minimapContext.fill();
+  }
+  for (const enemy of enemies) {
+    if (!enemy.alive || !enemy.g?.visible) continue;
+    const p = point(enemy.g.position.x, enemy.g.position.z); minimapContext.fillStyle = "#ff4f63"; minimapContext.beginPath(); minimapContext.arc(p.x, p.y, 3, 0, Math.PI * 2); minimapContext.fill();
+  }
+  const p = point(player.g.position.x, player.g.position.z);
+  minimapContext.save(); minimapContext.translate(p.x, p.y); minimapContext.rotate(player.g.rotation.y); minimapContext.fillStyle = "#66fcf1"; minimapContext.beginPath(); minimapContext.moveTo(0, -7); minimapContext.lineTo(5, 6); minimapContext.lineTo(0, 3); minimapContext.lineTo(-5, 6); minimapContext.closePath(); minimapContext.fill(); minimapContext.restore();
+  minimapContext.restore();
+  minimapContext.strokeStyle = "rgba(159,235,229,.72)"; minimapContext.lineWidth = 2; minimapContext.beginPath(); minimapContext.arc(center, center, radius, 0, Math.PI * 2); minimapContext.stroke();
+}
+
 function closeControlsTour() {
   if (controlsTourState?.mode === "required") {
     controlsTourState = acknowledgeControlsTour(controlsTourState);
@@ -3012,7 +3067,6 @@ function openLobby(contact) {
   welcomeScreen.classList.add("hidden");
   lobbyScreen.classList.remove("hidden");
   document.body.classList.add("lobby-active");
-  $("teamSizeChoices").classList.add("hidden");
   $("ctfPlayerChoices").classList.add("hidden");
   $("teamLobbyBtn").setAttribute("aria-expanded", "false");
   $("ctf6LobbyBtn").setAttribute("aria-expanded", "false");
@@ -3223,7 +3277,7 @@ function applyStoryCampaignProgression(progress = storyRuntimeProgress(), { pres
   const campaign = deriveStoryCampaignState({ level: progress.level, stage: progress.stage });
   mapKey = preserveMap && campaign.availableMaps.includes(progress.map) ? progress.map : campaign.recommendedMap;
   difficultyRatio = campaign.difficultyRatio;
-  storyMapSelect.value = mapKey;
+  if (storyMapSelect) storyMapSelect.value = mapKey;
   $("botDifficulty").value = String(difficultyRatio);
   return campaign;
 }
@@ -3526,11 +3580,37 @@ function updateVoiceButtons() {
 }
 
 function voiceRoom() {
-  return createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
+  return lobbyRoom();
 }
 
 function lobbyRoom() {
-  return createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
+  return lobbyRoomOverride || createLobbyRoomId({ map: mapKey, mode, teamSize: botTeamSize, ctfPlayers });
+}
+
+function makeRoomCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+}
+
+function showRoomCode() {
+  const panel = $("roomCodePanel");
+  if (!panel) return;
+  $("roomCodeValue").textContent = lobbyRoomOverride.replace(/^.*-/, "") || "------";
+  panel.classList.remove("hidden");
+}
+
+function openTeamRoom({ create = false, random = false } = {}) {
+  mode = "teams";
+  if (create) {
+    const code = makeRoomCode();
+    lobbyRoomOverride = `immersive-teams-4v4-${code}`;
+    showRoomCode();
+  } else if (random) {
+    lobbyRoomOverride = "";
+    $("roomCodePanel")?.classList.add("hidden");
+  }
+  lobbyScreen.classList.add("hidden");
+  $("teamMode").click();
 }
 
 function closeLobbyRoom() {
@@ -4413,14 +4493,6 @@ document.querySelectorAll("[data-ctf-players]").forEach(button => {
     }
   };
 });
-document.querySelectorAll("[data-map]").forEach(button => {
-  button.onclick = () => {
-    mapKey = button.dataset.map;
-    document.querySelectorAll("[data-map]").forEach(item => item.classList.toggle("active", item === button));
-    lobbyChanged();
-    start();
-  };
-});
 $("openShopBtn").onclick = () => {
   if (menuOpenedFromPrep) {
     phase = "prep";
@@ -4645,26 +4717,30 @@ $("dashboardEditBtn").onclick = () => { $("dashboardModal").classList.add("hidde
 $("dashboardStoreBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); if (phase === "prep") { setMenuSection("armory"); ui.shop.classList.remove("hidden"); } else openDashboard(); };
 $("survivalLobbyBtn").onclick = () => { restoreStorySession(); lobbyScreen.classList.add("hidden"); $("soloMode").click(); };
 $("teamLobbyBtn").onclick = () => {
-  const choices = $("teamSizeChoices");
-  const expanded = choices.classList.toggle("hidden") === false;
   $("ctfPlayerChoices").classList.add("hidden");
-  $("ctf6LobbyBtn").setAttribute("aria-expanded", "false");
-  $("teamLobbyBtn").setAttribute("aria-expanded", String(expanded));
-  refreshLobbyNavigation(expanded ? "teamSize2Btn" : "teamLobbyBtn");
-  if (expanded) renderLobbyNavigation(true);
+  lobbyScreen.classList.add("hidden");
+  $("teamMode").click();
 };
-document.querySelectorAll("[data-team-size]").forEach(button => {
-  button.onclick = () => {
-    botTeamSize = normalizeTeamSize(button.dataset.teamSize);
-    $("botTeamSize").value = String(botTeamSize);
-    lobbyScreen.classList.add("hidden");
-    $("teamMode").click();
-  };
+$("createRoomBtn")?.addEventListener("click", () => openTeamRoom({ create: true }));
+$("quickMatchBtn")?.addEventListener("click", () => openTeamRoom({ random: true }));
+$("joinRoomBtn")?.addEventListener("click", () => {
+  const code = window.prompt("Enter the 6-character room code");
+  if (!code) return;
+  const normalized = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+  if (normalized.length !== 6) return;
+  lobbyRoomOverride = `immersive-teams-4v4-${normalized}`;
+  showRoomCode();
+  openTeamRoom();
 });
+$("copyRoomCodeBtn")?.addEventListener("click", async () => {
+  const code = $("roomCodeValue")?.textContent || "";
+  try { await navigator.clipboard?.writeText(code); } catch {}
+  $("copyRoomCodeBtn").textContent = "Copied";
+  setTimeout(() => { if ($("copyRoomCodeBtn")) $("copyRoomCodeBtn").textContent = "Copy code"; }, 1200);
+});
+$("closeRoomCodeBtn")?.addEventListener("click", () => $("roomCodePanel")?.classList.add("hidden"));
 $("onlineSurvivalBtn").onclick = () => $("teamLobbyBtn").click();
-$("botTeamSize").onchange = event => {
-  botTeamSize = normalizeTeamSize(event.target.value);
-};
+botTeamSize = normalizeTeamSize(TEAM_SIZE);
 $("botDifficulty").onchange = event => {
   difficultyRatio = Number(event.target.value);
   aimSettings = normalizeAimSettings({ ...aimSettings, preset: aimPresetForDifficulty(difficultyRatio) });
@@ -4677,13 +4753,12 @@ $("riskLevel").onchange = event => {
   localStorage.setItem("wastland-survivor-risk", riskLevel);
   updateRiskPreview();
 };
-storyMapSelect.onchange = event => {
+if (storyMapSelect) storyMapSelect.onchange = event => {
   mapKey = event.target.value;
 };
 $("ctf6LobbyBtn").onclick = () => {
   const choices = $("ctfPlayerChoices");
   const expanded = choices.classList.toggle("hidden") === false;
-  $("teamSizeChoices").classList.add("hidden");
   $("teamLobbyBtn").setAttribute("aria-expanded", "false");
   $("ctf6LobbyBtn").setAttribute("aria-expanded", String(expanded));
   refreshLobbyNavigation(expanded ? "ctf4PlayersLobbyBtn" : "ctf6LobbyBtn");

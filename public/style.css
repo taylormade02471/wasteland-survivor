@@ -261,6 +261,14 @@ body.menu-active .discovery-toast { display: none; }
 .chest-prompt span { color: #f8f3df; font-size: 12px; }.chest-prompt i { font-style: normal; color: #ffdf52; }.chest-prompt button { min-height: 34px; padding: 0 14px; }.hidden, .welcome-screen.hidden, .parent-setup.hidden, .game-menu.hidden, .match-countdown.hidden { display: none !important; }
 .chest-locator { position:fixed; z-index:18; top:86px; left:50%; display:flex; gap:9px; align-items:center; transform:translateX(-50%); padding:7px 11px; border:1px solid rgba(255,223,82,.7); background:rgba(7,11,13,.82); color:#ffdf52; font-size:10px; letter-spacing:.08em; box-shadow:0 0 18px rgba(255,194,60,.16); }
 .chest-locator span { color:#f8f3df; font-weight:800; }
+.chest-locator i { display:inline-grid; place-items:center; width:18px; height:18px; color:#ffdf52; font-size:18px; font-style:normal; transform-origin:50% 50%; filter:drop-shadow(0 0 5px rgba(255,223,82,.8)); }
+.world-minimap { position:fixed; z-index:16; top:76px; right:18px; width:clamp(122px,15vw,176px); height:auto; aspect-ratio:1; border:1px solid rgba(159,235,229,.55); border-radius:50%; background:rgba(4,10,13,.45); box-shadow:0 0 20px rgba(0,0,0,.4), inset 0 0 15px rgba(102,252,241,.12); opacity:.86; pointer-events:none; }
+body.menu-active .world-minimap, body:has(#welcomeScreen:not(.hidden)) .world-minimap { display:none; }
+.room-tools { display:flex; flex-wrap:wrap; gap:8px; max-width:min(780px,100%); margin-top:8px; }
+.room-tool { min-width:150px; }
+.room-code-panel { display:flex; align-items:center; gap:9px; width:fit-content; max-width:100%; margin-top:9px; padding:8px 10px; border:1px solid rgba(255,223,82,.55); background:rgba(4,10,12,.82); color:#f8f3df; }
+.room-code-panel strong { color:#ffdf52; font:900 20px ui-monospace,monospace; letter-spacing:.18em; }
+.room-code-panel button { min-height:28px; padding:0 8px; font-size:10px; }
 .loadout-room-card { width:min(560px,100%); background:linear-gradient(145deg,#111923,#0a1115); }
 .loadout-room-card h2 { margin-top:6px; font-family:"Bahnschrift Condensed","Arial Narrow",Impact,sans-serif; font-size:40px; text-transform:uppercase; }
 .loadout-room-card > p:not(.eyebrow) { margin-top:10px; color:#c7d0cd; line-height:1.5; }

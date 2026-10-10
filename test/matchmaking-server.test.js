@@ -106,10 +106,11 @@ test("server queues a replacement until every current player readies for the rem
     fs.rmSync(tempDirectory, { recursive: true, force: true });
   });
 
-  const room = "ice-teams-1v1";
+  const room = "immersive-teams-4v4";
   const incumbent = await connectClient(port, room);
   const departed = await connectClient(port, room);
   clients.push(incumbent, departed);
+  incumbent.socket.send(JSON.stringify({ type: "start-match" }));
   const [initialIncumbentPlan, initialDepartedPlan] = await Promise.all([
     waitForMessage(incumbent, "match-ready"),
     waitForMessage(departed, "match-ready"),
@@ -118,9 +119,8 @@ test("server queues a replacement until every current player readies for the rem
   assert.ok(initialIncumbentPlan.startsAt >= Date.now() + 13_000);
   assert.equal(initialIncumbentPlan.generation, 1);
   assert.equal(initialIncumbentPlan.humanPlayers, 2);
-  assert.equal(initialIncumbentPlan.botPlayers, 0);
+  assert.equal(initialIncumbentPlan.botPlayers, 6);
 
-  incumbent.socket.send(JSON.stringify({ type: "start-match" }));
   await wait(75);
   assert.equal(incumbent.messages.filter(message => message.type === "match-ready").length, 1);
   assert.equal(departed.messages.filter(message => message.type === "match-ready").length, 1);
@@ -152,15 +152,17 @@ test("server queues a replacement until every current player readies for the rem
   ]);
   assert.equal(freshIncumbentPlan.startsAt, freshReplacementPlan.startsAt);
   assert.equal(freshIncumbentPlan.humanPlayers, 2);
-  assert.equal(freshIncumbentPlan.botPlayers, 0);
+  assert.equal(freshIncumbentPlan.botPlayers, 6);
   assert.ok(freshIncumbentPlan.slots.some(slot => slot.playerId === replacement.id));
   assert.ok(freshIncumbentPlan.slots.every(slot => slot.playerId !== departed.id));
 
-  const soloStarter = await connectClient(port, "toxic-teams-2v2");
+  await closeClient(incumbent);
+  await closeClient(replacement);
+  const soloStarter = await connectClient(port, "immersive-teams-4v4");
   clients.push(soloStarter);
   soloStarter.socket.send(JSON.stringify({ type: "start-match" }));
   const underfilledPlan = await waitForMessage(soloStarter, "match-ready");
   assert.equal(underfilledPlan.generation, 1);
   assert.equal(underfilledPlan.humanPlayers, 1);
-  assert.equal(underfilledPlan.botPlayers, 3);
+  assert.equal(underfilledPlan.botPlayers, 7);
 });

@@ -36,14 +36,23 @@ function allClips(manifest) {
   return manifest.clipContracts;
 }
 
+function exportedStates(source, exportName) {
+  const match = source.match(new RegExp(`${exportName}\\s*=\\s*Object\\.freeze\\(\\[([^\\]]+)\\]\\)`));
+  assert.ok(match, `${exportName} export is present`);
+  return [...match[1].matchAll(/"([^"]+)"/g)].map(([_, state]) => state);
+}
+
 test("motion-capture manifest covers every requested production category", () => {
   const manifest = readManifest();
   const clips = allClips(manifest);
   const categories = [...new Set(clips.map(clip => clip.category))];
 
   assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.runtimeBehaviorChange, false);
   assert.equal(manifest.ownership.motionCapture, true);
   assert.equal(manifest.ownership.facialAnimation, true);
+  assert.equal(manifest.ownership.runtimeImplementation, false);
+  assert.equal(manifest.ownership.assetRetargeting, false);
   assert.deepEqual(categories.sort(), [...REQUIRED_CATEGORIES].sort());
   assert.ok(clips.length >= REQUIRED_CATEGORIES.length);
   assert.equal(new Set(clips.map(clip => clip.id)).size, clips.length);
@@ -55,6 +64,9 @@ test("clip bindings reference the existing character, weapon, and controller voc
 
   assert.match(characterModels, /ANIMATION_STATES\s*=\s*Object\.freeze\(\[([^\]]+)\]\)/);
   assert.match(weaponModels, /WEAPON_ANIMATION_STATES\s*=\s*Object\.freeze\(\[([^\]]+)\]\)/);
+  assert.deepEqual(manifest.sourceContracts.characterPose.states, exportedStates(characterModels, "ANIMATION_STATES"));
+  assert.deepEqual(manifest.sourceContracts.weaponPose.states, exportedStates(weaponModels, "WEAPON_ANIMATION_STATES"));
+  assert.deepEqual(manifest.sourceContracts.controllerInput.signals, CONTROLLER_SIGNALS);
   assert.match(controllerRules, /interact:\s*justPressed\(0\)/);
   assert.match(controllerRules, /reload:\s*justPressed\(2\)/);
   assert.match(controllerRules, /weapon:\s*justPressed\(3\)/);
@@ -65,6 +77,7 @@ test("clip bindings reference the existing character, weapon, and controller voc
     assert.ok(["motion-capture", "facial-animation"].includes(clip.owner));
     assert.ok(clip.binding);
     assert.ok(clip.binding.controllerHook);
+    assert.equal(clip.capture.runtimeImport, false, `${clip.id} must remain capture-only at the integration boundary`);
     assert.ok(clip.binding.characterPoseState || clip.binding.weaponPoseState || clip.binding.controllerSignal || clip.binding.storyPhase);
 
     if (clip.binding.characterPoseState) assert.ok(CHARACTER_STATES.includes(clip.binding.characterPoseState), `${clip.id} character state`);
