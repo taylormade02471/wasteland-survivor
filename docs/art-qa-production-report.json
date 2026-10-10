@@ -1,0 +1,148 @@
+{
+  "reportVersion": 1,
+  "capturedOn": "2026-10-10",
+  "status": "runtime-export-verified-source-art-pending",
+  "verificationScope": "static repository and export-contract validation; no live browser or device render was performed",
+  "verifiedRuntimeAssets": {
+    "status": "verified",
+    "verificationLevel": "static-filesystem-and-contract",
+    "visualRuntimeProof": "not-performed",
+    "assets": [
+      {
+        "id": "survivor-glb-exports",
+        "category": "runtime-character-exports",
+        "status": "verified",
+        "paths": [
+          "public/assets/nightfall/characters/3d/scout-operator-v1.glb",
+          "public/assets/nightfall/characters/3d/ranger-operator-v1.glb",
+          "public/assets/nightfall/characters/3d/heavy-operator-v1.glb",
+          "public/assets/nightfall/characters/3d/tech-operator-v1.glb",
+          "public/assets/nightfall/characters/3d/medic-operator-v1.glb",
+          "public/assets/nightfall/characters/3d/warden-operator-v1.glb"
+        ],
+        "evidence": [
+          "Each file exists in the web runtime asset tree.",
+          "Each file has a valid GLB header, glTF 2.0 asset version, mesh payload, material payload, and named gameplay attachment nodes.",
+          "These are current v1 runtime exports, not the pending high-resolution source packages."
+        ]
+      },
+      {
+        "id": "runtime-art-factories",
+        "category": "procedural-runtime-art",
+        "status": "verified",
+        "paths": [
+          "public/character-models.mjs",
+          "public/weapon-models.mjs",
+          "public/environment-models.mjs",
+          "public/enemy-models.mjs",
+          "public/tactical-models.mjs"
+        ],
+        "evidence": [
+          "The existing 3D asset audit reports the procedural weapon, obstacle, supply, chest, enemy, and tactical families as present.",
+          "These factories are runtime presentation contracts and do not substitute for upstream source meshes, cinematic textures, rigs, or mocap."
+        ]
+      },
+      {
+        "id": "local-render-lab",
+        "category": "inspection-and-export-surface",
+        "status": "verified",
+        "paths": [
+          "public/render-lab.html",
+          "public/render-lab.js",
+          "public/render-lab.css"
+        ],
+        "evidence": [
+          "The page exposes local character, enemy, weapon, environment, supply, tactical, and chest inspection families.",
+          "The script uses the bundled Three.js and GLTFLoader paths and contains no remote renderer dependency.",
+          "Authored GLB loading and procedural fallback are both represented in the inspection surface."
+        ]
+      },
+      {
+        "id": "existing-3d-asset-audit",
+        "category": "asset-audit-export-report",
+        "status": "verified",
+        "path": "output/wasteland-survivor-3d-asset-audit.json",
+        "evidence": [
+          "The existing report has zero missing runtime assets and marks the render lab ready.",
+          "Its ready counts are treated as supporting evidence for the runtime export boundary only."
+        ]
+      }
+    ]
+  },
+  "pendingSourceArt": [
+    {
+      "id": "high-resolution-source-meshes",
+      "category": "source-meshes",
+      "status": "pending",
+      "releaseReady": false,
+      "specificationPath": "public/assets/nightfall/characters/aaa-production-manifest.json",
+      "candidateRoots": [
+        "art-source/high-resolution",
+        "source-art/high-resolution",
+        "assets/source/characters",
+        "public/assets/nightfall/characters/source"
+      ],
+      "evidence": "The AAA manifest defines the 8-20 million triangle sculpt and retopology targets, but no authored source package is present under the candidate roots.",
+      "runtimeProxyDoesNotCount": "The six v1 GLBs are runtime blockout/reference exports and do not prove high-resolution sculpt or retopology delivery."
+    },
+    {
+      "id": "facial-rigs",
+      "category": "facial-rigs",
+      "status": "pending",
+      "releaseReady": false,
+      "specificationPath": "public/assets/nightfall/characters/aaa-production-manifest.json",
+      "candidateRoots": [
+        "art-source/facial-rigs",
+        "source-art/facial",
+        "assets/source/facial",
+        "public/assets/nightfall/characters/facial-rigs"
+      ],
+      "evidence": "The AAA manifest requires a dialogue-ready facial rig and blendshape set, but no authored facial-rig package is present under the candidate roots.",
+      "runtimeProxyDoesNotCount": "Named attachment nodes and procedural poses do not prove a deforming facial rig or dialogue-ready expressions."
+    },
+    {
+      "id": "cinematic-textures",
+      "category": "cinematic-textures",
+      "status": "pending",
+      "releaseReady": false,
+      "specificationPath": "public/assets/nightfall/characters/aaa-production-manifest.json",
+      "candidateRoots": [
+        "art-source/cinematic-textures",
+        "source-art/textures",
+        "assets/source/cinematic",
+        "public/assets/nightfall/cinematic-textures"
+      ],
+      "evidence": "The AAA manifest defines hero 4096px PBR targets and cinematic material requirements, but no authored cinematic texture package is present under the candidate roots.",
+      "runtimeProxyDoesNotCount": "Runtime PNG renders and concept/reference images are not a cinematic PBR texture set."
+    },
+    {
+      "id": "mocap-clips",
+      "category": "mocap-clips",
+      "status": "pending",
+      "releaseReady": false,
+      "specificationPath": "public/assets/nightfall/characters/aaa-production-manifest.json",
+      "candidateRoots": [
+        "art-source/mocap",
+        "source-art/animation",
+        "assets/source/mocap",
+        "public/assets/nightfall/characters/mocap"
+      ],
+      "evidence": "The AAA manifest lists the motion-capture retarget library and required combat, locomotion, revive, and dialogue clips, but no authored mocap clip package is present under the candidate roots.",
+      "runtimeProxyDoesNotCount": "Procedural pose controllers and static GLB exports do not prove mocap clip delivery or retarget validation."
+    }
+  ],
+  "releaseDecision": {
+    "runtimeExportValidation": "verified",
+    "sourceArtProduction": "pending",
+    "runtimeExportReady": true,
+    "sourceArtComplete": false,
+    "visualBrowserOrDeviceApproval": false,
+    "blockingSourceArt": [
+      "high-resolution-source-meshes",
+      "facial-rigs",
+      "cinematic-textures",
+      "mocap-clips"
+    ],
+    "statement": "Runtime exports and the local inspection surface are verified by static evidence. The upstream source-art production package is not complete and must not be marked complete from these runtime proxies."
+  }
+}

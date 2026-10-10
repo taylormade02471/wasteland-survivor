@@ -1,0 +1,454 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "wasteland-survivor-motion-capture-production-v1",
+  "purpose": "Production handoff for motion-capture and facial-animation clips mapped to existing Wasteland Survivor pose and controller contracts.",
+  "runtimeBehaviorChange": false,
+  "ownership": {
+    "motionCapture": true,
+    "facialAnimation": true,
+    "runtimeImplementation": false,
+    "assetRetargeting": false
+  },
+  "sourceContracts": {
+    "characterPose": {
+      "module": "public/character-models.mjs",
+      "statesExport": "ANIMATION_STATES",
+      "states": ["idle", "walk", "run", "aim", "fire", "hit", "downed", "wade"],
+      "controllerHook": "createPoseController.update"
+    },
+    "weaponPose": {
+      "module": "public/weapon-models.mjs",
+      "statesExport": "WEAPON_ANIMATION_STATES",
+      "states": ["idle", "aim", "fire", "reload", "overheat", "lower", "raise", "swap"],
+      "controllerHook": "createWeaponPoseController.update"
+    },
+    "controllerInput": {
+      "module": "public/controller-rules.mjs",
+      "sampleHook": "sampleGamepad",
+      "signals": ["move", "look", "fire", "ads", "interact", "reload", "weapon", "pause"],
+      "turnHook": "advanceControllerLook"
+    },
+    "lifecycle": {
+      "downedHook": "createPoseController.update",
+      "reviveHook": "resetTerminalState",
+      "respawnHook": "updateCtfRespawns"
+    },
+    "storyPresentation": {
+      "phase": "dialogue",
+      "scene": "dialogue",
+      "controllerHook": "setStoryDialogueMode"
+    }
+  },
+  "clipContracts": [
+    {
+      "id": "wasteland-survivor.locomotion.idle",
+      "category": "locomotion",
+      "owner": "motion-capture",
+      "clipName": "idle",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "idle"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.locomotion.walk",
+      "category": "locomotion",
+      "owner": "motion-capture",
+      "clipName": "walk",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "walk",
+        "controllerSignal": "move"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.locomotion.run",
+      "category": "locomotion",
+      "owner": "motion-capture",
+      "clipName": "run",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "run",
+        "controllerSignal": "move"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.locomotion.wade",
+      "category": "locomotion",
+      "owner": "motion-capture",
+      "clipName": "wade",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "wade",
+        "controllerSignal": "move"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.turning.look",
+      "category": "turning",
+      "owner": "motion-capture",
+      "clipName": "turn-in-place",
+      "binding": {
+        "controllerHook": "advanceControllerLook",
+        "characterPoseState": "idle",
+        "controllerSignal": "look"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.aim.ads",
+      "category": "aim",
+      "owner": "motion-capture",
+      "clipName": "aim",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "aim",
+        "weaponPoseState": "aim",
+        "controllerSignal": "ads"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.firing.shot",
+      "category": "firing",
+      "owner": "motion-capture",
+      "clipName": "fire",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "fire",
+        "weaponPoseState": "fire",
+        "controllerSignal": "fire"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.reload-heat-recovery.reload",
+      "category": "reload-heat-recovery",
+      "owner": "motion-capture",
+      "clipName": "reload",
+      "binding": {
+        "controllerHook": "beginWeaponReload",
+        "characterPoseState": "idle",
+        "weaponPoseState": "reload",
+        "controllerSignal": "reload"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.reload-heat-recovery.heat-recovery",
+      "category": "reload-heat-recovery",
+      "owner": "motion-capture",
+      "clipName": "heat-recovery",
+      "binding": {
+        "controllerHook": "advanceWeaponPresentation",
+        "characterPoseState": "idle",
+        "weaponPoseState": "overheat"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.hit.reaction",
+      "category": "hit",
+      "owner": "motion-capture",
+      "clipName": "hit-reaction",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "hit"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "required",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.downed-death.downed",
+      "category": "downed-death",
+      "owner": "motion-capture",
+      "clipName": "downed",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "downed"
+      },
+      "lifecycle": {
+        "terminal": true,
+        "resetsTerminalPose": false
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "required",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.downed-death.death-terminal",
+      "category": "downed-death",
+      "owner": "motion-capture",
+      "clipName": "death-terminal",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "downed"
+      },
+      "lifecycle": {
+        "terminal": true,
+        "resetsTerminalPose": false
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "required",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.revive-respawn.revive",
+      "category": "revive-respawn",
+      "owner": "motion-capture",
+      "clipName": "revive",
+      "binding": {
+        "controllerHook": "reviveUnitVisual",
+        "characterPoseState": "idle",
+        "lifecycleHook": "resetTerminalState"
+      },
+      "lifecycle": {
+        "terminal": false,
+        "resetsTerminalPose": true
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "required",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.revive-respawn.respawn",
+      "category": "revive-respawn",
+      "owner": "motion-capture",
+      "clipName": "respawn",
+      "binding": {
+        "controllerHook": "updateCtfRespawns",
+        "characterPoseState": "idle",
+        "lifecycleHook": "resetTerminalState"
+      },
+      "lifecycle": {
+        "terminal": false,
+        "resetsTerminalPose": true
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "required",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.interaction.interact",
+      "category": "interaction",
+      "owner": "motion-capture",
+      "clipName": "interact",
+      "binding": {
+        "controllerHook": "interact",
+        "characterPoseState": "idle",
+        "controllerSignal": "interact"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "optional",
+        "runtimeSupport": "direct",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.dialogue-cinematic.dialogue-idle",
+      "category": "dialogue-cinematic",
+      "owner": "motion-capture",
+      "clipName": "dialogue-idle",
+      "binding": {
+        "controllerHook": "setStoryDialogueMode",
+        "characterPoseState": "idle",
+        "storyPhase": "dialogue",
+        "storyScene": "dialogue"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "in-place",
+        "facialTrack": "required",
+        "runtimeSupport": "capture-only",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.dialogue-cinematic.dialogue-gesture",
+      "category": "dialogue-cinematic",
+      "owner": "motion-capture",
+      "clipName": "dialogue-gesture",
+      "binding": {
+        "controllerHook": "setStoryDialogueMode",
+        "characterPoseState": "idle",
+        "storyPhase": "dialogue",
+        "storyScene": "dialogue"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "in-place",
+        "facialTrack": "required",
+        "runtimeSupport": "capture-only",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.facial.neutral-listen",
+      "category": "facial",
+      "owner": "facial-animation",
+      "clipName": "facial-neutral-listen",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "idle"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "not-applicable",
+        "facialTrack": "required",
+        "runtimeSupport": "capture-only",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.facial.aim-focus",
+      "category": "facial",
+      "owner": "facial-animation",
+      "clipName": "facial-aim-focus",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "aim"
+      },
+      "capture": {
+        "loop": true,
+        "rootMotion": "not-applicable",
+        "facialTrack": "required",
+        "runtimeSupport": "capture-only",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.facial.impact",
+      "category": "facial",
+      "owner": "facial-animation",
+      "clipName": "facial-impact",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "hit"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "not-applicable",
+        "facialTrack": "required",
+        "runtimeSupport": "capture-only",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.facial.downed",
+      "category": "facial",
+      "owner": "facial-animation",
+      "clipName": "facial-downed",
+      "binding": {
+        "controllerHook": "createPoseController.update",
+        "characterPoseState": "downed"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "not-applicable",
+        "facialTrack": "required",
+        "runtimeSupport": "capture-only",
+        "runtimeImport": false
+      }
+    },
+    {
+      "id": "wasteland-survivor.facial.dialogue",
+      "category": "facial",
+      "owner": "facial-animation",
+      "clipName": "facial-dialogue",
+      "binding": {
+        "controllerHook": "setStoryDialogueMode",
+        "characterPoseState": "idle",
+        "storyPhase": "dialogue",
+        "storyScene": "dialogue"
+      },
+      "capture": {
+        "loop": false,
+        "rootMotion": "not-applicable",
+        "facialTrack": "required",
+        "runtimeSupport": "capture-only",
+        "runtimeImport": false
+      }
+    }
+  ]
+}

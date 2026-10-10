@@ -8,6 +8,10 @@ const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const page = fs.readFileSync(path.join(root, "public", "render-lab.html"), "utf8");
 const script = fs.readFileSync(path.join(root, "public", "render-lab.js"), "utf8");
 
+function resolvePublicReference(reference) {
+  return path.join(root, "public", reference.replace(/^\.\//, "").split(/[?#]/, 1)[0]);
+}
+
 test("3D render lab is a bundled inspection surface for authored game meshes", () => {
   assert.match(page, /id="renderStage"/);
   assert.match(page, /id="assetFamily"/);
@@ -52,4 +56,35 @@ test("3D render lab is a bundled inspection surface for authored game meshes", (
 test("3D render lab never depends on a remote renderer", () => {
   assert.doesNotMatch(page, /https?:\/\//);
   assert.doesNotMatch(script, /cdn\.|unpkg|jsdelivr|skypack/i);
+});
+
+test("3D render lab local HTML, module, and model references resolve", () => {
+  const sources = [
+    ["public/render-lab.html", page, /(?:src|href)=["']([^"']+)["']/g],
+    ["public/render-lab.js", script, /["'](\.\/[^"']+)["']/g],
+    ...[
+      "character-models.mjs",
+      "enemy-models.mjs",
+      "weapon-models.mjs",
+      "environment-models.mjs",
+      "tactical-models.mjs",
+    ].map(file => [
+      `public/${file}`,
+      fs.readFileSync(path.join(root, "public", file), "utf8"),
+      /["'](\.\/[^"']+)["']/g,
+    ]),
+  ];
+  const references = [];
+
+  for (const [source, contents, pattern] of sources) {
+    for (const match of contents.matchAll(pattern)) {
+      const reference = match[1];
+      if (reference.startsWith("./")) references.push({ source, reference });
+    }
+  }
+
+  assert.ok(references.length >= 40, `expected the render lab path surface, found ${references.length} references`);
+  for (const { source, reference } of references) {
+    assert.ok(fs.existsSync(resolvePublicReference(reference)), `${source} references missing ${reference}`);
+  }
 });
