@@ -1990,7 +1990,7 @@ function update(dt) {
     player.g.position.x += mx / length * 10 * classSpeed * dt;
     player.g.position.z += mz / length * 10 * classSpeed * dt;
   }
-  resolvePlayerMapCollision(beforeMove);
+  resolvePlayerMapCollision(playerFrom);
   const manualTouchAim = !inputPaused && Math.hypot(touch.ax, touch.az) > .08;
   const manualControllerAim = !inputPaused && Math.hypot(controller.ax, controller.az) > .08;
   if (manualTouchAim) {
