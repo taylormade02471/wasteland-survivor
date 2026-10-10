@@ -84,9 +84,9 @@ test("relative look follows standard first-person directions and clamps pitch", 
     maxPitch: 0.8,
   });
 
-  assert.equal(first.yaw, 0.75);
+  assert.equal(first.yaw, 1.25);
   assert.equal(first.pitch, 0.25);
-  assert.equal(second.yaw, -0.25);
+  assert.equal(second.yaw, 2.25);
   assert.equal(second.pitch, 0.8);
   assert.notEqual(first.yaw, Math.atan2(0.5, -0.5));
 });
@@ -101,11 +101,11 @@ test("controller yaw stays bounded while look input remains deterministic", asyn
 
 test("camera direction includes both horizontal turn and vertical pitch", async () => {
   const { cameraDirectionFromView } = await rules();
-  const lookingRight = cameraDirectionFromView({ yaw: -Math.PI / 2, pitch: 0 });
+  const lookingRight = cameraDirectionFromView({ yaw: Math.PI / 2, pitch: 0 });
   const lookingUp = cameraDirectionFromView({ yaw: 0, pitch: Math.PI / 4 });
   const lookingDown = cameraDirectionFromView({ yaw: 0, pitch: -Math.PI / 4 });
 
-  assert.ok(lookingRight.x < -0.999);
+  assert.ok(lookingRight.x > 0.999);
   assert.ok(Math.abs(lookingRight.y) < 0.0001);
   assert.ok(Math.abs(lookingRight.z) < 0.0001);
   assert.ok(lookingUp.y > 0.7);

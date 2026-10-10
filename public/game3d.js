@@ -1668,6 +1668,8 @@ function pollController() {
     interact: sample.interact, ability: sample.ability, reload: sample.reload, weapon: sample.weapon,
     pause: sample.pause, switchTarget: sample.switchTarget,
     dpadUp: sample.dpadUp, dpadDown: sample.dpadDown, dpadLeft: sample.dpadLeft, dpadRight: sample.dpadRight,
+    dpadUpHeld: sample.dpadUpHeld, dpadDownHeld: sample.dpadDownHeld,
+    dpadLeftHeld: sample.dpadLeftHeld, dpadRightHeld: sample.dpadRightHeld,
   };
   if (debug) {
     controllerDebug.classList.remove("hidden");
@@ -1686,6 +1688,7 @@ function neutralControllerInput() {
     interact: false, ability: false, reload: false, weapon: false,
     pause: false, switchTarget: false,
     dpadUp: false, dpadDown: false, dpadLeft: false, dpadRight: false,
+    dpadUpHeld: false, dpadDownHeld: false, dpadLeftHeld: false, dpadRightHeld: false,
   };
 }
 
@@ -1969,8 +1972,8 @@ function update(dt) {
   if (controller.weapon) cycleWeapon(1);
   if (controller.ability) triggerAbility();
   if (controller.switchTarget) switchLockedTarget();
-  if (controller.dpadLeft || controller.dpadDown) cycleWeapon(-1);
-  if (controller.dpadRight || controller.dpadUp) cycleWeapon(1);
+  if (controller.dpadDown) cycleWeapon(-1);
+  if (controller.dpadUp) cycleWeapon(1);
   adsActive = controller.ads || adsActive && inputMode === "touch";
   if (Number.isFinite(timer)) timer -= dt;
   const prepActive = phase === "prep";
@@ -1981,7 +1984,8 @@ function update(dt) {
     const chest = chests[0];
     const dx = chest.x - player.g.position.x;
     const dz = chest.z - player.g.position.z;
-    const angle = (Math.atan2(dx, dz) * 180 / Math.PI + 360) % 360;
+    // World north is negative Z, so the supply arrow uses a north-up bearing.
+    const angle = (Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360;
     const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(angle / 45) % 8];
     $("chestDirection").textContent = `${compass} · ${Math.round(Math.hypot(dx, dz))}m`;
     const chestArrow = $("chestArrow");
@@ -2011,6 +2015,12 @@ function update(dt) {
   let mz = inputPaused || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
   if (!inputPaused && (touch.mx || touch.mz)) { mx = touch.mx; mz = touch.mz; }
   if (!inputPaused && (controller.mx || controller.mz)) { mx = controller.mx; mz = controller.mz; }
+  if (!inputPaused && !menuOpen) {
+    if (controller.dpadLeftHeld) mx = -1;
+    if (controller.dpadRightHeld) mx = 1;
+    if (controller.dpadUpHeld) mz = -1;
+    if (controller.dpadDownHeld) mz = 1;
+  }
   if (phase === "dialogue") {
     mx = 0;
     mz = 0;
@@ -2976,7 +2986,12 @@ function renderWorldMinimap() {
   minimapContext.fillStyle = "rgba(7, 18, 21, .62)"; minimapContext.fillRect(0, 0, size, size);
   minimapContext.strokeStyle = "rgba(151, 235, 229, .3)"; minimapContext.lineWidth = 1;
   minimapContext.beginPath(); minimapContext.moveTo(center - radius, center); minimapContext.lineTo(center + radius, center); minimapContext.moveTo(center, center - radius); minimapContext.lineTo(center, center + radius); minimapContext.stroke();
-  const point = (x, z) => ({ x: center + THREE.MathUtils.clamp(x * scale, -radius, radius), y: center + THREE.MathUtils.clamp(z * scale, -radius, radius) });
+  // Keep the tactical map north-up: +X is east/right and -Z is north/up.
+  const point = (x, z) => ({ x: center + THREE.MathUtils.clamp(x * scale, -radius, radius), y: center + THREE.MathUtils.clamp(-z * scale, -radius, radius) });
+  minimapContext.fillStyle = "rgba(220, 245, 241, .82)";
+  minimapContext.font = "700 11px sans-serif";
+  minimapContext.textAlign = "center";
+  minimapContext.fillText("N", center, center - radius + 14);
   for (const chest of chests) {
     if (!chest.group.visible) continue;
     const p = point(chest.x, chest.z); minimapContext.fillStyle = "#ffdf52"; minimapContext.beginPath(); minimapContext.arc(p.x, p.y, 4, 0, Math.PI * 2); minimapContext.fill();
@@ -2986,7 +3001,9 @@ function renderWorldMinimap() {
     const p = point(enemy.g.position.x, enemy.g.position.z); minimapContext.fillStyle = "#ff4f63"; minimapContext.beginPath(); minimapContext.arc(p.x, p.y, 3, 0, Math.PI * 2); minimapContext.fill();
   }
   const p = point(player.g.position.x, player.g.position.z);
-  minimapContext.save(); minimapContext.translate(p.x, p.y); minimapContext.rotate(player.g.rotation.y); minimapContext.fillStyle = "#66fcf1"; minimapContext.beginPath(); minimapContext.moveTo(0, -7); minimapContext.lineTo(5, 6); minimapContext.lineTo(0, 3); minimapContext.lineTo(-5, 6); minimapContext.closePath(); minimapContext.fill(); minimapContext.restore();
+  const facing = new THREE.Vector3(Math.sin(player.g.rotation.y), 0, Math.cos(player.g.rotation.y));
+  const facingAngle = Math.atan2(facing.x, -facing.z);
+  minimapContext.save(); minimapContext.translate(p.x, p.y); minimapContext.rotate(facingAngle); minimapContext.fillStyle = "#66fcf1"; minimapContext.beginPath(); minimapContext.moveTo(0, -7); minimapContext.lineTo(5, 6); minimapContext.lineTo(0, 3); minimapContext.lineTo(-5, 6); minimapContext.closePath(); minimapContext.fill(); minimapContext.restore();
   minimapContext.restore();
   minimapContext.strokeStyle = "rgba(159,235,229,.72)"; minimapContext.lineWidth = 2; minimapContext.beginPath(); minimapContext.arc(center, center, radius, 0, Math.PI * 2); minimapContext.stroke();
 }
@@ -4404,7 +4421,7 @@ canvas.addEventListener("pointermove", event => {
         width: canvasRect.width || canvas.clientWidth,
         height: canvasRect.height || canvas.clientHeight,
       });
-      viewYaw = normalizeYaw(viewYaw - event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity));
+    viewYaw = normalizeYaw(viewYaw + event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity));
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }
     if (localGameplayInputPaused()) return;

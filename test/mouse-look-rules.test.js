@@ -26,7 +26,7 @@ test("right turns right, top looks up, and speed grows toward the edge", () => {
   const edge = mouseLookRates({ x: 1, y: -1 });
 
   assert.deepEqual(center, { yawRate: 0, pitchRate: 0 });
-  assert.ok(halfway.yawRate < 0);
+  assert.ok(halfway.yawRate > 0);
   assert.ok(halfway.pitchRate > 0);
   assert.ok(Math.abs(edge.yawRate) > Math.abs(halfway.yawRate));
   assert.ok(edge.pitchRate > halfway.pitchRate);

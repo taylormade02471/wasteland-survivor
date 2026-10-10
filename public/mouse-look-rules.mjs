@@ -39,7 +39,7 @@ export function mouseLookRates(look = {}, {
     const normalized = (magnitude - safeDeadzone) / (1 - safeDeadzone);
     return Math.sign(value) * Math.pow(normalized, safeCurve);
   };
-  const yawRate = -shape(look.x) * Math.max(0, finite(maxYawRate));
+  const yawRate = shape(look.x) * Math.max(0, finite(maxYawRate));
   const pitchRate = -shape(look.y) * Math.max(0, finite(maxPitchRate));
   return {
     yawRate: Object.is(yawRate, -0) ? 0 : yawRate,
