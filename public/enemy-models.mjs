@@ -99,7 +99,17 @@ export function createEnemyModel(THREE, id = "rusher") {
   if (root.scale?.set && !root.scale.setScalar) root.scale.set(definition.scale, definition.scale, definition.scale);
   root.userData.enemyType = definition.id;
   root.userData.sourceReference = definition.referenceImage;
-  root.userData.assetContract = "Dedicated procedural mutated enemy mesh layered over a survivor rig and matched to bundled concept art.";
+  const muzzleSocket = new THREE.Group();
+  muzzleSocket.name = "socket:enemy-muzzle";
+  muzzleSocket.position.set(.34, 1.18, -.46);
+  const hitSocket = new THREE.Group();
+  hitSocket.name = "socket:enemy-hit-center";
+  hitSocket.position.set(0, 1.1, 0);
+  root.add(muzzleSocket, hitSocket);
+  root.userData.renderPipeline = "threejs-pbr-runtime-v2";
+  root.userData.sockets = { muzzle: "socket:enemy-muzzle", hitCenter: "socket:enemy-hit-center" };
+  root.userData.collisionBounds = { kind: "capsule", radius: .48 * definition.scale, height: 1.9 * definition.scale };
+  root.userData.assetContract = "Three.js PBR mutated enemy mesh with authored-ready sockets, collision bounds, and concept-art palette.";
   const budget = measureCharacterModelBudget(root);
   return {
     root,
@@ -109,5 +119,7 @@ export function createEnemyModel(THREE, id = "rusher") {
     controllerModel: { ...base, root: base.root },
     budget,
     declaredBudget: clone(MOBILE_ENEMY_BUDGET),
+    sockets: { muzzle: muzzleSocket, hitCenter: hitSocket },
+    collisionBounds: clone(root.userData.collisionBounds),
   };
 }
