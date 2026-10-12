@@ -174,6 +174,17 @@ test("authored 3D release assets contain meshes, materials, and embedded texture
   }
 });
 
+test("authored enemy GLBs contain skinned combat motion clips", () => {
+  const enemyRoot = path.join(repo, "public", "assets", "nightfall", "aaa", "enemies", "meshy");
+  for (const fileName of fs.readdirSync(enemyRoot).filter(name => name.endsWith(".glb"))) {
+    const json = readGlbJson(path.join(enemyRoot, fileName));
+    assert.equal(json.skins?.[0]?.name, "NightfallEnemySkin", `${fileName} has an enemy skin`);
+    assert.deepEqual(json.animations?.map(animation => animation.name), ["Idle", "Move", "Attack", "Hit"], `${fileName} has combat clips`);
+    assert.ok(json.meshes[0].primitives[0].attributes.JOINTS_0 != null, `${fileName} has joints`);
+    assert.ok(json.meshes[0].primitives[0].attributes.WEIGHTS_0 != null, `${fileName} has weights`);
+  }
+});
+
 test("preferred character art falls back safely when an authored GLB is unavailable", async () => {
   const preferred = "./assets/nightfall/aaa/characters/meshy/scout-meshy-v1.glb";
   const fallback = "./assets/nightfall/characters/3d/scout-operator-v1.glb";
