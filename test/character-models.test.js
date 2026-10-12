@@ -226,7 +226,7 @@ test("models carry source-reference and asset-contract handoff data without clai
     assert.equal(model.root.userData.assetContract.kind, "procedural-three-runtime");
     assert.equal(model.root.userData.assetContract.importedRig, false);
     assert.equal(model.root.userData.assetContract.authoredGlbAvailable, true);
-    assert.match(model.root.userData.assetContract.remainingBlocker, /skinned rigs/i);
+    assert.match(model.root.userData.assetContract.remainingBlocker, /operator fallback/i);
     assert.ok(model.metadata.visualTargets.length >= 4, `${id} documents source-driven visual targets`);
   }
 });
