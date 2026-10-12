@@ -88,6 +88,7 @@ function runtimeAssetPath(path) {
 }
 const canvas = $("game");
 const renderFocus = new URLSearchParams(window.location.search).get("renderFocus");
+const terrainDiagnostic = new URLSearchParams(window.location.search).has("terrainDiagnostic");
 canvas.dataset.controlDirectionLock = CONTROL_DIRECTION_LOCK.id;
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
@@ -847,6 +848,7 @@ function createProceduralTerrainTexture(path) {
 function loadTerrainTexture(path) {
   const fallbackPath = String(path || "").replace(/^https?:\/\/[^/]+\//, "").replace(/^.*?assets\//, "assets/");
   const texture = createProceduralTerrainTexture(path);
+  if (terrainDiagnostic) return texture;
   new THREE.TextureLoader().load(path, loaded => {
     texture.image = loaded.image;
     texture.colorSpace = THREE.SRGBColorSpace;
