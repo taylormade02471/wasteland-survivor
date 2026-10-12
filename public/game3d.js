@@ -902,10 +902,10 @@ function addRoadSegment(segment, color = 0x24272b) {
 
 function addTerrainSurfaceDetail(mapId) {
   const palette = {
-    inferno: { color: 0xff4a1f, emissive: .7, count: 72, width: .22, length: 4.8 },
-    toxic: { color: 0x83ff47, emissive: .28, count: 56, width: .18, length: 3.6 },
-    ice: { color: 0xa8efff, emissive: .18, count: 48, width: .16, length: 4.2 },
-    wasteland: { color: 0xb88b5c, emissive: .06, count: 42, width: .2, length: 3.8 },
+    inferno: { color: 0xff4a1f, emissive: .7, count: 72, width: 2.2, length: 8.8 },
+    toxic: { color: 0x83ff47, emissive: .28, count: 56, width: 1.8, length: 7.2 },
+    ice: { color: 0xa8efff, emissive: .18, count: 48, width: 1.8, length: 8.2 },
+    wasteland: { color: 0xb88b5c, emissive: .06, count: 42, width: 2.2, length: 7.8 },
   }[mapId] || null;
   if (!palette) return;
   const random = seededRandom(`terrain-surface-detail:${mapId}:${worldLayout.size}`);
@@ -2637,13 +2637,6 @@ function render() {
     ui.discoveryToast.classList.add("hidden");
   }
   renderHud();
-  if (phase !== "menu" && player && world) {
-    canvas.dataset.runtimeWorldChildren = String(world.children.length);
-    canvas.dataset.runtimeTerrainDetails = String(world.children.filter(child => String(child.name || "").startsWith("terrain-detail:")).length);
-    canvas.dataset.runtimePlayer = `${player.g.position.x.toFixed(2)},${player.g.position.y.toFixed(2)},${player.g.position.z.toFixed(2)}`;
-    canvas.dataset.runtimeCamera = `${camera.position.x.toFixed(2)},${camera.position.y.toFixed(2)},${camera.position.z.toFixed(2)}`;
-    canvas.dataset.runtimeYaw = viewYaw.toFixed(3);
-  }
   player.cooldown = Math.max(0, player.cooldown - dt);
   allies.forEach(bot => { bot.cooldown = Math.max(0, bot.cooldown - dt); });
   if (!rendererContextLost) renderer.render(scene, camera);
