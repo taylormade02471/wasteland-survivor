@@ -1,5 +1,6 @@
 import * as THREE from "./vendor/three.module.js";
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
+import { CONTROL_DIRECTION_LOCK, aimYawFromAxes, firstPersonMovementDelta, keyboardMovementAxes, nextMouseYaw } from "./control-direction-lock.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
 import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
 import { applyCanvasPointerHandoff, bindTransientPointerInterrupts } from "./input-recovery-adapter.mjs";
@@ -41,6 +42,7 @@ import { getWorldFieldAsset, getWorldFieldPlacements } from "./world-field-asset
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createQuestState, advanceQuestState, questView } from "./story-quests.mjs";
 import { renderQualityProfile } from "./render-quality.mjs";
+import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { createLiveCharacterPreview, getPreferredCharacterModelPaths, loadFirstAvailableModel } from "./live-character-preview.mjs";
 import {
@@ -83,6 +85,8 @@ function runtimeAssetPath(path) {
   return window.__WASTELAND_MEDIA__?.url?.(path) || path;
 }
 const canvas = $("game");
+const renderFocus = new URLSearchParams(window.location.search).get("renderFocus");
+canvas.dataset.controlDirectionLock = CONTROL_DIRECTION_LOCK.id;
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
 const inputRecoveryNotice = $("inputRecoveryNotice");
@@ -246,6 +250,7 @@ let graceUntil = 0;
 let frontView = true;
 let ground, player, ally;
 let mapVisuals = null;
+let armorySurfaceMaps = null;
 let chests = [];
 let chestSpawnRadius = 70;
 let allies = [], enemies = [], bullets = [], hazards = [], flags = [], effects = [];
@@ -1214,27 +1219,92 @@ function addInfernoFireVisuals(root) {
   root.add(fireline);
 }
 
+function getArmorySurfaceMaps(profile) {
+  if (!armorySurfaceMaps) {
+    const loader = new THREE.TextureLoader();
+    armorySurfaceMaps = {
+      baseColor: loader.load(ARMORY_SURFACE_TEXTURES.baseColor),
+      bump: loader.load(ARMORY_SURFACE_TEXTURES.bump),
+    };
+    armorySurfaceMaps.baseColor.colorSpace = THREE.SRGBColorSpace;
+  }
+  for (const texture of Object.values(armorySurfaceMaps)) {
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(profile.textureRepeat, profile.textureRepeat);
+    texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy);
+    texture.needsUpdate = true;
+  }
+  return armorySurfaceMaps;
+}
+
 function addBurnedArmoryVisual(root) {
   const structure = worldLayout.structures.find(item => item.id === "armory-shell");
   if (!structure) return;
   const outpost = new THREE.Group();
   outpost.name = "burned-armory-last-outpost";
   const groundY = sampleWorldElevation(worldLayout, structure);
+  const visualProfile = armoryVisualProfile(renderQuality.pass);
+  const surfaceMaps = getArmorySurfaceMaps(visualProfile);
+  const surfaceMaterial = new THREE.MeshStandardMaterial({
+    map: surfaceMaps.baseColor,
+    bumpMap: surfaceMaps.bump,
+    bumpScale: .13,
+    roughness: .9,
+    metalness: .38,
+    color: 0xb8afa7,
+    side: THREE.DoubleSide,
+  });
+  const wallHeight = structure.h * .84;
+  const frontWidth = structure.w * .92;
+  const doorWidth = 5.6;
+  const doorHeaderHeight = 1.25;
+  const frontSideWidth = (frontWidth - doorWidth) / 2;
+  const surfacePanels = [
+    { name: "front-left", width: frontSideWidth, height: wallHeight, position: [-(doorWidth + frontSideWidth) / 2, wallHeight / 2, structure.d / 2 + .14], rotation: [0, 0, 0] },
+    { name: "front-right", width: frontSideWidth, height: wallHeight, position: [(doorWidth + frontSideWidth) / 2, wallHeight / 2, structure.d / 2 + .14], rotation: [0, 0, 0] },
+    { name: "door-header", width: doorWidth, height: doorHeaderHeight, position: [0, wallHeight - doorHeaderHeight / 2, structure.d / 2 + .14], rotation: [0, 0, 0] },
+    { name: "back", width: structure.w * .92, height: wallHeight, position: [0, wallHeight / 2, -structure.d / 2 - .14], rotation: [0, Math.PI, 0] },
+    { name: "left", width: structure.d * .92, height: wallHeight, position: [-structure.w / 2 - .14, wallHeight / 2, 0], rotation: [0, -Math.PI / 2, 0] },
+    { name: "right", width: structure.d * .92, height: wallHeight, position: [structure.w / 2 + .14, wallHeight / 2, 0], rotation: [0, Math.PI / 2, 0] },
+    { name: "roof", width: structure.w * .9, height: structure.d * .9, position: [0, structure.h + .14, 0], rotation: [-Math.PI / 2, 0, 0] },
+  ];
+  for (const panel of surfacePanels) {
+    const geometry = new THREE.PlaneGeometry(
+      panel.width,
+      panel.height,
+      Math.max(1, visualProfile.pass),
+      Math.max(1, Math.ceil(visualProfile.pass / 2)),
+    );
+    const mesh = new THREE.Mesh(geometry, surfaceMaterial);
+    mesh.name = `armory-textured-panel:${panel.name}`;
+    mesh.position.set(...panel.position);
+    mesh.rotation.set(...panel.rotation);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    outpost.add(mesh);
+  }
   const char = material(0x1b1918, .015);
   const rust = material(0x6f3825, .08);
   const warning = material(0xff6a28, .38);
+  const doorRecess = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * .88, 3.15, .18), char);
+  doorRecess.name = "armory-recessed-entry";
+  doorRecess.position.set(0, 1.58, structure.d / 2 + .24);
+  const doorFrameLeft = new THREE.Mesh(new THREE.BoxGeometry(.28, 3.45, .34), rust);
+  doorFrameLeft.position.set(-doorWidth * .46, 1.72, structure.d / 2 + .38);
+  const doorFrameRight = doorFrameLeft.clone();
+  doorFrameRight.position.x *= -1;
   const beamA = new THREE.Mesh(new THREE.BoxGeometry(structure.w * .9, .62, .9), char);
-  beamA.position.set(0, structure.h + 1.1, -structure.d * .22);
+  beamA.position.set(0, wallHeight + .55, -structure.d * .22);
   beamA.rotation.z = -.12;
   const beamB = new THREE.Mesh(new THREE.BoxGeometry(structure.w * .74, .52, .82), rust);
-  beamB.position.set(0, structure.h + .55, structure.d * .12);
+  beamB.position.set(0, wallHeight + .18, structure.d * .12);
   beamB.rotation.z = .19;
-  const frontGlow = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, .16), warning);
-  frontGlow.position.set(0, 1.6, structure.d / 2 + .1);
+  const frontGlow = new THREE.Mesh(new THREE.BoxGeometry(doorWidth * .82, .18, .18), warning);
+  frontGlow.position.set(0, 3.34, structure.d / 2 + .48);
   const lastOutpostSign = new THREE.Mesh(new THREE.BoxGeometry(8.6, .24, .22), warning);
   lastOutpostSign.position.set(0, structure.h + 2.2, structure.d / 2 + .35);
   lastOutpostSign.rotation.z = -.04;
-  [beamA, beamB, frontGlow, lastOutpostSign].forEach(mesh => {
+  [doorRecess, doorFrameLeft, doorFrameRight, beamA, beamB, frontGlow, lastOutpostSign].forEach(mesh => {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     outpost.add(mesh);
@@ -1249,8 +1319,67 @@ function addBurnedArmoryVisual(root) {
     flame.position.set(x, 1.36, structure.d / 2 + 1.2);
     outpost.add(flame);
   }
+  const rubblePlan = buildArmoryRubblePlan(renderQuality.pass);
+  const rubbleGeometry = new THREE.DodecahedronGeometry(.42, 0);
+  const rubbleMaterial = new THREE.MeshStandardMaterial({ color: 0x302823, roughness: .98, metalness: .14 });
+  const rubble = new THREE.InstancedMesh(rubbleGeometry, rubbleMaterial, rubblePlan.length);
+  rubble.name = `armory-rubble-pass-${visualProfile.pass}`;
+  const transform = new THREE.Object3D();
+  rubblePlan.forEach((piece, index) => {
+    transform.position.set(piece.x, .22 * piece.scale, piece.z);
+    transform.rotation.set(piece.rotationX, piece.rotationY, piece.rotationZ);
+    transform.scale.set(piece.scale, piece.scale * .72, piece.scale);
+    transform.updateMatrix();
+    rubble.setMatrixAt(index, transform.matrix);
+  });
+  rubble.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  rubble.castShadow = effectiveGraphicsTier() === "high";
+  rubble.receiveShadow = true;
+  rubble.userData.rubbleTriangles = visualProfile.rubbleTriangles;
+  outpost.add(rubble);
+
+  const lightPositions = [
+    [-10.5, 2.2, structure.d / 2 + 1.2],
+    [10.5, 2.2, structure.d / 2 + 1.2],
+    [0, 2.8, structure.d / 2 + .5],
+  ];
+  lightPositions.slice(0, visualProfile.pointLights).forEach((position, index) => {
+    const fireLight = new THREE.PointLight(index % 2 ? 0xffa33a : 0xff5a24, 18, 25, 2);
+    fireLight.name = `armory-fire-light:${index + 1}`;
+    fireLight.position.set(...position);
+    fireLight.userData.mapAnim = "fire-light";
+    fireLight.userData.baseIntensity = fireLight.intensity;
+    fireLight.userData.pulse = index * 1.3;
+    outpost.add(fireLight);
+  });
+  outpost.userData.visualProfile = visualProfile;
+  outpost.userData.surfaceTexture = ARMORY_SURFACE_TEXTURES.baseColor;
   outpost.position.set(structure.x, groundY, structure.z);
   root.add(outpost);
+}
+
+function applyRequestedRenderFocus() {
+  const armoryFocusRequested = renderFocus === "armory";
+  if (!armoryFocusRequested || !player || !worldLayout) return;
+  const structure = worldLayout.structures.find(item => item.id === "armory-shell");
+  if (!structure) return;
+  const focusPosition = {
+    x: structure.x,
+    z: structure.z + structure.d / 2 + 22,
+  };
+  player.g.position.set(
+    focusPosition.x,
+    sampleWorldElevation(worldLayout, focusPosition),
+    focusPosition.z,
+  );
+  viewYaw = Math.PI;
+  aim.copy(player.g.position).add(new THREE.Vector3(0, 1.4, -35));
+  graceUntil = Number.POSITIVE_INFINITY;
+  camera.position.set(focusPosition.x, player.g.position.y + 2.35, focusPosition.z - 1.12);
+  camera.lookAt(structure.x, sampleWorldElevation(worldLayout, structure) + structure.h * .55, structure.z);
+  document.body.dataset.renderFocus = "armory";
+  canvas.dataset.armoryPass = String(renderQuality.pass);
+  canvas.dataset.armoryRubbleTriangles = String(armoryVisualProfile(renderQuality.pass).rubbleTriangles);
 }
 
 function updateMapVisuals(dt) {
@@ -1268,6 +1397,10 @@ function updateMapVisuals(dt) {
     if (node.userData?.mapAnim === "detail-point") {
       const pulse = .72 + Math.sin(elapsed * 2.4 + (node.userData.pulse || 0)) * .22;
       node.scale.setScalar(pulse);
+      return;
+    }
+    if (node.userData?.mapAnim === "fire-light") {
+      node.intensity = node.userData.baseIntensity * (.82 + Math.sin(elapsed * 7.2 + (node.userData.pulse || 0)) * .18);
       return;
     }
     if (node.userData?.mapAnim !== "flame") return;
@@ -1434,6 +1567,7 @@ function resetMap() {
   });
   player = unit(0x55e5ff, 0, 0, activeProfile?.avatarType || "scout", true);
   applyWorldMovement(player);
+  applyRequestedRenderFocus();
   classProgress = normalizeClassProgress({ ...classProgress, classId: avatarClass(activeProfile?.avatarType || "scout") });
   const classStats = getClassStats(classProgress);
   player.hp = classStats.maxHealth;
@@ -2153,18 +2287,23 @@ function update(dt) {
       spawnTimer = schedule[1] || Math.max(.75, 4 - wave * .1);
     }
   }
-  let mx = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
-  let mz = inputPaused || controllerLocked() || menuOpen ? 0 : (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+  const keyboardAxes = keyboardMovementAxes(keys);
+  let mx = inputPaused || controllerLocked() || menuOpen ? 0 : keyboardAxes.strafe;
+  let mz = inputPaused || controllerLocked() || menuOpen ? 0 : keyboardAxes.vertical;
   if (!inputPaused && (touch.mx || touch.mz)) { mx = touch.mx; mz = touch.mz; }
   if (!inputPaused && (controller.mx || controller.mz)) { mx = controller.mx; mz = controller.mz; }
   const length = Math.hypot(mx, mz) || 1;
   const playerFrom = player.g.position.clone();
   if (frontView) {
-    const forward = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
-    const right = new THREE.Vector3(Math.cos(viewYaw), 0, -Math.sin(viewYaw));
     const classSpeed = (player.moveSpeedMultiplier || 1) * (activeAbility?.id === "dash" && Date.now() < activeAbility.endsAt ? activeAbility.modifiers.moveSpeedMultiplier : 1);
-    player.g.position.addScaledVector(right, mx / length * 10 * classSpeed * dt);
-    player.g.position.addScaledVector(forward, -mz / length * 10 * classSpeed * dt);
+    const movementDelta = firstPersonMovementDelta({
+      yaw: viewYaw,
+      strafe: mx,
+      forward: -mz,
+      speed: 10 * classSpeed * dt,
+    });
+    player.g.position.x += movementDelta.x;
+    player.g.position.z += movementDelta.z;
   } else {
     const classSpeed = player.moveSpeedMultiplier || 1;
     player.g.position.x += mx / length * 10 * classSpeed * dt;
@@ -2175,11 +2314,11 @@ function update(dt) {
   if (manualTouchAim) {
     setInputMode("touch");
     aim.copy(player.g.position).add(new THREE.Vector3(touch.ax, 0, touch.az).multiplyScalar(20));
-    viewYaw = Math.atan2(touch.ax, touch.az);
+    viewYaw = aimYawFromAxes(touch.ax, touch.az);
   }
   if (manualControllerAim) {
     aim.copy(player.g.position).add(new THREE.Vector3(controller.ax, 0, controller.az).multiplyScalar(20));
-    viewYaw = Math.atan2(controller.ax, controller.az);
+    viewYaw = aimYawFromAxes(controller.ax, controller.az);
   }
   const wantsFire = !inputPaused && ((!controllerLocked() && firing) || touch.fire || controller.fire);
   if (shouldAutoLock({ coarsePointer: coarsePointer.matches, difficultyRatio, preset: aimSettings.preset, manualAim: manualTouchAim || manualControllerAim, mouseInputActive, controllerInputActive: inputMode === "controller" && manualControllerAim }) && wantsFire) {
@@ -2255,6 +2394,7 @@ function update(dt) {
     } else if (!enemies.length && spawnQueue === 0) finishRound("blue");
   }
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
+  player.g.visible = !frontView && player.alive;
   // Keep the aim camera just above and ahead of the survivor so the head never
   // sits between the reticle and the world while running and firing.
   const cameraTarget = frontView ? player.g.position.clone().add(new THREE.Vector3(0, 2.35, 0)).addScaledVector(facing, 1.12) : new THREE.Vector3(player.g.position.x, 26, player.g.position.z + 22);
@@ -4222,7 +4362,7 @@ canvas.addEventListener("pointermove", event => {
     if (frontView && phase === "combat" && !menuOpen) {
       // A rightward mouse movement turns the survivor right. The slightly
       // higher base rate restores a full 360-degree pan without changing WASD.
-      viewYaw += event.movementX * .0022 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
+      viewYaw = nextMouseYaw({ yaw: viewYaw, movementX: event.movementX, sensitivity: adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity });
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }
   }

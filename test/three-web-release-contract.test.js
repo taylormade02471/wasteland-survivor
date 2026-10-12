@@ -329,7 +329,10 @@ test("the gameplay renderer exposes a large ranged spider enemy", () => {
 
 test("the combat camera stays ahead of the survivor head while preserving the existing movement controls", () => {
   assert.match(gameSource, /const cameraTarget = frontView \? player\.g\.position\.clone\(\)\.add\(new THREE\.Vector3\(0, 2\.35, 0\)\)\.addScaledVector\(facing, 1\.12\)/);
-  assert.match(gameSource, /viewYaw\s*\+=\s*event\.movementX\s*\*\s*\.0022/);
+  assert.match(gameSource, /player\.g\.visible = !frontView && player\.alive/);
+  assert.match(gameSource, /nextMouseYaw\(\{ yaw: viewYaw, movementX: event\.movementX, sensitivity:/);
+  assert.match(gameSource, /firstPersonMovementDelta\(\{/);
+  assert.doesNotMatch(gameSource, /viewYaw\s*-=\s*event\.movementX/);
   assert.doesNotMatch(gameSource, /keys\.d\s*=\s*0/);
 });
 
