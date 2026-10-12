@@ -2625,6 +2625,13 @@ function render() {
     ui.discoveryToast.classList.add("hidden");
   }
   renderHud();
+  if (phase !== "menu" && player && world) {
+    canvas.dataset.runtimeWorldChildren = String(world.children.length);
+    canvas.dataset.runtimeTerrainDetails = String(world.children.filter(child => String(child.name || "").startsWith("terrain-detail:")).length);
+    canvas.dataset.runtimePlayer = `${player.g.position.x.toFixed(2)},${player.g.position.y.toFixed(2)},${player.g.position.z.toFixed(2)}`;
+    canvas.dataset.runtimeCamera = `${camera.position.x.toFixed(2)},${camera.position.y.toFixed(2)},${camera.position.z.toFixed(2)}`;
+    canvas.dataset.runtimeYaw = viewYaw.toFixed(3);
+  }
   player.cooldown = Math.max(0, player.cooldown - dt);
   allies.forEach(bot => { bot.cooldown = Math.max(0, bot.cooldown - dt); });
   if (!rendererContextLost) renderer.render(scene, camera);
