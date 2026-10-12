@@ -632,6 +632,15 @@ function updateAuthoredCharacterAnimations(dt) {
     const state = !actor.alive ? "downed" : actor === player && firing ? "fire" : moved ? "run" : actor === player && adsActive ? "aim" : "idle";
     const pose = sampleCharacterAnimation({ state, time: group.userData.animationTime, intensity: actor.alive ? 1 : .7 });
     const root = group.children.find(child => child.name?.startsWith("character:")) || group;
+    if (group.userData.animationBaseY == null) group.userData.animationBaseY = root.position.y;
+    // The textured Meshi release models are intentionally compact single-mesh
+    // assets. Give them a visible authored motion fallback until their full
+    // skinned anchor hierarchy replaces the compact mobile variant.
+    if (!root.getObjectByName?.("torso:chest") && root !== group) {
+      root.position.y = group.userData.animationBaseY + Math.sin(group.userData.animationTime * 2.2) * .018;
+      root.rotation.z = Math.sin(group.userData.animationTime * 1.4) * .012;
+      if (state === "run" || state === "walk") root.rotation.y = Math.sin(group.userData.animationTime * 7) * .035;
+    }
     const named = name => root.getObjectByName?.(name) || group.getObjectByName?.(name);
     const apply = (name, transform) => {
       const object = named(name);

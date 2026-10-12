@@ -269,6 +269,8 @@ test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /character-animation-runtime\.mjs/);
   assert.match(gameSource, /updateAuthoredCharacterAnimations\(dt\)/);
   assert.match(gameSource, /sampleCharacterAnimation\(\{ state, time:/);
+  assert.match(gameSource, /compact mobile variant/);
+  assert.match(gameSource, /animationBaseY/);
 });
 
 test("the menu preview requests a compact textured authored 3D model before the large gameplay mesh", () => {
