@@ -806,7 +806,10 @@ function createTerrainMesh(texture) {
   // Keep the authored image readable in the combat frame.  The biome vertex
   // tint was multiplying the textured surface down to a flat gray wash on
   // some WebGL/mobile paths, hiding the terrain artwork entirely.
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, vertexColors: false, fog: false, side: THREE.DoubleSide }));
+  const diagnosticMaterial = terrainDiagnostic
+    ? new THREE.MeshBasicMaterial({ color: 0xff1744, vertexColors: false, fog: false, side: THREE.DoubleSide })
+    : new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, vertexColors: false, fog: false, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geometry, diagnosticMaterial);
   mesh.receiveShadow = true;
   return mesh;
 }
