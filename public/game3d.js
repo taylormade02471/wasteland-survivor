@@ -88,7 +88,6 @@ function runtimeAssetPath(path) {
 }
 const canvas = $("game");
 const renderFocus = new URLSearchParams(window.location.search).get("renderFocus");
-const terrainDiagnostic = new URLSearchParams(window.location.search).has("terrainDiagnostic");
 canvas.dataset.controlDirectionLock = CONTROL_DIRECTION_LOCK.id;
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
@@ -806,10 +805,7 @@ function createTerrainMesh(texture) {
   // Keep the authored image readable in the combat frame.  The biome vertex
   // tint was multiplying the textured surface down to a flat gray wash on
   // some WebGL/mobile paths, hiding the terrain artwork entirely.
-  const diagnosticMaterial = terrainDiagnostic
-    ? new THREE.MeshBasicMaterial({ color: 0xff1744, vertexColors: false, fog: false, side: THREE.DoubleSide })
-    : new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, vertexColors: false, fog: false, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(geometry, diagnosticMaterial);
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, vertexColors: false, fog: false, side: THREE.DoubleSide }));
   mesh.receiveShadow = true;
   return mesh;
 }
@@ -851,7 +847,6 @@ function createProceduralTerrainTexture(path) {
 function loadTerrainTexture(path) {
   const fallbackPath = String(path || "").replace(/^https?:\/\/[^/]+\//, "").replace(/^.*?assets\//, "assets/");
   const texture = createProceduralTerrainTexture(path);
-  if (terrainDiagnostic) return texture;
   new THREE.TextureLoader().load(path, loaded => {
     texture.image = loaded.image;
     texture.colorSpace = THREE.SRGBColorSpace;
