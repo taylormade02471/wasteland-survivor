@@ -11,6 +11,12 @@ const files = [
   "tech-runner-meshy-v1.glb",
   "field-medic-meshy-v1.glb",
   "warden-meshy-v1.glb",
+  "../menu/scout-meshy-v1-menu-v1.glb",
+  "../menu/ranger-meshy-v2-menu-v1.glb",
+  "../menu/heavy-meshy-v1-menu-v1.glb",
+  "../menu/tech-runner-meshy-v1-menu-v1.glb",
+  "../menu/field-medic-meshy-v1-menu-v1.glb",
+  "../menu/warden-meshy-v1-menu-v1.glb",
 ];
 
 const align4 = value => (value + 3) & ~3;
@@ -89,7 +95,7 @@ function addClip(json, chunks, name, spineAngles, legAngles) {
 }
 
 function rigFile(fileName) {
-  const filePath = path.join(assetDir, fileName);
+  const filePath = path.resolve(assetDir, fileName);
   const { json, bin } = parseGlb(filePath);
   if (json.skins?.some(skin => skin.name === "NightfallCharacterSkin")) return;
   const chunks = [bin];

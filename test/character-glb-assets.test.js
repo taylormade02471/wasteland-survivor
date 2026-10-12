@@ -82,3 +82,22 @@ test("preferred textured survivor GLBs contain skinned joints and authored clips
     assert.equal(glb.nodes.filter(node => node.name?.startsWith("rig:")).length, 3, `${fileName} has three rig joints`);
   }
 });
+
+test("menu survivor GLBs contain the same skin and authored clip contract", () => {
+  const files = [
+    "scout-meshy-v1-menu-v1.glb",
+    "ranger-meshy-v2-menu-v1.glb",
+    "heavy-meshy-v1-menu-v1.glb",
+    "tech-runner-meshy-v1-menu-v1.glb",
+    "field-medic-meshy-v1-menu-v1.glb",
+    "warden-meshy-v1-menu-v1.glb",
+  ];
+  for (const fileName of files) {
+    const filePath = path.join(root, "public", "assets", "nightfall", "aaa", "characters", "menu", fileName);
+    const glb = readGlbJson(filePath);
+    assert.equal(glb.skins?.length, 1, `${fileName} has a skin`);
+    assert.deepEqual(glb.animations?.map(animation => animation.name), ["Idle", "Run", "Fire"], `${fileName} has authored clips`);
+    assert.ok(glb.meshes[0].primitives[0].attributes.JOINTS_0 != null, `${fileName} has joints`);
+    assert.ok(glb.meshes[0].primitives[0].attributes.WEIGHTS_0 != null, `${fileName} has weights`);
+  }
+});
