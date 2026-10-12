@@ -285,6 +285,12 @@ test("terrain texture loading keeps the external media route and restores the bu
   assert.match(gameSource, /const texture = loadTerrainTexture\(runtimeAssetPath\(cfg\.texture\)\)/);
 });
 
+test("terrain surfaces add authored biome detail when texture sampling is unavailable", () => {
+  assert.match(gameSource, /function addTerrainSurfaceDetail\(mapId\)/);
+  assert.match(gameSource, /terrain-detail:\$\{mapId\}/);
+  assert.match(gameSource, /addTerrainSurfaceDetail\(mapKey\)/);
+});
+
 test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /character-animation-runtime\.mjs/);
   assert.match(gameSource, /updateAuthoredCharacterAnimations\(dt\)/);

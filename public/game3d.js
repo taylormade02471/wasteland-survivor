@@ -897,6 +897,31 @@ function addRoadSegment(segment, color = 0x24272b) {
   world.add(mesh);
 }
 
+function addTerrainSurfaceDetail(mapId) {
+  const palette = {
+    inferno: { color: 0xff4a1f, emissive: .7, count: 72, width: .22, length: 4.8 },
+    toxic: { color: 0x83ff47, emissive: .28, count: 56, width: .18, length: 3.6 },
+    ice: { color: 0xa8efff, emissive: .18, count: 48, width: .16, length: 4.2 },
+    wasteland: { color: 0xb88b5c, emissive: .06, count: 42, width: .2, length: 3.8 },
+  }[mapId] || null;
+  if (!palette) return;
+  const random = seededRandom(`terrain-surface-detail:${mapId}:${worldLayout.size}`);
+  for (let index = 0; index < palette.count; index += 1) {
+    const x = worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
+    const z = worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
+    const length = palette.length * (.45 + random() * .9);
+    const patch = new THREE.Mesh(
+      new THREE.PlaneGeometry(palette.width * (.65 + random()), length),
+      new THREE.MeshStandardMaterial({ color: palette.color, emissive: palette.color, emissiveIntensity: palette.emissive, roughness: .8, transparent: true, opacity: .72, side: THREE.DoubleSide }),
+    );
+    patch.name = `terrain-detail:${mapId}:${index + 1}`;
+    patch.rotation.set(-Math.PI / 2, 0, random() * Math.PI * 2);
+    patch.position.set(x, sampleWorldElevation(worldLayout, { x, z }) + .085, z);
+    patch.receiveShadow = true;
+    world.add(patch);
+  }
+}
+
 function addRoadMarkings(segment) {
   const dx = segment.x2 - segment.x1;
   const dz = segment.z2 - segment.z1;
@@ -1637,6 +1662,7 @@ function resetMap() {
   const mapSize = worldLayout.size;
   ground = createTerrainMesh(texture);
   world.add(ground);
+  addTerrainSurfaceDetail(mapKey);
   addConnectedWorldObjects();
   addWorldFieldAssets();
   addMapVisuals();
