@@ -1,6 +1,6 @@
 import * as THREE from "./vendor/three.module.js";
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
-import { CONTROL_DIRECTION_LOCK, aimYawFromAxes, firstPersonMovementDelta, keyboardMovementAxes, nextMouseYaw } from "./control-direction-lock.mjs";
+import { CONTROL_DIRECTION_LOCK, aimYawFromAxes, firstPersonForwardInput, firstPersonMovementDelta, keyboardMovementAxes, nextMouseYaw } from "./control-direction-lock.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
 import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
 import { applyCanvasPointerHandoff, bindTransientPointerInterrupts } from "./input-recovery-adapter.mjs";
@@ -2343,7 +2343,7 @@ function update(dt) {
     const movementDelta = firstPersonMovementDelta({
       yaw: viewYaw,
       strafe: mx,
-      forward: -mz,
+      forward: firstPersonForwardInput(mz),
       speed: 10 * classSpeed * dt,
     });
     player.g.position.x += movementDelta.x;
@@ -2358,11 +2358,11 @@ function update(dt) {
   if (manualTouchAim) {
     setInputMode("touch");
     aim.copy(player.g.position).add(new THREE.Vector3(touch.ax, 0, touch.az).multiplyScalar(20));
-    viewYaw = aimYawFromAxes(touch.ax, touch.az);
+    viewYaw = aimYawFromAxes(touch.ax * CONTROL_DIRECTION_LOCK.touchYawSign, touch.az);
   }
   if (manualControllerAim) {
     aim.copy(player.g.position).add(new THREE.Vector3(controller.ax, 0, controller.az).multiplyScalar(20));
-    viewYaw = aimYawFromAxes(controller.ax, controller.az);
+    viewYaw = aimYawFromAxes(controller.ax * CONTROL_DIRECTION_LOCK.controllerYawSign, controller.az);
   }
   const wantsFire = !inputPaused && ((!controllerLocked() && firing) || touch.fire || controller.fire);
   if (shouldAutoLock({ coarsePointer: coarsePointer.matches, difficultyRatio, preset: aimSettings.preset, manualAim: manualTouchAim || manualControllerAim, mouseInputActive, controllerInputActive: inputMode === "controller" && manualControllerAim }) && wantsFire) {

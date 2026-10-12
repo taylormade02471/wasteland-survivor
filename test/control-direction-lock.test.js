@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   CONTROL_DIRECTION_LOCK,
   aimYawFromAxes,
+  firstPersonForwardInput,
   firstPersonMovementDelta,
   keyboardMovementAxes,
   nextMouseYaw,
@@ -13,11 +14,15 @@ test("the immutable control contract keeps every horizontal input right-positive
   assert.equal(Object.isFrozen(CONTROL_DIRECTION_LOCK), true);
   assert.equal(CONTROL_DIRECTION_LOCK.id, "right-positive-v1");
   assert.equal(CONTROL_DIRECTION_LOCK.mouseRadiansPerPixel, 0.0026);
+  assert.deepEqual(CONTROL_DIRECTION_LOCK.keyboard, { forward: "w", back: "s", left: "a", right: "d" });
+  assert.equal(CONTROL_DIRECTION_LOCK.firstPersonForwardSign, -1);
 
   assert.deepEqual(keyboardMovementAxes({ d: true }), { strafe: 1, vertical: 0 });
   assert.deepEqual(keyboardMovementAxes({ a: true }), { strafe: -1, vertical: 0 });
   assert.ok(aimYawFromAxes(1, 0) > 0, "right touch/controller aim must produce a positive yaw");
   assert.ok(aimYawFromAxes(-1, 0) < 0, "left touch/controller aim must produce a negative yaw");
+  assert.equal(firstPersonForwardInput(-1), 1, "W must remain forward in first-person movement");
+  assert.equal(firstPersonForwardInput(1), -1, "S must remain backward in first-person movement");
 });
 
 test("rightward mouse input turns right at the locked sensitivity", () => {

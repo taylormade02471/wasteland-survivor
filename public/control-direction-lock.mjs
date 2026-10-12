@@ -1,6 +1,11 @@
 export const CONTROL_DIRECTION_LOCK = Object.freeze({
   id: "right-positive-v1",
   mouseRadiansPerPixel: 0.0026,
+  mouseYawSign: 1,
+  touchYawSign: 1,
+  controllerYawSign: 1,
+  keyboard: Object.freeze({ forward: "w", back: "s", left: "a", right: "d" }),
+  firstPersonForwardSign: -1,
 });
 
 function finite(value, fallback = 0) {
@@ -24,7 +29,11 @@ export function aimYawFromAxes(horizontal, vertical) {
 }
 
 export function nextMouseYaw({ yaw = 0, movementX = 0, sensitivity = 1 } = {}) {
-  return finite(yaw) + finite(movementX) * CONTROL_DIRECTION_LOCK.mouseRadiansPerPixel * Math.max(0, finite(sensitivity, 1));
+  return finite(yaw) + finite(movementX) * CONTROL_DIRECTION_LOCK.mouseYawSign * CONTROL_DIRECTION_LOCK.mouseRadiansPerPixel * Math.max(0, finite(sensitivity, 1));
+}
+
+export function firstPersonForwardInput(vertical) {
+  return finite(vertical) * CONTROL_DIRECTION_LOCK.firstPersonForwardSign;
 }
 
 export function firstPersonMovementDelta({ yaw = 0, strafe = 0, forward = 0, speed = 1 } = {}) {
