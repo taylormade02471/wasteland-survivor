@@ -1258,6 +1258,7 @@ function updateMapVisuals(dt) {
   const elapsed = (mapVisuals.userData.elapsed || 0) + dt;
   mapVisuals.userData.elapsed = elapsed;
   mapVisuals.children.forEach((beacon, index) => {
+    if (!beacon.userData?.ring || !beacon.userData?.core) return;
     const pulse = .88 + Math.sin(elapsed * 2.2 + (beacon.userData.pulse || index)) * .14;
     beacon.userData.ring.rotation.z += dt * (index % 2 ? -.7 : .7);
     beacon.userData.ring.scale.setScalar(pulse);

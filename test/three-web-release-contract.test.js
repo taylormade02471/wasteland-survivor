@@ -243,6 +243,7 @@ test("the deployed shell wires authored 3D map props and a live survivor preview
   assert.match(gameSource, /addMapVisuals\(\)/);
   assert.match(gameSource, /function updateMapVisuals/);
   assert.match(gameSource, /updateMapVisuals\(dt\)/);
+  assert.match(gameSource, /if \(!beacon\.userData\?\.ring \|\| !beacon\.userData\?\.core\) return;/);
   assert.match(gameSource, /function addMountainVisuals/);
   assert.match(gameSource, /function addInfernoFireVisuals/);
   assert.match(gameSource, /function addBurnedArmoryVisual/);
