@@ -54,11 +54,12 @@ test("character asset contract is explicit about current GLB limits", () => {
     const archetype = getCharacterArchetype(id);
     assert.equal(archetype.assetContract.authoredGlbAvailable, true);
     assert.equal(archetype.assetContract.importedRig, false);
+    assert.equal(archetype.assetContract.authoredGlbSkinned, true);
     assert.equal(archetype.assetContract.preferredTexturedRig, true);
     assert.deepEqual(archetype.assetContract.preferredTexturedClips, ["Idle", "Run", "Fire"]);
     assert.equal(archetype.assetContract.runtimeAnimationDriver, "./character-animation-runtime.mjs");
     assert.deepEqual(archetype.assetContract.animationStates, ["idle", "walk", "run", "aim", "fire", "hit", "downed", "wade"]);
-    assert.match(archetype.assetContract.remainingBlocker, /operator fallback/i);
+    assert.match(archetype.assetContract.remainingBlocker, /visual audit/i);
   }
 });
 
@@ -99,5 +100,21 @@ test("menu survivor GLBs contain the same skin and authored clip contract", () =
     assert.deepEqual(glb.animations?.map(animation => animation.name), ["Idle", "Run", "Fire"], `${fileName} has authored clips`);
     assert.ok(glb.meshes[0].primitives[0].attributes.JOINTS_0 != null, `${fileName} has joints`);
     assert.ok(glb.meshes[0].primitives[0].attributes.WEIGHTS_0 != null, `${fileName} has weights`);
+  }
+});
+
+test("operator fallback GLBs retain anchors while carrying per-part skins and clips", () => {
+  for (const id of CHARACTER_ARCHETYPE_IDS) {
+    const filePath = path.join(root, "public", "assets", "nightfall", "characters", "3d", `${id}-operator-v1.glb`);
+    const glb = readGlbJson(filePath);
+    assert.ok(glb.skins?.length >= glb.meshes.length, `${id} has per-part skins`);
+    assert.deepEqual(glb.animations?.map(animation => animation.name), ["Idle", "Run", "Fire"], `${id} has operator clips`);
+    assert.ok(glb.nodes.some(node => node.name === "rig:root" || node.name?.startsWith("rig:")), `${id} has rig nodes`);
+    for (const mesh of glb.meshes) {
+      for (const primitive of mesh.primitives || []) {
+        assert.ok(primitive.attributes.JOINTS_0 != null, `${id} primitive has joints`);
+        assert.ok(primitive.attributes.WEIGHTS_0 != null, `${id} primitive has weights`);
+      }
+    }
   }
 });

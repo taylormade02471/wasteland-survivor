@@ -101,7 +101,8 @@ const ASSET_CONTRACT = Object.freeze({
   runtimeAnimationDriver: "./character-animation-runtime.mjs",
   animationStates: ANIMATION_STATES,
   source: "Six bundled survivor concept images are used as art direction for original procedural and Blender-authored low-poly assets.",
-  remainingBlocker: "The lower-resolution operator fallback GLBs remain static named-anchor meshes; the preferred textured character bundle now carries skinned joints and authored clips.",
+  authoredGlbSkinned: true,
+  remainingBlocker: "Final browser visual audit across all character, enemy, map, and terrain surfaces remains before the AAA pass can be called complete.",
 });
 
 function clone(value) {
