@@ -838,11 +838,7 @@ function createProceduralTerrainTexture(path) {
       context.stroke();
     }
   }
-  // Use a normal texture source so the async authored image can replace the
-  // procedural fallback cleanly on WebGL/mobile paths. CanvasTexture marks the
-  // source as canvas-only in some drivers, which left the combat ground as a
-  // flat gray surface after the image handoff.
-  const texture = new THREE.Texture(canvas);
+  const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.needsUpdate = true;
   return texture;
