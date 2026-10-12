@@ -906,7 +906,7 @@ function addTerrainSurfaceDetail(mapId) {
   }[mapId] || null;
   if (!palette) return;
   const random = seededRandom(`terrain-surface-detail:${mapId}:${worldLayout.size}`);
-  const nearSpawn = [[-9, -14], [5, -18], [13, -8], [-14, -4], [8, 7], [-5, 12], [18, 4], [-19, 8]];
+  const nearSpawn = [[0, 9], [0, 18], [-9, -14], [5, -18], [13, -8], [-14, -4], [8, 7], [-5, 12], [18, 4], [-19, 8]];
   for (let index = 0; index < palette.count; index += 1) {
     const anchor = nearSpawn[index % nearSpawn.length];
     const x = index < nearSpawn.length ? anchor[0] : worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
