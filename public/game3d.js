@@ -33,6 +33,7 @@ import { activateAbility, createClassProgress, getClassDefinition, getClassStats
 import { composeWave, scaleEnemy, spawnSchedule, tacticalIntent } from "./enemy-rules.mjs";
 import { getWeaponProfile } from "./combat-rules.mjs";
 import { kingdomUnlocked as hasKingdom, levelFromXp, unlockedMaps } from "./progression-rules.mjs";
+import { storyCampaignView } from "./story-campaign-view.mjs";
 import { captureGameplayClip, playRandomReplay } from "./replay-clips.mjs";
 import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
@@ -260,7 +261,6 @@ let playerLevel = 1, storyStage = 1, missionIndex = 0, kingdomUnlocked = false;
 let questState = createQuestState();
 let renderQuality = renderQualityProfile(3);
 let riskLevel = localStorage.getItem("wastland-survivor-risk") || "standard";
-const storyMissions = ["Survive the cycle", "Collect 60 scrap", "Defeat 10 raiders", "Reach stage 3", "Defend the frontier"];
 const timelineAdvantages = ["Field Scavenger", "Reinforced Plating", "Rapid Reload", "Kingdom Vanguard"];
 const soldierStory = [
   { title: "First Watch", text: "You are the last soldier on the Wasteland Survivor perimeter. Hold the line until dawn." },
@@ -2416,8 +2416,9 @@ function renderHud() {
   const teamMembers = [player, ...allies];
   const teamHealth = teamMembers.reduce((total, member) => total + Math.max(0, member?.hp || 0), 0);
   const teamHealthMax = teamMembers.reduce((total, member) => total + Math.max(0, member?.maxHp || 0), 0);
-  const chapter = soldierStory[Math.min(storyStage - 1, soldierStory.length - 1)];
-  const objective = kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex];
+  const campaign = storyCampaignView({ stage: storyStage, missionIndex, kingdomUnlocked });
+  const chapter = soldierStory[Math.min(campaign.chapterId - 1, soldierStory.length - 1)];
+  const objective = campaign.objective;
   const quest = questView(questState);
   const hud = createHudViewModel({
     health: player.hp,
@@ -2458,8 +2459,8 @@ function renderHud() {
   ui.wave.textContent = wave;
   ui.level.textContent = playerLevel;
   ui.stage.textContent = storyStage;
-  ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${chapter.title}`;
-  ui.mission.textContent = hud.mission.label;
+  ui.chapter.textContent = `Chapter ${campaign.chapterId}: ${campaign.chapterTitle}`;
+  ui.mission.textContent = `Mission: ${campaign.missionTitle} · ${hud.mission.label.replace(/^Mission:\s*/i, "")}`;
   ui.quest.textContent = `QUEST ${quest.value}/${quest.target} · ${quest.objective}`;
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
   ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
@@ -3402,7 +3403,7 @@ function loadProgress(profile) {
   playerLevel = Math.max(1, Number(progress.playerLevel) || 1);
   totalXp = Math.max(0, Number(progress.totalXp) || (Number(progress.kills) || 0) * 100 + (Number(progress.score) || 0));
   storyStage = Math.max(1, Number(progress.storyStage) || 1);
-  missionIndex = Math.max(0, Math.min(storyMissions.length - 1, Number(progress.missionIndex) || 0));
+  missionIndex = Math.max(0, Math.min(1, Number(progress.missionIndex) || 0));
   kingdomUnlocked = Boolean(progress.kingdomUnlocked);
   classProgress = normalizeClassProgress(progress.classProgress || { classId: profile?.avatarType || "scout" });
   Object.entries(progress.guns || {}).forEach(([key, level]) => { if (guns[key]) guns[key].level = Math.min(guns[key].max, Math.max(0, Number(level) || 0)); });
@@ -3415,9 +3416,7 @@ function updateStoryProgress() {
   storyStage = Math.max(1, Math.floor((wave - 1) / 5) + 1);
   kingdomUnlocked = hasKingdom(playerLevel);
   if (!kingdomUnlocked) {
-    if (scrap >= 60) missionIndex = Math.max(missionIndex, 1);
-    if (kills >= 10) missionIndex = Math.max(missionIndex, 2);
-    if (storyStage >= 3) missionIndex = Math.max(missionIndex, 3);
+    if (scrap >= 60 || kills >= 10 || storyStage >= 3) missionIndex = 1;
   }
   const discoveryCount = worldLayout && player ? explorationProgress(worldLayout, explorationState).discovered : 0;
   const questResult = advanceQuestState(questState, {
@@ -3451,7 +3450,8 @@ function openDashboard() {
   $("dashboardScrap").textContent = progress.scrap || 0;
   $("dashboardGold").textContent = progress.gold || 0;
   $("dashboardSilver").textContent = progress.silver || 0;
-  $("dashboardMission").textContent = progress.kingdomUnlocked ? "Kingdom unlocked. Continue the frontier timeline." : storyMissions[progress.missionIndex || 0];
+  const campaign = storyCampaignView({ stage: progress.storyStage || 1, missionIndex: progress.missionIndex || 0, kingdomUnlocked: Boolean(progress.kingdomUnlocked) });
+  $("dashboardMission").textContent = `${campaign.missionTitle}: ${campaign.objective}`;
   $("dashboardLoadout").innerHTML = Object.entries(guns).map(([key, gun]) => `<div><b>${gun.label}</b><small>Level ${progress.guns?.[key] || 0}/${gun.max === Infinity ? "∞" : gun.max}</small></div>`).join("") + `<div><b>Scrap Shield</b><small>Level ${progress.shieldLevel || 0}/10</small></div>`;
   $("dashboardTactics").innerHTML = ["Aim Stabilizer", "Quick Recovery", "Scavenger Pack", "Flag Runner"].map((name, index) => `<div><b>${name}</b><small>${(progress.storyStage || 1) > index ? "Unlocked" : "Stage " + (index + 1)}</small></div>`).join("");
   setMenuSection("survivor");
