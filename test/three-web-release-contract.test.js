@@ -276,6 +276,13 @@ test("the deployed shell wires authored 3D map props and a live survivor preview
   assert.doesNotMatch(pageSource, /class="title-survivor"/);
 });
 
+test("terrain texture loading keeps the external media route and restores the bundled texture on load failure", () => {
+  assert.match(gameSource, /function loadTerrainTexture\(path\)/);
+  assert.match(gameSource, /const fallbackPath = String\(path \|\| ""\)\.replace/);
+  assert.match(gameSource, /new THREE\.TextureLoader\(\)\.load\(fallbackPath/);
+  assert.match(gameSource, /const texture = loadTerrainTexture\(runtimeAssetPath\(cfg\.texture\)\)/);
+});
+
 test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /character-animation-runtime\.mjs/);
   assert.match(gameSource, /updateAuthoredCharacterAnimations\(dt\)/);

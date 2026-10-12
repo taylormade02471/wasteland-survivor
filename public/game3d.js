@@ -807,6 +807,25 @@ function createTerrainMesh(texture) {
   return mesh;
 }
 
+function loadTerrainTexture(path) {
+  const fallbackPath = String(path || "").replace(/^https?:\/\/[^/]+\//, "").replace(/^.*?assets\//, "assets/");
+  const texture = new THREE.TextureLoader().load(path, loaded => {
+    loaded.colorSpace = THREE.SRGBColorSpace;
+    loaded.needsUpdate = true;
+  }, undefined, () => {
+    if (!fallbackPath || fallbackPath === path) return;
+    new THREE.TextureLoader().load(fallbackPath, loaded => {
+      loaded.colorSpace = THREE.SRGBColorSpace;
+      loaded.wrapS = loaded.wrapT = THREE.RepeatWrapping;
+      loaded.repeat.copy(texture.repeat);
+      loaded.anisotropy = texture.anisotropy;
+      texture.image = loaded.image;
+      texture.needsUpdate = true;
+    });
+  });
+  return texture;
+}
+
 function addPlane({ x, z, w, d, color, y = .04, rotation = 0, emissive = 0 }) {
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material(color, emissive));
   mesh.rotation.x = -Math.PI / 2;
@@ -1573,7 +1592,7 @@ function resetMap() {
   const cfg = MAPS[mapKey];
   scene.fog = new THREE.FogExp2(cfg.fog, .009);
   scene.background = new THREE.Color(cfg.fog);
-  const texture = new THREE.TextureLoader().load(runtimeAssetPath(cfg.texture));
+  const texture = loadTerrainTexture(runtimeAssetPath(cfg.texture));
   renderQuality = renderQualityProfile(effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(renderQuality.textureRepeat, renderQuality.textureRepeat);
