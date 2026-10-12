@@ -277,6 +277,8 @@ test("the deployed shell wires authored 3D map props and a live survivor preview
 });
 
 test("terrain texture loading keeps the external media route and restores the bundled texture on load failure", () => {
+  assert.match(gameSource, /function createProceduralTerrainTexture\(path\)/);
+  assert.match(gameSource, /new THREE\.CanvasTexture\(canvas\)/);
   assert.match(gameSource, /function loadTerrainTexture\(path\)/);
   assert.match(gameSource, /const fallbackPath = String\(path \|\| ""\)\.replace/);
   assert.match(gameSource, /new THREE\.TextureLoader\(\)\.load\(fallbackPath/);

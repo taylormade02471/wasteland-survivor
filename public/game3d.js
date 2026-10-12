@@ -807,18 +807,50 @@ function createTerrainMesh(texture) {
   return mesh;
 }
 
+function createProceduralTerrainTexture(path) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  const context = canvas.getContext("2d");
+  const normalized = String(path || "").toLowerCase();
+  const inferno = normalized.includes("inferno");
+  const toxic = normalized.includes("toxic");
+  const ice = normalized.includes("icy");
+  context.fillStyle = inferno ? "#201516" : toxic ? "#18251c" : ice ? "#8aa8b7" : "#3a3029";
+  context.fillRect(0, 0, 256, 256);
+  const random = seededRandom(`terrain-fallback:${normalized}`);
+  for (let index = 0; index < 44; index += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const radius = 5 + random() * 18;
+    context.fillStyle = inferno ? (index % 3 ? "#40302b" : "#6f271b") : toxic ? "#2f5536" : ice ? "#d1e3e7" : "#665449";
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fill();
+    if (inferno) {
+      context.strokeStyle = "#e34d1f";
+      context.lineWidth = 1.5;
+      context.beginPath();
+      context.moveTo(x - radius * .7, y + radius * .2);
+      context.lineTo(x + radius * .6, y - radius * .35);
+      context.stroke();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 function loadTerrainTexture(path) {
   const fallbackPath = String(path || "").replace(/^https?:\/\/[^/]+\//, "").replace(/^.*?assets\//, "assets/");
-  const texture = new THREE.TextureLoader().load(path, loaded => {
-    loaded.colorSpace = THREE.SRGBColorSpace;
-    loaded.needsUpdate = true;
+  const texture = createProceduralTerrainTexture(path);
+  new THREE.TextureLoader().load(path, loaded => {
+    texture.image = loaded.image;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
   }, undefined, () => {
     if (!fallbackPath || fallbackPath === path) return;
     new THREE.TextureLoader().load(fallbackPath, loaded => {
       loaded.colorSpace = THREE.SRGBColorSpace;
-      loaded.wrapS = loaded.wrapT = THREE.RepeatWrapping;
-      loaded.repeat.copy(texture.repeat);
-      loaded.anisotropy = texture.anisotropy;
       texture.image = loaded.image;
       texture.needsUpdate = true;
     });
