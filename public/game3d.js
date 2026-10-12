@@ -907,6 +907,16 @@ function addTerrainSurfaceDetail(mapId) {
   if (!palette) return;
   const random = seededRandom(`terrain-surface-detail:${mapId}:${worldLayout.size}`);
   const nearSpawn = [[0, 9], [0, 18], [-9, -14], [5, -18], [13, -8], [-14, -4], [8, 7], [-5, 12], [18, 4], [-19, 8]];
+  if (mapId === "inferno") {
+    const spawnFissure = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 9),
+      new THREE.MeshBasicMaterial({ color: 0xff6a24, transparent: true, opacity: .92, side: THREE.DoubleSide, fog: false }),
+    );
+    spawnFissure.name = "terrain-detail:inferno:spawn-fissure";
+    spawnFissure.rotation.x = -Math.PI / 2;
+    spawnFissure.position.set(0, sampleWorldElevation(worldLayout, { x: 0, z: 9 }) + .12, 9);
+    world.add(spawnFissure);
+  }
   for (let index = 0; index < palette.count; index += 1) {
     const anchor = nearSpawn[index % nearSpawn.length];
     const x = index < nearSpawn.length ? anchor[0] : worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
