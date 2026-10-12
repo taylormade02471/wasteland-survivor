@@ -802,7 +802,7 @@ function createTerrainMesh(texture) {
   }
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ map: texture, vertexColors: true, roughness: 1, metalness: 0 }));
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture, vertexColors: true, fog: false, side: THREE.DoubleSide }));
   mesh.receiveShadow = true;
   return mesh;
 }
