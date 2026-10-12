@@ -1622,10 +1622,13 @@ function resetMap() {
   effects = [];
   flags = [];
   const cfg = MAPS[mapKey];
-  scene.fog = new THREE.FogExp2(cfg.fog, .009);
   scene.background = new THREE.Color(cfg.fog);
   const texture = loadTerrainTexture(runtimeAssetPath(cfg.texture));
   renderQuality = renderQualityProfile(effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1);
+  // Keep the authored terrain readable in first-person combat. The previous
+  // density hid the road, elevation, and texture under a single flat wash.
+  const fogDensity = renderQuality.pass >= 5 ? .0038 : renderQuality.pass >= 3 ? .0046 : .0054;
+  scene.fog = new THREE.FogExp2(cfg.fog, fogDensity);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(renderQuality.textureRepeat, renderQuality.textureRepeat);
   texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy);
