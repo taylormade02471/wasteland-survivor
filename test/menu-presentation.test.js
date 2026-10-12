@@ -175,3 +175,18 @@ test("autoplay decode data saver reduced motion and low tier retain the fallback
     assert.deepEqual(result.sources, []);
   }
 });
+
+test("explicit hero-video intent keeps the bundled video available when reduced motion lowers the graphics tier", async () => {
+  const { resolveMenuMedia } = await import(modulePath);
+  const result = resolveMenuMedia({
+    tier: "low",
+    reducedMotion: true,
+    heroVideo: true,
+    playbackState: "loading",
+  });
+
+  assert.equal(result.kind, "bundled");
+  assert.equal(result.autoplay, true);
+  assert.equal(result.fallbackVisible, true);
+  assert.equal(result.sources.length, 2);
+});

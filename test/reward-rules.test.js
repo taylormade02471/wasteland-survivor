@@ -22,3 +22,11 @@ test("wins grow streaks, draws preserve them, and losses break them", () => {
   assert.equal(loss.winStreak, 0);
   assert.equal(loss.streakBroken, true);
 });
+
+test("match settlement returns separate gold and silver currencies", () => {
+  const reward = settleMatch({ outcome: "win", kills: 8, wave: 3, currentGold: 4, currentSilver: 7 });
+  assert.ok(reward.goldEarned > 0);
+  assert.ok(reward.silverEarned > reward.goldEarned);
+  assert.equal(reward.nextGold, 4 + reward.goldEarned);
+  assert.equal(reward.nextSilver, 7 + reward.silverEarned);
+});

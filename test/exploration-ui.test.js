@@ -37,7 +37,7 @@ test("mouse aim remains unlocked, half-speed, and clamped to the browser edge", 
 
   assert.match(pointerMove, /mouseAimScreen\.x\s*=\s*THREE\.MathUtils\.clamp\(event\.clientX, 0, innerWidth\)/);
   assert.match(pointerMove, /mouseAimScreen\.y\s*=\s*THREE\.MathUtils\.clamp\(event\.clientY, 0, innerHeight\)/);
-  assert.match(pointerMove, /event\.movementX\s*\*\s*\.0016/);
+  assert.match(pointerMove, /viewYaw\s*\+=\s*event\.movementX\s*\*\s*\.0022/);
   assert.doesNotMatch(pointerMove, /document\.pointerLockElement/);
   assert.doesNotMatch(pointerDown, /requestGameplayPointerLock/);
 });

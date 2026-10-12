@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+import * as THREE from "./vendor/three.module.js";
 import { aimPresetForDifficulty, normalizeAimSettings, resolveInputMode, shouldAutoLock, shouldDuckMusic } from "./game-rules.mjs";
 import { selectGraphicsTier } from "./graphics-config.mjs";
 import { canCaptureGameplayPointer, resolveRendererMetrics, resolveTransientInputReset } from "./input-recovery.mjs";
@@ -37,7 +37,12 @@ import { RISK_PROFILES, rewardPreview, settleMatch } from "./reward-rules.mjs";
 import { canAccessChest, createChestPositions, seededRandom } from "./chest-rules.mjs";
 import { createExplorationState, evaluateExploration, explorationProgress } from "./exploration-rules.mjs";
 import { biomeAt, createConnectedWorldLayout, createTerrainGrid, createWorldScatter, resolveWorldMovement, sampleWorldElevation } from "./world-layout.mjs";
+import { getWorldFieldAsset, getWorldFieldPlacements } from "./world-field-assets.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
+import { createQuestState, advanceQuestState, questView } from "./story-quests.mjs";
+import { renderQualityProfile } from "./render-quality.mjs";
+import { GLTFLoader } from "./vendor/GLTFLoader.js";
+import { createLiveCharacterPreview, getPreferredCharacterModelPaths, loadFirstAvailableModel } from "./live-character-preview.mjs";
 import {
   LOBBY_CONTROL_ORDER,
   createMenuNavigator,
@@ -74,6 +79,9 @@ import {
 
 const $ = id => document.getElementById(id);
 const task4StorageKey = suffix => ["wastland", "survivor", suffix].join("-");
+function runtimeAssetPath(path) {
+  return window.__WASTELAND_MEDIA__?.url?.(path) || path;
+}
 const canvas = $("game");
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
@@ -90,10 +98,12 @@ const camera = new THREE.PerspectiveCamera(52, 1, .1, 620);
 const clock = new THREE.Clock();
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
+const curatedGlbLoader = new GLTFLoader();
+const curatedGlbCache = new Map();
 const ui = {
   hp: $("hpText"), hpBar: $("hpBar"), shield: $("shieldText"), shieldBar: $("shieldBar"), heat: $("heatText"), heatBar: $("heatBar"),
   ammo: $("ammoText"), ability: $("abilityText"), abilityBar: $("abilityBar"), team: $("teamText"), teamName: $("teamName"), teamHealth: $("teamHealthText"), teamHealthBar: $("teamHealthBar"), objective: $("objectiveText"),
-  scrap: $("scrapText"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
+  scrap: $("scrapText"), gold: $("goldText"), silver: $("silverText"), quest: $("questText"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
   discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"),
   controllerStatus: $("controllerStatus"), controllerOnly: $("controllerOnlyToggle"), soundToggle: $("soundToggle"), volume: $("volumeSlider"), musicToggle: $("musicToggle"), musicVolume: $("musicVolumeSlider"), musicSource: $("musicSource"), musicStatus: $("musicStatus"),
@@ -124,11 +134,13 @@ const storyMapSelect = $("storyMapSelect");
 const homeBackdrop = $("homeBackdrop");
 const nightfallBackground = $("nightfallBackground");
 const menuMediaLifecycle = createMenuMediaLifecycle();
+let lobbyAvatarPreview = null;
+let profileAvatarPreview = null;
 const MAPS = {
-  wasteland: { label: "Wasteland", texture: "assets/wasteland-ground-v1.png", fog: 0x554331, hazard: 0x83ff47 },
-  toxic: { label: "Toxic Ponds", texture: "assets/wasteland-ground-v1.png", fog: 0x344a2d, hazard: 0x93ff30 },
-  ice: { label: "Icy Mountain", texture: "assets/icy-mountain-ground-v1.png", fog: 0xc3d9e7, hazard: 0x4dbbff },
-  inferno: { label: "Fire Inferno", texture: "assets/fire-inferno-ground-v1.png", fog: 0x351510, hazard: 0xff5a24 }
+  wasteland: { label: "Wasteland", texture: "assets/wasteland-terrain-v2.png", fog: 0x554331, hazard: 0x83ff47 },
+  toxic: { label: "Toxic Ponds", texture: "assets/toxic-terrain-v2.png", fog: 0x344a2d, hazard: 0x93ff30 },
+  ice: { label: "Icy Mountain", texture: "assets/icy-mountain-terrain-v2.png", fog: 0xc3d9e7, hazard: 0x4dbbff },
+  inferno: { label: "Fire Inferno", texture: "assets/fire-inferno-terrain-v2.png", fog: 0x351510, hazard: 0xff5a24 }
 };
 
 function updateAvatarCards(value = profileAvatar.value) {
@@ -137,6 +149,83 @@ function updateAvatarCards(value = profileAvatar.value) {
     card.classList.toggle("selected", selected);
     card.setAttribute("aria-pressed", String(selected));
   });
+  const selectedCard = document.querySelector(`.avatar-choice[data-avatar="${value}"]`);
+  const selectedName = selectedCard?.querySelector("b")?.textContent || "Dust Scout";
+  const selectedImage = selectedCard?.querySelector("img")?.getAttribute("src");
+  $("profileAvatarPreviewName").textContent = selectedName;
+  if (selectedImage) {
+    $("profileAvatarPreviewImage").src = selectedImage;
+    $("profileAvatarPreviewImage").alt = `${selectedName} preview`;
+  }
+  ensureProfileAvatarPreview(value);
+}
+
+function cloneAuthoredRoot(scene) {
+  const root = scene?.clone ? scene.clone(true) : null;
+  root?.traverse?.(node => {
+    if (!node.isMesh) return;
+    node.castShadow = true;
+    node.receiveShadow = true;
+    if (Array.isArray(node.material)) node.material = node.material.map(item => item?.clone ? item.clone() : item);
+    else if (node.material?.clone) node.material = node.material.clone();
+  });
+  return root;
+}
+
+function fitAuthoredWorldRoot(root, maxDimension) {
+  const initialBox = new THREE.Box3().setFromObject(root);
+  const initialSize = new THREE.Vector3();
+  initialBox.getSize(initialSize);
+  const largest = Math.max(initialSize.x, initialSize.y, initialSize.z, 1);
+  root.scale.setScalar(maxDimension / largest);
+  const fittedBox = new THREE.Box3().setFromObject(root);
+  root.position.y -= fittedBox.min.y;
+  return root;
+}
+
+function loadCuratedGlb(paths) {
+  return loadFirstAvailableModel({ loader: curatedGlbLoader, paths, cache: curatedGlbCache });
+}
+
+const AUTHORED_ENEMY_MODELS = Object.freeze({
+  rusher: "./assets/nightfall/aaa/enemies/meshy/mutated-creature-meshy-v1.glb",
+  shooter: "./assets/nightfall/aaa/enemies/meshy/shooter-meshy-v1.glb",
+  sniper: "./assets/nightfall/aaa/enemies/meshy/marksman-meshy-v1.glb",
+  shield: "./assets/nightfall/aaa/enemies/meshy/shield-soldier-meshy-v1.glb",
+  heavy: "./assets/nightfall/aaa/enemies/meshy/heavy-gunner-meshy-v1.glb",
+  drone: "./assets/nightfall/aaa/enemies/meshy/drone-meshy-v1.glb",
+  mutant: "./assets/nightfall/aaa/enemies/meshy/mutant-meshy-v1.glb",
+  boss: "./assets/nightfall/aaa/enemies/meshy/boss-commander-meshy-v1.glb",
+});
+
+const AUTHORED_WEAPON_MODELS = Object.freeze({
+  scout: "./assets/nightfall/aaa/weapons/meshy/scout-meshy-v1.glb",
+  cannon: "./assets/nightfall/aaa/weapons/meshy/cannon-meshy-v1.glb",
+  inferno: "./assets/nightfall/aaa/weapons/meshy/inferno-meshy-v1.glb",
+});
+
+function ensureLobbyAvatarPreview(id) {
+  if (!lobbyAvatarPreview) {
+    lobbyAvatarPreview = createLiveCharacterPreview({
+      canvas: $("lobbyAvatarCanvas"),
+      THREE,
+      GLTFLoader,
+      defaultCharacter: id,
+    });
+  }
+  lobbyAvatarPreview.setCharacter(id);
+}
+
+function ensureProfileAvatarPreview(id) {
+  if (!profileAvatarPreview) {
+    profileAvatarPreview = createLiveCharacterPreview({
+      canvas: $("profileAvatarCanvas"),
+      THREE,
+      GLTFLoader,
+      defaultCharacter: id,
+    });
+  }
+  profileAvatarPreview.setCharacter(id);
 }
 const guns = {
   scout: { label: "Scout", level: 0, max: Infinity, price: 12 },
@@ -156,12 +245,15 @@ let countdownDeadline = 0;
 let graceUntil = 0;
 let frontView = true;
 let ground, player, ally;
+let mapVisuals = null;
 let chests = [];
 let chestSpawnRadius = 70;
 let allies = [], enemies = [], bullets = [], hazards = [], flags = [], effects = [];
 let cameraShake = 0;
-let score = 0, kills = 0, scrap = 0, wave = 1, blue = 0, red = 0, shieldLevel = 0;
+let score = 0, kills = 0, scrap = 0, gold = 0, silver = 0, wave = 1, blue = 0, red = 0, shieldLevel = 0;
 let playerLevel = 1, storyStage = 1, missionIndex = 0, kingdomUnlocked = false;
+let questState = createQuestState();
+let renderQuality = renderQualityProfile(3);
 let riskLevel = localStorage.getItem("wastland-survivor-risk") || "standard";
 const storyMissions = ["Survive the cycle", "Collect 60 scrap", "Defeat 10 raiders", "Reach stage 3", "Defend the frontier"];
 const timelineAdvantages = ["Field Scavenger", "Reinforced Plating", "Rapid Reload", "Kingdom Vanguard"];
@@ -182,6 +274,7 @@ let enemySpawnTypes = [];
 let classProgress = createClassProgress();
 let activeAbility = null;
 let totalXp = 0;
+let survivalSeconds = 0;
 const avatarClass = type => ({ medic: "tech", warden: "heavy" })[type] || type;
 let replayCaptureActive = false;
 let firing = false;
@@ -194,7 +287,8 @@ let audioEnabled = localStorage.getItem("wastland-survivor-audio") !== "off";
 let audioVolume = Number(localStorage.getItem("wastland-survivor-volume") || 55);
 let musicEnabled = localStorage.getItem("wastland-survivor-music") !== "off";
 let musicVolume = Number(localStorage.getItem("wastland-survivor-music-volume") || 36);
-let musicSource = localStorage.getItem("wastland-survivor-music-source") || "builtin";
+let musicSource = localStorage.getItem("wastland-survivor-music-source") || "bundled";
+if (musicSource === "builtin") musicSource = "bundled";
 let offlineMode = localStorage.getItem("wastland-survivor-offline") === "true";
 let lobbyConnectivity = {
   offlineMode,
@@ -223,6 +317,24 @@ let musicStep = 0;
 let localTracks = [];
 let localTrackIndex = 0;
 const localMusic = new Audio();
+const bundledMusic = new Audio();
+bundledMusic.preload = "auto";
+bundledMusic.loop = false;
+let bundledMusicPhase = null;
+let bundledMusicTrack = null;
+const BUNDLED_SOUNDTRACK = Object.freeze({
+  menu: Object.freeze([
+    Object.freeze({ name: "We Walk the Ruins — menu theme", url: "./assets/nightfall/music/we-walk-the-ruins-menu-theme.mp3" }),
+    Object.freeze({ name: "The Coat Beside the Door — Phantom", url: "./assets/nightfall/music/the-coat-beside-the-door.mp3" }),
+    Object.freeze({ name: "Winter Folded in the Seams — Phantom", url: "./assets/nightfall/music/winter-folded-in-the-seams.mp3" }),
+  ]),
+  gameplay: Object.freeze([
+    Object.freeze({ name: "Perimeter Breach — gameplay ambient", url: "./assets/nightfall/music/wasteland-gameplay-ambient.mp3" }),
+    Object.freeze({ name: "Answer Back in Flame — Phantom", url: "./assets/nightfall/music/answer-back-in-flame.mp3" }),
+    Object.freeze({ name: "Fire in Our Hands — Phantom", url: "./assets/nightfall/music/fire-in-our-hands.mp3" }),
+    Object.freeze({ name: "We Hunt Now — Phantom", url: "./assets/nightfall/music/we-hunt-now.mp3" }),
+  ]),
+});
 let localStream = null;
 let voiceSocket = null;
 let lobbySocket = null;
@@ -397,11 +509,13 @@ function applyExplorationDiscovery() {
   explorationState = discovery.state;
   score += discovery.reward.score;
   scrap += discovery.reward.scrap;
+  silver += Math.max(1, Math.round(discovery.reward.scrap * .6));
+  gold += discovery.events.some(event => event.kind === "completion") ? 8 : 2;
   updateStoryProgress();
   const completion = discovery.events.find(event => event.kind === "completion");
   const locations = discovery.events.filter(event => event.kind !== "completion").map(event => event.label);
   ui.discoveryTitle.textContent = completion?.label || `Discovered: ${locations.join(" + ")}`;
-  ui.discoveryReward.textContent = `+${discovery.reward.score} SCORE / +${discovery.reward.scrap} SCRAP`;
+  ui.discoveryReward.textContent = `+${discovery.reward.score} SCORE / +${discovery.reward.scrap} SCRAP / +${Math.max(1, Math.round(discovery.reward.scrap * .6))} SILVER`;
   ui.discoveryToast.classList.remove("hidden");
   discoveryToastUntil = performance.now() + 3200;
   const progress = explorationProgress(worldLayout, explorationState);
@@ -485,7 +599,101 @@ function boxGeometry(w, h, d) {
   return boxGeometryCache.get(key);
 }
 
-function unit(color, x, z, avatarType = "scout") {
+function attachAuthoredCharacter(group, avatarType) {
+  loadCuratedGlb(getPreferredCharacterModelPaths(avatarType)).then(asset => {
+    if (!group.parent) return;
+    const root = cloneAuthoredRoot(asset?.scene);
+    if (!root) return;
+    fitAuthoredWorldRoot(root, 2.35);
+    root.rotation.y = Math.PI;
+    while (group.children.length) group.remove(group.children[0]);
+    group.add(root);
+    group.userData.authoredCharacter = avatarType;
+    attachAuthoredWeapon(group, activeGun);
+  }).catch(() => {});
+}
+
+function attachAuthoredWeapon(group, gunName) {
+  const assetPath = AUTHORED_WEAPON_MODELS[gunName];
+  if (!assetPath) return;
+  group.userData.requestedWeapon = gunName;
+  group.getObjectByName("authored-weapon")?.removeFromParent();
+  loadCuratedGlb([assetPath]).then(asset => {
+    if (!group.parent || group.userData.requestedWeapon !== gunName) return;
+    const root = cloneAuthoredRoot(asset?.scene);
+    if (!root) return;
+    group.getObjectByName("authored-weapon")?.removeFromParent();
+    fitAuthoredWorldRoot(root, .95);
+    root.name = "authored-weapon";
+    root.position.set(.42, 1.05, .56);
+    root.rotation.y = Math.PI;
+    group.add(root);
+    group.userData.authoredWeapon = gunName;
+  }).catch(() => {});
+}
+
+function attachAuthoredEnemy(group, enemyType, assetPath) {
+  if (!assetPath) return;
+  loadCuratedGlb([assetPath]).then(asset => {
+    if (!group.parent) return;
+    const root = cloneAuthoredRoot(asset?.scene);
+    if (!root) return;
+    fitAuthoredWorldRoot(root, enemyType === "boss" ? 3.8 : enemyType === "drone" ? 1.9 : 2.5);
+    root.rotation.y = Math.PI;
+    while (group.children.length) group.remove(group.children[0]);
+    group.add(root);
+    group.userData.authoredEnemy = enemyType;
+  }).catch(() => {});
+}
+
+function createSpiderVisual(group) {
+  const shell = material(0x314d3f, .08);
+  const shellHighlight = material(0x6e9f59, .18);
+  const eyeMaterial = material(0xff5d75, 1);
+  const fangMaterial = material(0xd9f4c8, .35);
+  const abdomen = new THREE.Mesh(new THREE.SphereGeometry(.92, 12, 8), shell);
+  abdomen.scale.set(1.05, .76, 1.28);
+  abdomen.position.set(0, .94, -.28);
+  abdomen.castShadow = true;
+  const thorax = new THREE.Mesh(new THREE.SphereGeometry(.66, 12, 8), shellHighlight);
+  thorax.scale.set(1.05, .76, 1.12);
+  thorax.position.set(0, .9, .58);
+  thorax.castShadow = true;
+  group.add(abdomen, thorax);
+  for (const side of [-1, 1]) {
+    for (let index = 0; index < 4; index += 1) {
+      const angle = (index - 1.5) * .34;
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(.09, .13, 1.05, 6), shell);
+      upper.position.set(side * (.72 + Math.cos(angle) * .34), .68 + Math.abs(index - 1.5) * .07, .42 + Math.sin(angle) * .72);
+      upper.rotation.set(0, side * angle, side * Math.PI / 2);
+      upper.castShadow = true;
+      const lower = new THREE.Mesh(new THREE.CylinderGeometry(.065, .1, .94, 6), shellHighlight);
+      lower.position.set(side * (1.18 + Math.cos(angle) * .46), .39, .42 + Math.sin(angle) * 1.15);
+      lower.rotation.set(0, side * (angle + .18), side * Math.PI / 2);
+      lower.castShadow = true;
+      group.add(upper, lower);
+    }
+  }
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.11, 8, 6), eyeMaterial);
+    eye.position.set(side * .22, 1.08, 1.17);
+    group.add(eye);
+  }
+  const fang = new THREE.Mesh(new THREE.ConeGeometry(.1, .38, 6), fangMaterial);
+  fang.position.set(-.22, .56, 1.08);
+  fang.rotation.x = Math.PI;
+  const secondFang = fang.clone();
+  secondFang.position.x = .22;
+  group.add(fang, secondFang);
+  // Enlarge the ranged spider for a clearer combat silhouette and keep its
+  // targeting radius aligned with the enlarged visual footprint.
+  group.scale.setScalar(1.35);
+  group.userData.hitRadius = 1.35;
+  group.userData.enemyVisual = "spider-ranged";
+  group.userData.attackProfile = { projectile: "acid-web", range: 24 };
+}
+
+function unit(color, x, z, avatarType = "scout", useAuthoredModel = false, authoredEnemy = null) {
   const group = new THREE.Group();
   const bodyGeometry = avatarType === "heavy" ? new THREE.CapsuleGeometry(.72, 1.05, 6, 12) : new THREE.CapsuleGeometry(.55, 1.1, 5, 10);
   const body = new THREE.Mesh(bodyGeometry, material(color, .08));
@@ -513,6 +721,11 @@ function unit(color, x, z, avatarType = "scout") {
   }
   group.position.set(x, 0, z);
   world.add(group);
+  if (useAuthoredModel) attachAuthoredCharacter(group, avatarType);
+  if (authoredEnemy?.type === "spider") {
+    while (group.children.length) group.remove(group.children[0]);
+    createSpiderVisual(group);
+  } else if (authoredEnemy) attachAuthoredEnemy(group, authoredEnemy.type, authoredEnemy.path);
   return { g: group, hp: 100, maxHp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
 }
 
@@ -527,8 +740,7 @@ function addBox({ x, z, w, d, h = 2, color = 0x444444, emissive = 0, y = null, r
 }
 
 function createTerrainMesh(texture) {
-  const tier = effectiveGraphicsTier();
-  const terrain = createTerrainGrid(worldLayout, { segments: tier === "low" ? 40 : tier === "medium" ? 56 : 72 });
+  const terrain = createTerrainGrid(worldLayout, { segments: renderQuality.terrainSegments });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(terrain.positions, 3));
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(terrain.uvs, 2));
@@ -583,6 +795,38 @@ function addRoadSegment(segment, color = 0x24272b) {
   const mesh = new THREE.Mesh(geometry, material(color));
   mesh.receiveShadow = true;
   world.add(mesh);
+}
+
+function addRoadMarkings(segment) {
+  const dx = segment.x2 - segment.x1;
+  const dz = segment.z2 - segment.z1;
+  const length = Math.hypot(dx, dz);
+  if (!length || segment.width < 9) return;
+  const angle = Math.atan2(dx, dz);
+  const steps = Math.max(1, Math.floor(length / 18));
+  const stripeMaterial = material(0xd8bd63, .12);
+  const edgeMaterial = material(0x82929a, .08);
+  for (let index = 0; index < steps; index += 1) {
+    const t = (index + .5) / steps;
+    const x = segment.x1 + dx * t;
+    const z = segment.z1 + dz * t;
+    const elevation = segment.underpassClearance ? 0 : sampleWorldElevation(worldLayout, { x, z });
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(.24, .035, Math.min(5.5, length / steps * .58)), stripeMaterial);
+    stripe.position.set(x, elevation + .105, z);
+    stripe.rotation.y = angle;
+    stripe.receiveShadow = true;
+    world.add(stripe);
+  }
+  for (const side of [-1, 1]) {
+    const offset = segment.width * .42 * side;
+    const x = segment.x1 + (-dz / length) * offset;
+    const z = segment.z1 + (dx / length) * offset;
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(.12, .028, length), edgeMaterial);
+    edge.position.set(x, (segment.underpassClearance ? 0 : sampleWorldElevation(worldLayout, { x, z })) + .095, z);
+    edge.rotation.y = angle;
+    edge.receiveShadow = true;
+    world.add(edge);
+  }
 }
 
 function addRampMesh(ramp) {
@@ -698,6 +942,91 @@ function addDestroyedCars() {
   });
 }
 
+function addUtilityPoles() {
+  const placements = [
+    { x: -118, z: -126, rotation: .12 },
+    { x: -96, z: -134, rotation: .12 },
+    { x: 116, z: 118, rotation: -.28 },
+    { x: 138, z: 110, rotation: -.28 },
+  ];
+  const poleMaterial = material(0x3a4548, .02);
+  const cableMaterial = new THREE.LineBasicMaterial({ color: 0x171d20, transparent: true, opacity: .8 });
+  placements.forEach((placement, index) => {
+    const group = new THREE.Group();
+    group.name = `utility-pole:${index + 1}`;
+    const groundY = sampleWorldElevation(worldLayout, placement);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(.18, .28, 7.2, 8), poleMaterial);
+    post.position.y = 3.6;
+    post.castShadow = true;
+    const crossarm = new THREE.Mesh(new THREE.BoxGeometry(3.5, .16, .18), poleMaterial);
+    crossarm.position.y = 6.35;
+    crossarm.castShadow = true;
+    group.add(post, crossarm);
+    for (const x of [-1.25, 0, 1.25]) {
+      const insulator = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, .34, 6), material(0xc5c9bf, .05));
+      insulator.position.set(x, 6.55, 0);
+      group.add(insulator);
+    }
+    const cable = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-1.72, 6.52, 0),
+        new THREE.Vector3(0, 6.22, .04),
+        new THREE.Vector3(1.72, 6.52, 0),
+      ]),
+      cableMaterial,
+    );
+    cable.name = "utility-cable";
+    group.add(cable);
+    group.position.set(placement.x, groundY, placement.z);
+    group.rotation.y = placement.rotation;
+    world.add(group);
+  });
+}
+
+function addRoadsideClutter() {
+  const placements = [
+    { x: -132, z: -38, rotation: .18 },
+    { x: 46, z: -110, rotation: -.32 },
+    { x: 88, z: 144, rotation: .62 },
+    { x: -180, z: 140, rotation: -.12 },
+  ];
+  const crateMaterial = material(0x6f4d31, .02);
+  const braceMaterial = material(0x384044, .03);
+  const warningMaterial = material(0xd97935, .12);
+  const beaconMaterial = material(0x86f0d4, .6);
+  placements.forEach((placement, index) => {
+    const group = new THREE.Group();
+    group.name = `roadside-clutter:${index + 1}`;
+    const groundY = sampleWorldElevation(worldLayout, placement);
+    const crate = new THREE.Mesh(boxGeometry(1.1, .9, 1.1), crateMaterial);
+    crate.position.set(-.7, .45, .1);
+    crate.rotation.y = .18;
+    crate.castShadow = true;
+    const crateTop = new THREE.Mesh(boxGeometry(.9, .7, .9), crateMaterial);
+    crateTop.position.set(.28, .35, -.26);
+    crateTop.rotation.y = -.22;
+    crateTop.castShadow = true;
+    const barrierPostA = new THREE.Mesh(new THREE.CylinderGeometry(.07, .1, 1.2, 6), braceMaterial);
+    barrierPostA.position.set(.8, .6, .4);
+    barrierPostA.castShadow = true;
+    const barrierPostB = barrierPostA.clone();
+    barrierPostB.position.z = -.55;
+    const barrier = new THREE.Mesh(boxGeometry(.12, .13, 1.1), warningMaterial);
+    barrier.position.set(.8, .98, -.08);
+    barrier.rotation.x = Math.PI / 2;
+    barrier.castShadow = true;
+    const beaconPost = new THREE.Mesh(new THREE.CylinderGeometry(.06, .09, 1.8, 6), braceMaterial);
+    beaconPost.position.set(-.18, .9, -.72);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(.16, 10, 8), beaconMaterial);
+    beacon.position.set(-.18, 1.82, -.72);
+    beacon.castShadow = true;
+    group.add(crate, crateTop, barrierPostA, barrierPostB, barrier, beaconPost, beacon);
+    group.position.set(placement.x, groundY, placement.z);
+    group.rotation.y = placement.rotation;
+    world.add(group);
+  });
+}
+
 function addStructure(structure) {
   const groundY = sampleWorldElevation(worldLayout, structure);
   let mesh;
@@ -763,6 +1092,191 @@ function addBiomeGateways() {
   });
 }
 
+function addMapVisuals() {
+  const root = new THREE.Group();
+  root.name = "map-visuals";
+  const beacons = [
+    { id: "inferno", x: -92, z: 96, color: 0xff542e },
+    { id: "ice", x: -92, z: -96, color: 0x8ee9ff },
+    { id: "desert", x: 96, z: 96, color: 0xffd36a },
+    { id: "city", x: 96, z: -96, color: 0xb7c4d8 },
+  ];
+  for (const beacon of beacons) {
+    const group = new THREE.Group();
+    group.name = `biome-beacon:${beacon.id}`;
+    const groundY = sampleWorldElevation(worldLayout, beacon);
+    const glow = material(beacon.color, .72);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(.12, .25, 4.2, 8), glow);
+    post.position.y = 2.1;
+    post.castShadow = true;
+    const core = new THREE.Mesh(new THREE.SphereGeometry(.34, 12, 8), glow);
+    core.position.y = 4.35;
+    core.castShadow = true;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, .075, 8, 28), glow);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = .12;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(.42, .55, 6), glow);
+    cap.position.y = 4.78;
+    cap.rotation.y = Math.PI / 6;
+    group.add(post, core, ring, cap);
+    group.position.set(beacon.x, groundY, beacon.z);
+    group.userData = { beaconId: beacon.id, core, ring, pulse: beacons.indexOf(beacon) * .9 };
+    root.add(group);
+  }
+  addMountainVisuals(root);
+  addInfernoFireVisuals(root);
+  addBurnedArmoryVisual(root);
+  addRenderQualityDetailPoints(root);
+  world.add(root);
+  mapVisuals = root;
+}
+
+function addRenderQualityDetailPoints(root) {
+  const detail = new THREE.Group();
+  detail.name = `render-quality-pass-${renderQuality.pass}-detail-points`;
+  const glow = material(0xffdf52, .24);
+  const pointCount = Math.max(8, Math.round(renderQuality.visualPoints / 2));
+  for (let index = 0; index < pointCount; index += 1) {
+    const angle = (index / pointCount) * Math.PI * 2;
+    const radius = 34 + (index % 5) * 8;
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    const point = new THREE.Mesh(new THREE.SphereGeometry(.09 + renderQuality.pass * .012, 6 + renderQuality.pass, 5 + renderQuality.pass), glow);
+    point.position.set(x, sampleWorldElevation(worldLayout, { x, z }) + .2, z);
+    point.userData.mapAnim = "detail-point";
+    point.userData.pulse = index * .33;
+    detail.add(point);
+  }
+  root.add(detail);
+}
+
+function addMountainVisuals(root) {
+  const ridge = new THREE.Group();
+  ridge.name = "mountain-ridge-visuals";
+  const rock = material(0x4b5a65, .025);
+  const snow = material(0xcfe7ef, .08);
+  [
+    { x: -212, z: -202, scale: 1.12, rotation: -.16 },
+    { x: -174, z: -218, scale: .88, rotation: .12 },
+    { x: -132, z: -206, scale: 1.02, rotation: -.08 },
+    { x: -206, z: -158, scale: .76, rotation: .2 },
+  ].forEach(peak => {
+    const mountain = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.ConeGeometry(20 * peak.scale, 33 * peak.scale, 6), rock);
+    body.position.y = 16.5 * peak.scale;
+    body.rotation.y = peak.rotation;
+    body.castShadow = true;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(8.5 * peak.scale, 8.2 * peak.scale, 6), snow);
+    cap.position.y = 32.5 * peak.scale;
+    cap.rotation.y = peak.rotation + .12;
+    cap.castShadow = true;
+    mountain.add(body, cap);
+    mountain.position.set(peak.x, sampleWorldElevation(worldLayout, peak), peak.z);
+    ridge.add(mountain);
+  });
+  root.add(ridge);
+}
+
+function createFlameVisual(color = 0xff5b22, scale = 1, pulse = 0) {
+  const flame = new THREE.Group();
+  const ember = material(color, .92);
+  const core = new THREE.Mesh(new THREE.ConeGeometry(.42 * scale, 1.25 * scale, 7), ember);
+  core.position.y = .64 * scale;
+  core.castShadow = true;
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(.26 * scale, 8, 6), ember);
+  halo.position.y = 1.02 * scale;
+  flame.add(core, halo);
+  flame.userData.mapAnim = "flame";
+  flame.userData.pulse = pulse;
+  flame.userData.baseScale = scale;
+  return flame;
+}
+
+function addInfernoFireVisuals(root) {
+  const fireline = new THREE.Group();
+  fireline.name = "inferno-fireline-visuals";
+  const fireBase = material(0x7e1f12, .42);
+  [
+    { x: -198, z: 76, scale: .82 },
+    { x: -164, z: 80, scale: 1.08 },
+    { x: -126, z: 76, scale: .9 },
+    { x: -84, z: 79, scale: 1.18 },
+    { x: -48, z: 75, scale: .76 },
+  ].forEach((point, index) => {
+    const groundY = sampleWorldElevation(worldLayout, point);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.45 * point.scale, 1.8 * point.scale, .16, 16), fireBase);
+    base.position.set(point.x, groundY + .08, point.z);
+    base.receiveShadow = true;
+    const flame = createFlameVisual(index % 2 ? 0xffb72e : 0xff5a24, point.scale, index * .8);
+    flame.position.set(point.x, groundY + .12, point.z);
+    fireline.add(base, flame);
+  });
+  root.add(fireline);
+}
+
+function addBurnedArmoryVisual(root) {
+  const structure = worldLayout.structures.find(item => item.id === "armory-shell");
+  if (!structure) return;
+  const outpost = new THREE.Group();
+  outpost.name = "burned-armory-last-outpost";
+  const groundY = sampleWorldElevation(worldLayout, structure);
+  const char = material(0x1b1918, .015);
+  const rust = material(0x6f3825, .08);
+  const warning = material(0xff6a28, .38);
+  const beamA = new THREE.Mesh(new THREE.BoxGeometry(structure.w * .9, .62, .9), char);
+  beamA.position.set(0, structure.h + 1.1, -structure.d * .22);
+  beamA.rotation.z = -.12;
+  const beamB = new THREE.Mesh(new THREE.BoxGeometry(structure.w * .74, .52, .82), rust);
+  beamB.position.set(0, structure.h + .55, structure.d * .12);
+  beamB.rotation.z = .19;
+  const frontGlow = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, .16), warning);
+  frontGlow.position.set(0, 1.6, structure.d / 2 + .1);
+  const lastOutpostSign = new THREE.Mesh(new THREE.BoxGeometry(8.6, .24, .22), warning);
+  lastOutpostSign.position.set(0, structure.h + 2.2, structure.d / 2 + .35);
+  lastOutpostSign.rotation.z = -.04;
+  [beamA, beamB, frontGlow, lastOutpostSign].forEach(mesh => {
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    outpost.add(mesh);
+  });
+  for (const x of [-10.5, 10.5]) {
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.4, 2.1), rust);
+    crate.position.set(x, .7, structure.d / 2 + 2.1);
+    crate.rotation.y = x < 0 ? -.12 : .16;
+    crate.castShadow = true;
+    outpost.add(crate);
+    const flame = createFlameVisual(x < 0 ? 0xff5a24 : 0xffb72e, .78, x < 0 ? .4 : 1.6);
+    flame.position.set(x, 1.36, structure.d / 2 + 1.2);
+    outpost.add(flame);
+  }
+  outpost.position.set(structure.x, groundY, structure.z);
+  root.add(outpost);
+}
+
+function updateMapVisuals(dt) {
+  if (!mapVisuals) return;
+  const elapsed = (mapVisuals.userData.elapsed || 0) + dt;
+  mapVisuals.userData.elapsed = elapsed;
+  mapVisuals.children.forEach((beacon, index) => {
+    const pulse = .88 + Math.sin(elapsed * 2.2 + (beacon.userData.pulse || index)) * .14;
+    beacon.userData.ring.rotation.z += dt * (index % 2 ? -.7 : .7);
+    beacon.userData.ring.scale.setScalar(pulse);
+    beacon.userData.core.scale.setScalar(.9 + pulse * .16);
+  });
+  mapVisuals.traverse(node => {
+    if (node.userData?.mapAnim === "detail-point") {
+      const pulse = .72 + Math.sin(elapsed * 2.4 + (node.userData.pulse || 0)) * .22;
+      node.scale.setScalar(pulse);
+      return;
+    }
+    if (node.userData?.mapAnim !== "flame") return;
+    const phase = node.userData.pulse || 0;
+    const flicker = .92 + Math.sin(elapsed * 7.5 + phase) * .12;
+    node.scale.set(flicker, .92 + Math.sin(elapsed * 8.7 + phase) * .16, flicker);
+    node.rotation.y += dt * .8;
+  });
+}
+
 function addLandmarkAccents() {
   for (const offsetX of [-18, 18]) {
     for (const offsetZ of [-15, 15]) addBox({ x: -202 + offsetX, z: 18 + offsetZ, w: 6, d: 6, h: 13, color: 0x55504a });
@@ -787,7 +1301,10 @@ function addConnectedWorldObjects() {
   addBox({ x: 0, z: half, w: border, d: 2, h: 3.2, color: 0x25282b });
   addBox({ x: -half, z: 0, w: 2, d: border, h: 3.2, color: 0x25282b });
   addBox({ x: half, z: 0, w: 2, d: border, h: 3.2, color: 0x25282b });
-  worldLayout.roads.forEach(road => addRoadSegment(road, road.ramp ? 0x384047 : 0x222529));
+  worldLayout.roads.forEach(road => {
+    addRoadSegment(road, road.ramp ? 0x46515a : 0x30383f);
+    addRoadMarkings(road);
+  });
   worldLayout.ramps.forEach(addRampMesh);
   worldLayout.bridges.forEach(bridge => {
     addBox({ ...bridge, h: .8, color: 0x5d5a53, y: bridge.height - .35 });
@@ -812,12 +1329,64 @@ function addConnectedWorldObjects() {
   worldLayout.structures.forEach(addStructure);
   addLandmarkAccents();
   addDestroyedCars();
+  addUtilityPoles();
+  addRoadsideClutter();
   addBiomeGateways();
+}
+
+function createWorldFieldFallback(asset) {
+  const root = new THREE.Group();
+  const isLarge = asset.fit.maxDimension >= 8;
+  const color = asset.id.includes("barrel") ? 0x7f4b27 : asset.id.includes("car") ? 0x58352d : 0x4a4a43;
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(asset.fit.maxDimension * (isLarge ? .78 : .62), Math.max(.45, asset.collider.height), asset.fit.maxDimension * (isLarge ? .48 : .62)),
+    material(color, .03),
+  );
+  mesh.position.y = Math.max(.24, asset.collider.height / 2);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  root.add(mesh);
+  return root;
+}
+
+function addWorldFieldAssets() {
+  for (const placement of getWorldFieldPlacements()) {
+    const asset = getWorldFieldAsset(placement.assetId);
+    const holder = new THREE.Group();
+    holder.name = `field:${placement.id}`;
+    holder.position.set(placement.x, sampleWorldElevation(worldLayout, placement), placement.z);
+    holder.rotation.y = placement.rotation;
+    holder.add(createWorldFieldFallback(asset));
+    world.add(holder);
+    loadCuratedGlb([asset.runtimePath]).then(loaded => {
+      if (!holder.parent) return;
+      const authoredRoot = cloneAuthoredRoot(loaded?.scene);
+      if (!authoredRoot) return;
+      fitAuthoredWorldRoot(authoredRoot, asset.fit.maxDimension);
+      while (holder.children.length) holder.remove(holder.children[0]);
+      holder.add(authoredRoot);
+      holder.userData.authoredAssetPath = asset.runtimePath;
+    }).catch(() => {});
+  }
+}
+
+function createWorldFieldBlockers() {
+  return getWorldFieldPlacements().flatMap(placement => {
+    const asset = getWorldFieldAsset(placement.assetId);
+    if (!asset.collider.blocksPlayers) return [];
+    const diameter = asset.collider.radius * 2;
+    return [{ id: `field:${placement.id}`, x: placement.x, z: placement.z, w: diameter, d: diameter }];
+  });
 }
 
 function resetMap() {
   world.clear();
-  worldLayout = createConnectedWorldLayout();
+  mapVisuals = null;
+  const connectedLayout = createConnectedWorldLayout();
+  worldLayout = Object.freeze({
+    ...connectedLayout,
+    blockers: Object.freeze([...connectedLayout.blockers, ...createWorldFieldBlockers()]),
+  });
   hazards = [];
   enemies = [];
   bullets = [];
@@ -826,16 +1395,19 @@ function resetMap() {
   const cfg = MAPS[mapKey];
   scene.fog = new THREE.FogExp2(cfg.fog, .009);
   scene.background = new THREE.Color(cfg.fog);
-  const texture = new THREE.TextureLoader().load(cfg.texture);
+  const texture = new THREE.TextureLoader().load(runtimeAssetPath(cfg.texture));
+  renderQuality = renderQualityProfile(effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(7, 7);
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  texture.repeat.set(renderQuality.textureRepeat, renderQuality.textureRepeat);
+  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy);
   texture.colorSpace = THREE.SRGBColorSpace;
   const mapScale = mode === "solo" ? 1 + Math.min(1.5, (storyStage - 1) * .18) : 1;
   const mapSize = worldLayout.size;
   ground = createTerrainMesh(texture);
   world.add(ground);
   addConnectedWorldObjects();
+  addWorldFieldAssets();
+  addMapVisuals();
   addInstancedRocks(createWorldScatter(worldLayout, { seed: `${mapKey}:${mode}:${storyStage}:rocks`, count: Math.round(72 * mapScale) }));
   const hazardCount = 4 + Math.floor(storyStage / 2);
   const hazardPlacements = createWorldScatter(worldLayout, { seed: `${mapKey}:${mode}:${storyStage}:hazards`, count: hazardCount });
@@ -859,7 +1431,7 @@ function resetMap() {
     world.add(group);
     return { id: `chest-${index + 1}`, group, x: 0, z: 0 };
   });
-  player = unit(0x55e5ff, 0, 0, activeProfile?.avatarType || "scout");
+  player = unit(0x55e5ff, 0, 0, activeProfile?.avatarType || "scout", true);
   applyWorldMovement(player);
   classProgress = normalizeClassProgress({ ...classProgress, classId: avatarClass(activeProfile?.avatarType || "scout") });
   const classStats = getClassStats(classProgress);
@@ -915,9 +1487,16 @@ function spawnEnemy(index = enemies.length, requestedType = null) {
   const angle = Math.random() * Math.PI * 2;
   const radius = 46 + Math.random() * 92;
   const type = requestedType || enemySpawnTypes.shift() || "rusher";
-  const visualClass = ["heavy", "shield", "boss", "mutant"].includes(type) ? "heavy" : type === "sniper" ? "ranger" : type === "drone" ? "tech" : "scout";
-  const color = ({ rusher: 0xff5b55, shooter: 0xff8b45, sniper: 0xb97aff, shield: 0x4dbbff, heavy: 0xff3d3d, drone: 0x66fcf1, mutant: 0x8cff4d, boss: 0xffcf40 })[type];
-  const enemy = unit(color, Math.cos(angle) * radius, Math.sin(angle) * radius, visualClass);
+  const visualClass = ["heavy", "shield", "boss", "mutant"].includes(type) ? "heavy" : type === "sniper" ? "ranger" : type === "drone" ? "tech" : type === "spider" ? "spider" : "scout";
+  const color = ({ rusher: 0xff5b55, shooter: 0xff8b45, sniper: 0xb97aff, shield: 0x4dbbff, heavy: 0xff3d3d, drone: 0x66fcf1, mutant: 0x8cff4d, spider: 0x8cff4d, boss: 0xffcf40 })[type];
+  const enemy = unit(
+    color,
+    Math.cos(angle) * radius,
+    Math.sin(angle) * radius,
+    visualClass,
+    false,
+    { type, path: AUTHORED_ENEMY_MODELS[type] },
+  );
   applyWorldMovement(enemy);
   const scaled = scaleEnemy(type, { wave, difficulty: difficultyName(), playerSkill: playerLevel });
   enemy.enemyType = type;
@@ -955,7 +1534,9 @@ function spawnMatchBots(plan = activeMatchPlan) {
 
 function start() {
   pauseMenuBackdrop();
-  blue = red = score = kills = scrap = shieldLevel = 0;
+  blue = red = score = kills = scrap = gold = silver = shieldLevel = 0;
+  survivalSeconds = 0;
+  questState = createQuestState();
   wave = 1;
   activeGun = "scout";
   explorationState = createExplorationState();
@@ -994,6 +1575,9 @@ function beginCountdown(startsAt = Date.now() + 15000) {
     nextCombat();
     return;
   }
+  // Keep the home soundtrack alive, then switch to the gameplay playlist as
+  // soon as the lobby countdown begins.
+  startSceneMusic("gameplay");
   $("matchCountdown").classList.remove("hidden");
   $("countdownNumber").textContent = String(countdownState.secondsRemaining);
   setNightfallScene("countdown");
@@ -1040,6 +1624,7 @@ function applyMatchLifecycleMessage(message = {}) {
 function nextCombat() {
   pauseMenuBackdrop();
   phase = "combat";
+  playBundledMusic("gameplay");
   setNightfallScene("game");
   timer = mode === "ctf" ? 300 : 60;
   ui.chest.classList.add("hidden");
@@ -1114,16 +1699,18 @@ function gameOver(title) {
   const previousRewards = activeProfile?.progress?.rewards || {};
   const reward = settleMatch({
     outcome, risk: riskLevel, difficulty: difficultyName(), kills, wave, score,
-    currentScrap: scrap, currentXp: totalXp, winStreak: previousRewards.winStreak || 0,
+    currentScrap: scrap, currentGold: gold, currentSilver: silver, currentXp: totalXp, winStreak: previousRewards.winStreak || 0,
   });
   scrap = reward.nextScrap;
+  gold = reward.nextGold;
+  silver = reward.nextSilver;
   totalXp = reward.nextXp;
   playerLevel = levelFromXp(totalXp);
   if (activeProfile?.progress) {
     activeProfile.progress.matches = Math.max(0, Number(activeProfile.progress.matches) || 0) + 1;
     activeProfile.progress.deaths = Math.max(0, Number(activeProfile.progress.deaths) || 0) + (title === "Survivor Eliminated" ? 1 : 0);
     activeProfile.progress.wins = Math.max(0, Number(activeProfile.progress.wins) || 0) + (/Wins|Captures/.test(title) ? 1 : 0);
-    activeProfile.progress.rewards = { winStreak: reward.winStreak, lifetimeRewards: Math.max(0, Number(previousRewards.lifetimeRewards) || 0) + reward.scrapEarned };
+    activeProfile.progress.rewards = { winStreak: reward.winStreak, lifetimeRewards: Math.max(0, Number(previousRewards.lifetimeRewards) || 0) + reward.scrapEarned, goldEarned: reward.goldEarned, silverEarned: reward.silverEarned };
   }
   saveProgress();
   syncPublicPlayer();
@@ -1131,8 +1718,10 @@ function gameOver(title) {
   phase = "over";
   $("finalKills").textContent = kills;
   $("finalScrap").textContent = scrap;
+  $("finalGold").textContent = gold;
+  $("finalSilver").textContent = silver;
   $("finalScore").textContent = score;
-  $("rewardSummary").textContent = `${RISK_PROFILES[reward.risk].label}: +${reward.xpEarned} XP, +${reward.scrapEarned} scrap${reward.scrapPenalty ? `, -${reward.scrapPenalty} risk penalty` : ""}. Level ${playerLevel}.`;
+  $("rewardSummary").textContent = `${RISK_PROFILES[reward.risk].label}: +${reward.xpEarned} XP, +${reward.scrapEarned} scrap, +${reward.goldEarned} gold, +${reward.silverEarned} silver${reward.scrapPenalty ? `, -${reward.scrapPenalty} risk penalty` : ""}. Level ${playerLevel}.`;
   ui.over.querySelector(".danger").textContent = title;
   ui.over.classList.remove("hidden");
   localStorage.setItem("wastland-survivor-best", String(Math.max(Number(localStorage.getItem("wastland-survivor-best") || 0), score)));
@@ -1178,7 +1767,8 @@ function fire(actor, target, profile = null) {
   for (let index = 0; index < weapon.shots; index++) {
     const offset = (index - (weapon.shots - 1) / 2) * weapon.spread;
     const shotDirection = direction.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset);
-    const projectile = new THREE.Mesh(new THREE.SphereGeometry(.13, 8, 8), material(0xffdf52, 1));
+    const projectileColor = actor.enemyType === "spider" ? 0x9cff69 : 0xffdf52;
+    const projectile = new THREE.Mesh(new THREE.SphereGeometry(.13, 8, 8), material(projectileColor, 1));
     projectile.position.copy(actor.g.position).add(new THREE.Vector3(0, 1, .2));
     world.add(projectile);
     projectile.scale.set(1, 1, 2.4);
@@ -1527,6 +2117,10 @@ function update(dt) {
   if (controller.dpadRight || controller.dpadUp) cycleWeapon(1);
   adsActive = controller.ads || adsActive && inputMode === "touch";
   timer -= dt;
+  if (phase === "combat") {
+    survivalSeconds += dt;
+    updateStoryProgress();
+  }
   if (phase === "prep") {
     chests.forEach(chest => { chest.group.rotation.y += dt; });
     const closeEnough = canAccessChest(player.g.position, chests);
@@ -1620,7 +2214,7 @@ function update(dt) {
     bullet.m.position.addScaledVector(bullet.v, dt);
     bullet.life -= dt;
     if (bullet.blue) for (const enemy of enemies) {
-      if (enemy.alive && !bullet.hits.has(enemy) && bullet.m.position.distanceTo(enemy.g.position) < 1.1) {
+      if (enemy.alive && !bullet.hits.has(enemy) && bullet.m.position.distanceTo(enemy.g.position) < (enemy.g.userData.hitRadius || 1.1)) {
         bullet.hits.add(enemy);
         hitEnemy(enemy, bullet.damage);
         if (bullet.pierce-- <= 0) bullet.life = 0;
@@ -1660,7 +2254,9 @@ function update(dt) {
     } else if (!enemies.length && spawnQueue === 0) finishRound("blue");
   }
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
-  const cameraTarget = frontView ? player.g.position.clone().add(new THREE.Vector3(0, 2.2, 0)).addScaledVector(facing, .72) : new THREE.Vector3(player.g.position.x, 26, player.g.position.z + 22);
+  // Keep the aim camera just above and ahead of the survivor so the head never
+  // sits between the reticle and the world while running and firing.
+  const cameraTarget = frontView ? player.g.position.clone().add(new THREE.Vector3(0, 2.35, 0)).addScaledVector(facing, 1.12) : new THREE.Vector3(player.g.position.x, 26, player.g.position.z + 22);
   camera.position.lerp(cameraTarget, Math.min(1, dt * (frontView ? 12 : 4)));
   cameraShake = Math.max(0, cameraShake - dt * 1.8);
   if (cameraShake) camera.position.add(new THREE.Vector3((Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake));
@@ -1681,6 +2277,7 @@ function renderHud() {
   const teamHealthMax = teamMembers.reduce((total, member) => total + Math.max(0, member?.maxHp || 0), 0);
   const chapter = soldierStory[Math.min(storyStage - 1, soldierStory.length - 1)];
   const objective = kingdomUnlocked ? soldierStory[4].text : storyMissions[missionIndex];
+  const quest = questView(questState);
   const hud = createHudViewModel({
     health: player.hp,
     maxHealth: player.maxHp,
@@ -1714,12 +2311,15 @@ function renderHud() {
   ui.teamHealthBar.style.setProperty("--hud-fill", `${hud.team.healthPercentage}%`);
   ui.objective.textContent = hud.objective.label;
   ui.scrap.textContent = scrap;
+  ui.gold.textContent = gold;
+  ui.silver.textContent = silver;
   ui.kills.textContent = kills;
   ui.wave.textContent = wave;
   ui.level.textContent = playerLevel;
   ui.stage.textContent = storyStage;
   ui.chapter.textContent = `Chapter ${Math.min(storyStage, soldierStory.length)}: ${chapter.title}`;
   ui.mission.textContent = hud.mission.label;
+  ui.quest.textContent = `QUEST ${quest.value}/${quest.target} · ${quest.objective}`;
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
   ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
   const exploration = explorationProgress(worldLayout, explorationState);
@@ -1740,6 +2340,7 @@ function render() {
   else if (phase === "loadout" && !$("loadoutRoomModal").classList.contains("hidden") && controllerConnected) handleLoadoutController();
   else if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
   update(dt);
+  updateMapVisuals(dt);
   if (discoveryToastUntil && performance.now() >= discoveryToastUntil) {
     discoveryToastUntil = 0;
     ui.discoveryToast.classList.add("hidden");
@@ -1756,7 +2357,8 @@ function wakeAudio() {
   if ((!audioEnabled && !musicEnabled) || (!window.AudioContext && !window.webkitAudioContext)) return;
   if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
   if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
-  if (musicEnabled && musicSource === "builtin") startBuiltInMusic();
+  const lobbyOrMatchVisible = phase !== "menu" || !lobbyScreen.classList.contains("hidden");
+  if (musicEnabled && musicSource === "builtin" && lobbyOrMatchVisible) startBuiltInMusic();
 }
 
 function playTone(frequency, duration, type, gainValue) {
@@ -1812,6 +2414,47 @@ function stopBuiltInMusic() {
 
 function updateLocalMusicVolume() {
   localMusic.volume = Math.min(1, effectiveMusicVolume());
+  bundledMusic.volume = Math.min(1, effectiveMusicVolume());
+}
+
+function currentBundledMusicPhase() {
+  return ["countdown", "combat", "prep"].includes(phase) ? "gameplay" : "menu";
+}
+
+function startSceneMusic(nextPhase = currentBundledMusicPhase()) {
+  if (!musicEnabled) return;
+  if (musicSource === "bundled") playBundledMusic(nextPhase);
+  else if (musicSource === "local") playLocalTrack();
+  else { wakeAudio(); startBuiltInMusic(); }
+}
+
+function chooseBundledTrack(nextPhase, { allowCurrent = false } = {}) {
+  const playlist = BUNDLED_SOUNDTRACK[nextPhase] || BUNDLED_SOUNDTRACK.menu;
+  const choices = allowCurrent || playlist.length < 2
+    ? playlist
+    : playlist.filter(track => track.url !== bundledMusicTrack?.url);
+  return choices[Math.floor(Math.random() * choices.length)];
+}
+
+function playBundledMusic(nextPhase = currentBundledMusicPhase(), { chooseNext = false } = {}) {
+  if (!musicEnabled || musicSource !== "bundled") return;
+  const phaseChanged = bundledMusicPhase !== nextPhase;
+  const sourceChanged = phaseChanged || chooseNext || !bundledMusicTrack;
+  const track = sourceChanged ? chooseBundledTrack(nextPhase) : bundledMusicTrack;
+  if (sourceChanged) {
+    bundledMusic.pause();
+    bundledMusic.src = runtimeAssetPath(track.url);
+    bundledMusicPhase = nextPhase;
+    bundledMusicTrack = track;
+  }
+  updateLocalMusicVolume();
+  bundledMusic.play().then(() => {
+    ui.musicStatus.textContent = track.name;
+    $("playMusicBtn").textContent = "Pause";
+  }).catch(() => {
+    ui.musicStatus.textContent = `${track.name} — tap Play to begin`;
+    $("playMusicBtn").textContent = "Play";
+  });
 }
 
 function playLocalTrack(index = localTrackIndex) {
@@ -1827,6 +2470,7 @@ function playLocalTrack(index = localTrackIndex) {
 function stopMusic() {
   stopBuiltInMusic();
   localMusic.pause();
+  bundledMusic.pause();
   $("playMusicBtn").textContent = "Play";
 }
 
@@ -2459,6 +3103,7 @@ function openLobby(contact) {
   syncPublicPlayer();
   controlsPreferencesPromise = syncControlsTourPreferences();
   initializeMenuBackdrop().then(updateMenuReplayStatus);
+  startSceneMusic("menu");
 }
 
 function renderLobbyProfile(fallbackName = "Offline Guest") {
@@ -2488,6 +3133,7 @@ function renderLobbyProfile(fallbackName = "Offline Guest") {
   $("lobbyOnlineState").dataset.online = String(view.network.online);
   $("lobbyAvatarImage").src = view.avatar.image;
   $("lobbyAvatarImage").alt = view.avatar.name;
+  ensureLobbyAvatarPreview(activeProfile?.avatarType || "scout");
   $("lobbyAvatarButton").setAttribute("aria-label", `Open ${view.displayName} loadout`);
   $("lobbyProfileReadout").setAttribute("aria-label", `Open ${view.displayName} profile and loadout`);
   $("verifiedPhoneStatus").textContent = activeProfile?.phoneHint
@@ -2596,7 +3242,7 @@ function saveProfile(profile = activeProfile) {
 
 function saveProgress() {
   if (!activeProfile || activeProfile.youthAccount) return;
-  activeProfile.progress = { wave, score, kills, scrap, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, classProgress, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
+  activeProfile.progress = { wave, score, kills, scrap, gold, silver, survivalSeconds, questState, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, classProgress, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
   saveProfile();
 }
 
@@ -2607,6 +3253,10 @@ function loadProgress(profile) {
   score = Math.max(0, Number(progress.score) || 0);
   kills = Math.max(0, Number(progress.kills) || 0);
   scrap = Math.max(0, Number(progress.scrap) || 0);
+  gold = Math.max(0, Number(progress.gold) || 0);
+  silver = Math.max(0, Number(progress.silver) || 0);
+  survivalSeconds = Math.max(0, Number(progress.survivalSeconds) || 0);
+  questState = createQuestState(progress.questState);
   shieldLevel = Math.max(0, Number(progress.shieldLevel) || 0);
   playerLevel = Math.max(1, Number(progress.playerLevel) || 1);
   totalXp = Math.max(0, Number(progress.totalXp) || (Number(progress.kills) || 0) * 100 + (Number(progress.score) || 0));
@@ -2628,6 +3278,22 @@ function updateStoryProgress() {
     if (kills >= 10) missionIndex = Math.max(missionIndex, 2);
     if (storyStage >= 3) missionIndex = Math.max(missionIndex, 3);
   }
+  const discoveryCount = worldLayout && player ? explorationProgress(worldLayout, explorationState).discovered : 0;
+  const questResult = advanceQuestState(questState, {
+    survivedSeconds: Math.floor(survivalSeconds),
+    scrap,
+    kills,
+    stage: storyStage,
+    discoveries: discoveryCount,
+  });
+  questState = questResult.state;
+  if (questResult.completed) {
+    gold += questResult.reward.gold;
+    silver += questResult.reward.silver;
+    totalXp += questResult.reward.xp;
+    playerLevel = Math.max(1, levelFromXp(totalXp));
+    document.dispatchEvent(new CustomEvent("wasteland:quest-complete", { detail: { quest: questResult.quest, reward: questResult.reward } }));
+  }
 }
 
 function avatarLabel(type) { return ({ scout: "Dust Scout", ranger: "Ranger", heavy: "Heavy", tech: "Tech Runner", medic: "Field Medic", warden: "Warden" })[type] || "Dust Scout"; }
@@ -2642,6 +3308,8 @@ function openDashboard() {
   $("dashboardXp").textContent = `${progress.totalXp || 0} XP`;
   $("dashboardStage").textContent = progress.storyStage || 1;
   $("dashboardScrap").textContent = progress.scrap || 0;
+  $("dashboardGold").textContent = progress.gold || 0;
+  $("dashboardSilver").textContent = progress.silver || 0;
   $("dashboardMission").textContent = progress.kingdomUnlocked ? "Kingdom unlocked. Continue the frontier timeline." : storyMissions[progress.missionIndex || 0];
   $("dashboardLoadout").innerHTML = Object.entries(guns).map(([key, gun]) => `<div><b>${gun.label}</b><small>Level ${progress.guns?.[key] || 0}/${gun.max === Infinity ? "∞" : gun.max}</small></div>`).join("") + `<div><b>Scrap Shield</b><small>Level ${progress.shieldLevel || 0}/10</small></div>`;
   $("dashboardTactics").innerHTML = ["Aim Stabilizer", "Quick Recovery", "Scavenger Pack", "Flag Runner"].map((name, index) => `<div><b>${name}</b><small>${(progress.storyStage || 1) > index ? "Unlocked" : "Stage " + (index + 1)}</small></div>`).join("");
@@ -2775,6 +3443,7 @@ function returnProfile() {
 
 function showProfileChoice() {
   const profiles = savedProfiles();
+  updateAvatarCards(profileAvatar.value || "scout");
   profileMessage.textContent = "";
   returnMessage.textContent = "";
   profileSelector.replaceChildren(...profiles.map(profile => new Option(`${profile.name} · ${profile.birthDate || profile.phoneHint || "local profile"}`, profile.profileId)));
@@ -2809,6 +3478,7 @@ function updateRiskPreview() {
 
 function leaveLobby() {
   pendingMatchGate = cancelPendingMatchSelection(pendingMatchGate);
+  stopMusic();
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
   setMenuSection("home");
@@ -3191,6 +3861,7 @@ function setMenuSection(section) {
 }
 
 function retainNightfallFallback(reason = "unavailable") {
+  document.body.classList.remove("hero-video-active");
   nightfallBackground.classList.add("nightfall-media-hold");
   homeBackdrop.classList.remove("is-ready");
   homeBackdrop.pause();
@@ -3207,13 +3878,16 @@ function holdNightfallFallback(reason = "loading") {
 }
 
 function revealMenuBackdrop(kind) {
+  const homeVideoRequested = !welcomeScreen.classList.contains("hidden");
   const policy = resolveMenuMedia({
     tier: effectiveGraphicsTier(),
     reducedMotion: reducedMotionEnabled(),
+    heroVideo: homeVideoRequested,
     saveData: Boolean(navigator.connection?.saveData),
     playbackState: "playing",
   });
-  if (policy.kind === "fallback") return retainNightfallFallback("capability-policy");
+  if (policy.kind === "fallback" && !homeVideoRequested) return retainNightfallFallback("capability-policy");
+  document.body.classList.toggle("hero-video-active", homeVideoRequested);
   homeBackdrop.dataset.mediaKind = kind;
   delete homeBackdrop.dataset.mediaReason;
   delete homeBackdrop.dataset.mediaCandidate;
@@ -3230,6 +3904,22 @@ async function resumeMenuBackdrop(kind) {
   } catch {
     return null;
   }
+}
+
+function resumeHomeBackdropFromGesture() {
+  if (welcomeScreen.classList.contains("hidden") || !homeBackdrop.paused) return;
+  homeBackdrop.dataset.mediaCandidate = "bundled";
+  homeBackdrop.play()
+    .then(() => revealMenuBackdrop("bundled"))
+    .catch(() => {});
+}
+
+function resumeBundledMusicFromGesture() {
+  const homeScreenVisible = phase === "menu" && lobbyScreen.classList.contains("hidden");
+  if (!musicEnabled || homeScreenVisible || !["menu", "countdown", "combat", "prep"].includes(phase)) return;
+  if (musicSource === "bundled" && bundledMusic.paused) playBundledMusic(currentBundledMusicPhase());
+  else if (musicSource === "local" && localMusic.paused) playLocalTrack();
+  else if (musicSource === "builtin") { wakeAudio(); startBuiltInMusic(); }
 }
 
 async function tryMenuBackdrop(kind, configure) {
@@ -3254,9 +3944,11 @@ function markMenuReplayRefresh({ recheckVisible = false } = {}) {
 }
 
 async function initializeMenuBackdrop({ force = false } = {}) {
+  const homeVideoRequested = !welcomeScreen.classList.contains("hidden");
   const policy = resolveMenuMedia({
     tier: effectiveGraphicsTier(),
     reducedMotion: reducedMotionEnabled(),
+    heroVideo: homeVideoRequested,
     saveData: Boolean(navigator.connection?.saveData),
     playbackState: "loading",
   });
@@ -3279,7 +3971,12 @@ async function initializeMenuBackdrop({ force = false } = {}) {
       return Boolean(await tryMenuBackdrop("replay", () => { homeBackdrop.src = legacyReplay; }));
     },
     playBundled: async () => {
-      const bundledPolicy = resolveMenuMedia({ tier: effectiveGraphicsTier(), replayFailed: true, playbackState: "loading" });
+      const bundledPolicy = resolveMenuMedia({
+        tier: effectiveGraphicsTier(),
+        heroVideo: homeVideoRequested,
+        replayFailed: true,
+        playbackState: "loading",
+      });
       if (bundledPolicy.kind !== "bundled") return false;
       return Boolean(await tryMenuBackdrop("bundled", () => {
         homeBackdrop.removeAttribute("src");
@@ -3302,6 +3999,7 @@ function updateMenuReplayStatus(kind) {
 }
 
 function pauseMenuBackdrop() {
+  document.body.classList.remove("hero-video-active");
   nightfallBackground.classList.remove("nightfall-media-hold");
   homeBackdrop.pause();
 }
@@ -3408,6 +4106,7 @@ function updateArmory() {
 function equip(gunName) {
   if (!gunUnlocked(gunName) && activeGun !== gunName) return;
   activeGun = gunName;
+  if (player?.g?.userData?.authoredCharacter) attachAuthoredWeapon(player.g, gunName);
   updateArmory();
 }
 
@@ -3520,7 +4219,9 @@ canvas.addEventListener("pointermove", event => {
     setInputMode("mouse");
     if (localGameplayInputPaused()) return;
     if (frontView && phase === "combat" && !menuOpen) {
-      viewYaw -= event.movementX * .0016 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
+      // A rightward mouse movement turns the survivor right. The slightly
+      // higher base rate restores a full 360-degree pan without changing WASD.
+      viewYaw += event.movementX * .0022 * (adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity);
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }
   }
@@ -3601,6 +4302,7 @@ document.querySelectorAll("[data-map]").forEach(button => {
   button.onclick = () => {
     mapKey = button.dataset.map;
     document.querySelectorAll("[data-map]").forEach(item => item.classList.toggle("active", item === button));
+    closeGameMenu();
     lobbyChanged();
     start();
   };
@@ -3695,6 +4397,7 @@ ui.musicToggle.onchange = () => {
   localStorage.setItem("wastland-survivor-music", musicEnabled ? "on" : "off");
   if (!musicEnabled) stopMusic();
   else if (musicSource === "local") playLocalTrack();
+  else if (musicSource === "bundled") playBundledMusic();
   else { wakeAudio(); startBuiltInMusic(); }
 };
 ui.musicVolume.oninput = () => {
@@ -3708,6 +4411,7 @@ ui.musicSource.onchange = () => {
   stopMusic();
   $("localTrackPicker").classList.toggle("hidden", musicSource !== "local");
   if (musicSource === "builtin" && musicEnabled) { wakeAudio(); startBuiltInMusic(); }
+  else if (musicSource === "bundled" && musicEnabled) playBundledMusic();
   else if (musicSource === "local") ui.musicStatus.textContent = localTracks.length ? localTracks[localTrackIndex].name : "Choose downloaded tracks from this device";
 };
 $("localTrackInput").onchange = event => {
@@ -3721,13 +4425,17 @@ $("playMusicBtn").onclick = () => {
   if (musicSource === "builtin") {
     if (musicTimer) { stopBuiltInMusic(); $("playMusicBtn").textContent = "Play"; }
     else { startBuiltInMusic(); $("playMusicBtn").textContent = "Pause"; }
+  } else if (musicSource === "bundled") {
+    if (bundledMusic.paused) playBundledMusic();
+    else { bundledMusic.pause(); $("playMusicBtn").textContent = "Play"; }
   } else if (localMusic.paused) playLocalTrack();
   else { localMusic.pause(); $("playMusicBtn").textContent = "Play"; }
 };
-$("previousTrackBtn").onclick = () => playLocalTrack(localTrackIndex - 1);
-$("nextTrackBtn").onclick = () => playLocalTrack(localTrackIndex + 1);
-$("shuffleMusicBtn").onclick = () => playLocalTrack(Math.floor(Math.random() * Math.max(1, localTracks.length)));
+$('previousTrackBtn').onclick = () => musicSource === "bundled" ? playBundledMusic(currentBundledMusicPhase(), { chooseNext: true }) : playLocalTrack(localTrackIndex - 1);
+$("nextTrackBtn").onclick = () => musicSource === "bundled" ? playBundledMusic(currentBundledMusicPhase(), { chooseNext: true }) : playLocalTrack(localTrackIndex + 1);
+$("shuffleMusicBtn").onclick = () => musicSource === "bundled" ? playBundledMusic(currentBundledMusicPhase(), { chooseNext: true }) : playLocalTrack(Math.floor(Math.random() * Math.max(1, localTracks.length)));
 localMusic.onended = () => playLocalTrack(localTrackIndex + 1);
+bundledMusic.onended = () => playBundledMusic(currentBundledMusicPhase(), { chooseNext: true });
 ui.joinVoice.onclick = joinVoice;
 ui.leaveVoice.onclick = () => closeVoice("Mic is off");
 ui.muteVoice.onclick = () => { voiceMuted = !voiceMuted; localStream?.getAudioTracks().forEach(track => { track.enabled = !voiceMuted; }); updateVoiceButtons(); setVoiceStatus(voiceMuted ? "Voice muted" : "Voice connected"); };
@@ -3794,6 +4502,7 @@ $("lobbyAvatarButton").onclick = openDashboard;
 $("lobbyProfileReadout").onclick = openDashboard;
 $("closeDashboardBtn").onclick = () => { $("dashboardModal").classList.add("hidden"); restoreVisibleMenuSection(); };
 $("lobbyBackBtn").onclick = () => {
+  stopMusic();
   lobbyScreen.classList.add("hidden");
   welcomeScreen.classList.remove("hidden");
   setMenuSection("home");
@@ -3873,6 +4582,10 @@ homeBackdrop.addEventListener("playing", () => {
 });
 homeBackdrop.addEventListener("error", () => retainNightfallFallback("decode-failed"));
 homeBackdrop.addEventListener("stalled", () => retainNightfallFallback("stalled"));
+document.addEventListener("pointerdown", resumeHomeBackdropFromGesture, { passive: true });
+document.addEventListener("keydown", resumeHomeBackdropFromGesture);
+document.addEventListener("pointerdown", resumeBundledMusicFromGesture, { passive: true });
+document.addEventListener("keydown", resumeBundledMusicFromGesture);
 matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", () => {
   applyMenuPresentation(menuSection, lobbyNavigator?.current().id || null);
   if (document.body.classList.contains("menu-active")) initializeMenuBackdrop({ force: true });

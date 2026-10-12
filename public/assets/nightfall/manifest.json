@@ -9,6 +9,41 @@
     "survivorRoster": "/assets/nightfall/characters/survivor-roster-v1.png",
     "survivorIndex": "/assets/nightfall/characters/index.json",
     "enemyRoster": "/assets/nightfall/enemies/radioactive-enemy-roster-v1.png",
-    "enemyIndex": "/assets/nightfall/enemies/index.json"
+    "enemyIndex": "/assets/nightfall/enemies/index.json",
+    "heroVideo": "/assets/nightfall/backgrounds/nightfall-loading-loop-v1.mp4",
+    "lobbyVideo": "/assets/nightfall/backgrounds/nightfall-lobby-squad-loop-v1.mp4",
+    "terrainTextures": [
+      "/assets/wasteland-terrain-v2.png",
+      "/assets/toxic-terrain-v2.png",
+      "/assets/icy-mountain-terrain-v2.png",
+      "/assets/fire-inferno-terrain-v2.png"
+    ],
+    "scrapIcons": {
+      "gold": "/assets/nightfall/icons/scrap-gold-v1.svg",
+      "silver": "/assets/nightfall/icons/scrap-silver-v1.svg"
+    },
+    "authored3D": {
+      "survivorModels": 12,
+      "enemyModels": 8,
+      "weaponModels": 3,
+      "worldAndPropModels": 17,
+      "menuModels": 6,
+      "storagePrefix": "gs://taylormade-wasteland-survivor-media-212187593712/wasteland-survivor/nightfall-v2/assets"
+    },
+    "renderQuality": {
+      "passes": [12, 14, 16, 18, 20],
+      "finalPass": 5,
+      "finalTriangleBudget": 100667,
+      "finalTerrainSegments": 72,
+      "finalTextureRepeat": 14.68,
+      "finalVisualPoints": 50
+    },
+    "soundtrack": {
+      "album": "Wasteland Survivor: Nightfall Files",
+      "author": "Phantom",
+      "menuTracks": 3,
+      "gameplayTracks": 4,
+      "cover": "/assets/nightfall/music/phantom-nightfall-files-cover-v1.jpg"
+    }
   }
 }

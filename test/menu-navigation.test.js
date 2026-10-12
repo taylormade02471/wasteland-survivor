@@ -207,7 +207,7 @@ test("keeps lobby actions as independent floating semantic commands", () => {
 test("uses standalone safe-area Back controls and keeps combat top-right to Menu", () => {
   const topRightMenu = html.match(/<div id="topRightMenu">([\s\S]*?)<\/div>/)?.[1] || "";
 
-  assert.match(html, /<section id="lobbyScreen"[^>]*>\s*<img[^>]*>\s*<button id="lobbyBackBtn"/);
+  assert.match(html, /<section id="lobbyScreen"[^>]*>\s*<video id="lobbyBackdropVideo"[^>]*>[\s\S]*?<button id="lobbyBackBtn"/);
   assert.match(css, /#lobbyBackBtn\s*\{[^}]*top:\s*max\([^}]*safe-area-inset-top[^}]*left:\s*max\([^}]*safe-area-inset-left/s);
   assert.match(topRightMenu, /<button id="menuToggle"/);
   assert.doesNotMatch(topRightMenu, /id="(soloMode|teamMode|ctfMode|openShopBtn|settingsBtn)"/);

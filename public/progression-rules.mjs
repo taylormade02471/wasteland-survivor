@@ -141,6 +141,8 @@ export function normalizeProfile(raw = {}) {
   const xp = suppliedXp == null ? xpForLevel(source.level) : wholeNonNegative(suppliedXp);
   const level = levelFromXp(xp);
   const scrap = wholeNonNegative(source.scrap ?? source.coins);
+  const gold = wholeNonNegative(source.gold ?? source.goldCoins);
+  const silver = wholeNonNegative(source.silver ?? source.silverCoins);
   const inventory = addLegacyWeapons(normalizeInventory(source.inventory), source.weapons);
 
   const missionCandidates = [
@@ -175,6 +177,8 @@ export function normalizeProfile(raw = {}) {
     xp,
     level,
     scrap,
+    gold,
+    silver,
     unlockedMaps: maps,
     completedMissions,
     inventory,

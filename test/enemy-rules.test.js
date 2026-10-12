@@ -10,12 +10,14 @@ import {
   tacticalIntent
 } from "../public/enemy-rules.mjs";
 
-test("defines eight distinct enemy archetypes", () => {
+test("defines nine distinct enemy archetypes including the ranged spider", () => {
   assert.deepEqual(Object.keys(ENEMY_ARCHETYPES), [
-    "rusher", "shooter", "sniper", "shield", "heavy", "drone", "mutant", "boss"
+    "rusher", "shooter", "sniper", "shield", "heavy", "drone", "mutant", "spider", "boss"
   ]);
   assert.equal(ENEMY_ARCHETYPES.sniper.role, "range");
   assert.equal(ENEMY_ARCHETYPES.shield.role, "defense");
+  assert.equal(ENEMY_ARCHETYPES.spider.role, "ambush-range");
+  assert.ok(ENEMY_ARCHETYPES.spider.range >= 18);
   assert.ok(ENEMY_ARCHETYPES.heavy.health > ENEMY_ARCHETYPES.shooter.health);
 });
 
@@ -38,7 +40,7 @@ test("builds deterministic wave compositions with progression and bosses", () =>
 
   assert.deepEqual(first, ["rusher", "rusher"]);
   assert.ok(later.length > first.length);
-  assert.ok(later.some(type => ["sniper", "shield", "heavy", "drone", "mutant"].includes(type)));
+  assert.ok(later.some(type => ["sniper", "shield", "heavy", "drone", "mutant", "spider"].includes(type)));
   assert.equal(boss.filter(type => type === "boss").length, 1);
 });
 
@@ -48,6 +50,7 @@ test("chooses tactical intent from archetype and combat state", () => {
   assert.equal(tacticalIntent("shield", { distance: 16, healthRatio: 0.8, hasLineOfSight: true }), "hold");
   assert.equal(tacticalIntent("shooter", { distance: 24, healthRatio: 0.7, hasLineOfSight: false }), "flank");
   assert.equal(tacticalIntent("heavy", { distance: 12, healthRatio: 0.15, hasLineOfSight: true }), "retreat");
+  assert.equal(tacticalIntent("spider", { distance: 20, healthRatio: 0.8, hasLineOfSight: true }), "hold");
 });
 
 test("schedules one enemy at a time with difficulty-based pacing", () => {

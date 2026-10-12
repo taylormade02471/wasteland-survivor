@@ -52,6 +52,8 @@ test("profile normalization creates a complete local-only save", () => {
   assert.equal(profile.level, 1);
   assert.equal(profile.xp, 0);
   assert.equal(profile.scrap, 0);
+  assert.equal(profile.gold, 0);
+  assert.equal(profile.silver, 0);
   assert.deepEqual(profile.unlockedMaps, ["Wasteland"]);
   assert.equal(profile.kingdom.unlocked, false);
   assert.deepEqual(profile.inventory, {});
@@ -63,6 +65,8 @@ test("profile normalization migrates legacy fields, sanitizes values, and preser
     name: "  Kyle  ",
     experience: xpForLevel(8),
     coins: 725,
+    goldCoins: 14,
+    silverCoins: 88,
     weapons: ["scout-rifle", "scout-rifle", "unknown-item"],
     storyMission: "c1-m1",
     maps: ["Fiery Inferno", "Unknown"],
@@ -74,6 +78,8 @@ test("profile normalization migrates legacy fields, sanitizes values, and preser
   assert.equal(profile.name, "Kyle");
   assert.equal(profile.level, 8);
   assert.equal(profile.scrap, 725);
+  assert.equal(profile.gold, 14);
+  assert.equal(profile.silver, 88);
   assert.equal(profile.inventory["scout-rifle"], 2);
   assert.equal(profile.inventory["unknown-item"], undefined);
   assert.deepEqual(profile.completedMissions, ["c1-m1"]);

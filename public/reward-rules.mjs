@@ -19,7 +19,7 @@ export function rewardPreview({ risk = "standard", difficulty = "medium", winStr
 
 export function settleMatch({
   outcome = "loss", risk = "standard", difficulty = "medium", kills = 0, wave = 1,
-  score = 0, currentScrap = 0, currentXp = 0, winStreak = 0,
+  score = 0, currentScrap = 0, currentGold = 0, currentSilver = 0, currentXp = 0, winStreak = 0,
 } = {}) {
   const won = outcome === "win";
   const draw = outcome === "draw";
@@ -28,6 +28,8 @@ export function settleMatch({
   const baseXp = Math.max(profile.xpFloor, whole(kills) * 35 + whole(wave) * 45 + Math.floor(whole(score) / 20));
   const earnedXp = Math.round(baseXp * preview.rewardMultiplier * (won ? 1.25 : draw ? 0.75 : 0.45));
   const earnedScrap = Math.round((whole(kills) * 2 + whole(wave) * 3) * preview.rewardMultiplier * (won ? 1.2 : draw ? 0.7 : 0.35));
+  const earnedGold = Math.round((8 + whole(kills) + whole(wave) * 2) * preview.rewardMultiplier * (won ? 1.2 : draw ? 0.8 : 0.45));
+  const earnedSilver = Math.round((16 + whole(kills) * 3 + whole(wave) * 5) * preview.rewardMultiplier * (won ? 1.2 : draw ? 0.8 : 0.45));
   const penalty = won || draw ? 0 : Math.min(whole(currentScrap), Math.round(whole(currentScrap) * profile.defeatScrapRate));
   const nextStreak = won ? whole(winStreak) + 1 : draw ? whole(winStreak) : 0;
   return {
@@ -35,9 +37,13 @@ export function settleMatch({
     risk: profile.id,
     xpEarned: earnedXp,
     scrapEarned: earnedScrap,
+    goldEarned: earnedGold,
+    silverEarned: earnedSilver,
     scrapPenalty: penalty,
     nextXp: whole(currentXp) + earnedXp,
     nextScrap: Math.max(0, whole(currentScrap) + earnedScrap - penalty),
+    nextGold: whole(currentGold) + earnedGold,
+    nextSilver: whole(currentSilver) + earnedSilver,
     winStreak: nextStreak,
     streakBroken: !won && !draw && whole(winStreak) > 0,
   };

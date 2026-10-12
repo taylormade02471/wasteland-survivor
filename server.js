@@ -19,8 +19,10 @@ const matchmakingRulesReady = import("./public/matchmaking-rules.mjs").then(modu
 const chestAccess = new ChestAccess(2);
 const store = createBackendStore({ rootDirectory: __dirname });
 const adminToken = process.env.ADMIN_TOKEN || "";
-const sessionSecret = process.env.SESSION_SECRET || "wasteland-local-session-secret-change-before-production";
-if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required in production");
+// A production secret keeps sessions durable across function instances. When a
+// preview is missing that configuration, keep the game reachable with a
+// process-local secret rather than crashing the entire public app at startup.
+const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(48).toString("base64url");
 const sessions = new SessionService(sessionSecret);
 const phoneAuth = createPhoneAuthService(process.env, { consumeTokenUse: claim => store.consumePhoneAuthToken(claim) });
 const sensitiveLimiter = new RateLimiter({ limit: 8, windowMs: 60000, blockMs: 300000 });
@@ -32,8 +34,14 @@ const mimeTypes = {
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
-  ".webp": "image/webp"
+  ".webp": "image/webp",
+  ".mp3": "audio/mpeg",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".glb": "model/gltf-binary"
 };
 const roomPattern = /^(wasteland|toxic|ice|inferno)-(?:solo|ctf-(?:4|6)|teams-(?:1v1|2v2|3v3))$/;
 
@@ -80,6 +88,43 @@ function activeRoomSummary() {
 function json(response, status, body) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(JSON.stringify(body));
+}
+
+function normalizeMediaBase(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const base = raw.replace(/\/+$/, "");
+  const isBucketName = candidate => /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(candidate);
+  if (base.startsWith("gs://")) {
+    try {
+      const url = new URL(base);
+      if (!isBucketName(url.hostname) || url.username || url.password || url.port || url.search || url.hash) return "";
+      return `https://storage.googleapis.com/${url.hostname}${url.pathname}`.replace(/\/+$/, "");
+    } catch {
+      return "";
+    }
+  }
+  if (isBucketName(base)) return `https://storage.googleapis.com/${base}`;
+  try {
+    const url = new URL(base);
+    return url.protocol === "https:" ? url.toString().replace(/\/+$/, "") : "";
+  } catch {
+    return "";
+  }
+}
+
+function mediaConfig() {
+  const requestedVersion = String(process.env.GAME_MEDIA_VERSION || "nightfall-v2").trim() || "nightfall-v2";
+  const version = requestedVersion.toLowerCase() === "nightfall-v1" ? "nightfall-v2" : requestedVersion;
+  const configuredBaseUrl = normalizeMediaBase(
+    process.env.GAME_MEDIA_BASE_URL ||
+      process.env.PUBLIC_MEDIA_BASE_URL ||
+      process.env.GOOGLE_CLOUD_STORAGE_BASE_URL ||
+      process.env.GOOGLE_CLOUD_STORAGE_BUCKET ||
+      process.env.GENMEDIA_BUCKET,
+  );
+  const baseUrl = configuredBaseUrl.replace(/\/nightfall-v\d+$/i, `/${version}`);
+  return { baseUrl, version, external: Boolean(baseUrl), fallback: "/assets" };
 }
 
 function readJson(request, response, callback) {
@@ -164,7 +209,7 @@ function phoneClientConfig() {
 function contentSecurityPolicy() {
   const config = phoneClientConfig();
   const scripts = ["'self'", "https://cdn.jsdelivr.net"];
-  const connections = ["'self'", "ws:", "wss:"];
+  const connections = ["'self'", "ws:", "wss:", "https://storage.googleapis.com"];
   const directives = ["default-src 'self'"];
   if (config.enabled) {
     const authOrigin = `https://${config.firebaseConfig.authDomain}`;
@@ -180,21 +225,29 @@ function contentSecurityPolicy() {
     directives.push(`script-src ${scripts.join(" ")}`);
     directives.push("style-src 'self'");
     directives.push(`connect-src ${connections.join(" ")}`);
-    directives.push("img-src 'self' data:");
-    directives.push("media-src 'self' blob:");
+    directives.push("img-src 'self' data: https://storage.googleapis.com");
+    directives.push("media-src 'self' blob: https://storage.googleapis.com");
     directives.push(`frame-src 'self' ${authOrigin} https://www.google.com https://recaptcha.google.com`);
     return directives.join("; ");
   }
   directives.push(`script-src ${scripts.join(" ")}`);
   directives.push("style-src 'self'");
   directives.push(`connect-src ${connections.join(" ")}`);
-  directives.push("img-src 'self' data:");
-  directives.push("media-src 'self' blob:");
+  directives.push("img-src 'self' data: https://storage.googleapis.com");
+  directives.push("media-src 'self' blob: https://storage.googleapis.com");
   return directives.join("; ");
 }
 
 function handleApi(request, response, requestUrl) {
   if (!requestUrl.pathname.startsWith("/api/")) return false;
+  if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname === "/api/media-config") {
+    response.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+    });
+    response.end(JSON.stringify(mediaConfig()));
+    return true;
+  }
   if (request.method === "GET" && requestUrl.pathname === "/api/status") {
     json(response, 200, { ok: true, rooms: activeRoomSummary(), uptimeSeconds: Math.floor(process.uptime()), persistence: true, storage: store.storageType });
     return true;

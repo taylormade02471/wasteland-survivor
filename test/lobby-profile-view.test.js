@@ -246,3 +246,11 @@ test("keeps all three primary commands in one short-landscape viewport row", () 
   assert.match(shortLandscape, /#fightCommands \.floating-command\s*\{[^}]*height:\s*64px[^}]*min-height:\s*64px/);
   assert.match(shortLandscape, /#fightCommands \.floating-command small\s*\{[^}]*font-size:\s*9px/);
 });
+
+test("phone lobby places the primary fight choices before the survivor strip", () => {
+  assert.match(css, /#lobbyNavigation\s*\{\s*order:\s*2/);
+  assert.match(css, /\.lobby-survivor-hero\s*\{\s*order:\s*3/);
+  assert.match(css, /#fightCommands\s*\{\s*order:\s*1/);
+  assert.doesNotMatch(css, /@media \(min-width:\s*681px\) and \(min-height:\s*521px\)/);
+  assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*#lobbyScreen/);
+});

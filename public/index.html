@@ -20,9 +20,8 @@
   <div id="aimReticle" class="aim-reticle" aria-hidden="true"><i></i><b></b></div>
   <aside id="controllerDebug" class="controller-debug hidden" aria-live="polite"><b>CONTROLLER DEBUG</b><span id="debugPadName">No controller detected</span><span id="debugAxes">LX 0.00 · LY 0.00 · RX 0.00 · RY 0.00</span><span id="debugButtons">Buttons: none</span><span id="debugAction">Action: waiting</span></aside>
   <div id="nightfallBackground" aria-hidden="true"></div>
-  <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline preload="metadata" poster="./assets/nightfall/backgrounds/nightfall-loading-v1.webp" aria-hidden="true">
-    <source src="./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.webm" type="video/webm" />
-    <source src="./assets/nightfall/backgrounds/nightfall-water-walk-loop-v1.mp4" type="video/mp4" />
+  <video id="homeBackdrop" class="home-backdrop" muted autoplay loop playsinline preload="metadata" aria-hidden="true">
+    <source data-media-src="./assets/nightfall/backgrounds/nightfall-loading-loop-v1.mp4" src="./assets/nightfall/backgrounds/nightfall-loading-loop-v1.mp4" type="video/mp4" />
   </video>
   <div id="matchCountdown" class="match-countdown hidden"><span id="countdownLabel">ENTERING NIGHTFALL</span><b id="countdownNumber">15</b></div>
   <aside id="inputRecoveryNotice" class="input-recovery-notice hidden" role="status" aria-live="assertive" aria-atomic="true">
@@ -59,13 +58,19 @@
           <p class="hero-tagline">No one is coming. Hold the line.</p>
           <p class="welcome-copy">Build your survivor profile, verify your mobile number for private recovery, and choose a lobby.</p>
         </div>
-        <div class="title-survivor" aria-hidden="true">
-          <span class="title-survivor-glow"></span>
-          <img src="./assets/nightfall/characters/index/ranger-v1.webp" alt="" />
-          <b>RANGER // 02</b>
-        </div>
       </header>
       <div id="profileStep" class="profile-step">
+        <section class="profile-avatar-stage" aria-label="Live survivor preview">
+          <div class="profile-avatar-stage-copy">
+            <p class="eyebrow">Live survivor</p>
+            <strong id="profileAvatarPreviewName">Dust Scout</strong>
+            <small>Drag the model to inspect the loadout.</small>
+          </div>
+          <div class="profile-avatar-viewport">
+            <canvas id="profileAvatarCanvas" class="profile-avatar-preview" aria-label="Rotatable 3D survivor preview"></canvas>
+            <img id="profileAvatarPreviewImage" class="profile-avatar-preview-image" src="./assets/nightfall/characters/index/scout-v1.webp" alt="Dust Scout preview" />
+          </div>
+        </section>
         <label for="profileName">Player name <input id="profileName" type="text" maxlength="24" autocomplete="nickname" placeholder="Survivor name" /></label>
         <label for="profileBirthDate">Date of birth <input id="profileBirthDate" type="date" autocomplete="bday" /></label>
         <label for="profilePhone">Mobile number <input id="profilePhone" type="tel" autocomplete="tel" inputmode="tel" placeholder="(615) 555-0123" /></label>
@@ -127,7 +132,9 @@
   </section>
 
   <section id="lobbyScreen" class="welcome-screen hidden">
-    <img id="lobbyBackdropArt" class="lobby-backdrop-art" src="./assets/nightfall/backgrounds/nightfall-lobby-squad-v1.png" alt="" aria-hidden="true">
+    <video id="lobbyBackdropVideo" class="lobby-backdrop-video" muted autoplay loop playsinline preload="metadata" aria-hidden="true">
+      <source data-media-src="./assets/nightfall/backgrounds/nightfall-lobby-squad-loop-v1.mp4" src="./assets/nightfall/backgrounds/nightfall-lobby-squad-loop-v1.mp4" type="video/mp4" />
+    </video>
     <button id="lobbyBackBtn" data-lobby-control class="screen-back-button screen-back-control" type="button" aria-label="Back to profile selection">&#8592; Back</button>
     <header class="lobby-title-plate">
       <p class="eyebrow">Nightfall Operations</p>
@@ -138,6 +145,7 @@
     <section class="lobby-survivor-hero" aria-label="Active survivor">
       <button id="lobbyAvatarButton" data-lobby-control class="lobby-avatar-button" type="button" aria-controls="dashboardModal">
         <span class="lobby-avatar-glow" aria-hidden="true"></span>
+        <canvas id="lobbyAvatarCanvas" class="live-character-preview" aria-hidden="true"></canvas>
         <img id="lobbyAvatarImage" class="lobby-avatar-image" src="./assets/nightfall/characters/index/scout-v1.webp" alt="Dust Scout">
         <span class="lobby-avatar-action">Open loadout</span>
       </button>
@@ -211,7 +219,9 @@
         <small id="teamHealthText">100%</small>
       </div>
       <div class="stats">
-        <span>Scrap <b id="scrapText">0</b></span>
+        <span class="resource-readout resource-silver"><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">Scrap <b id="scrapText">0</b></span>
+        <span class="resource-readout resource-gold"><img class="resource-icon" src="assets/nightfall/icons/scrap-gold-v1.svg" alt="" aria-hidden="true">Gold <b id="goldText">0</b></span>
+        <span class="resource-readout resource-silver"><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">Silver <b id="silverText">0</b></span>
         <span>Kills <b id="killsText">0</b></span>
         <span>Wave <b id="waveText">1</b></span>
         <span id="weaponText">Scout L0</span>
@@ -221,7 +231,7 @@
     </aside>
     <section id="objectiveRail" aria-label="Mission objective">
       <div class="match-strip">
-        <span id="mapText">WASTELAND</span><span id="explorationText">EXPLORE 0/14</span><span id="phaseText">COMBAT</span><span id="timerText">01:00</span><span id="chapterText">Chapter 1: First Watch</span><span id="missionText">Mission: Survive the cycle</span>
+        <span id="mapText">WASTELAND</span><span id="explorationText">EXPLORE 0/14</span><span id="phaseText">COMBAT</span><span id="timerText">01:00</span><span id="chapterText">Chapter 1: First Watch</span><span id="missionText">Mission: Survive the cycle</span><span id="questText">QUEST 0/60</span>
         <span class="blue">BLUE <b id="blueScore">0</b></span><span class="red">RED <b id="redScore">0</b></span>
       </div>
       <p id="objectiveText" class="hud-text-ellipsis">Survive the cycle</p>
@@ -251,7 +261,7 @@
       <div class="game-menu-match-controls" aria-label="Match setup">
         <div class="mode-control"><button id="soloMode" type="button" class="active">Solo</button><button id="teamMode" type="button">2v2</button><button id="ctfMode" type="button">CTF</button></div>
         <div id="ctfPlayerControl" class="mode-control hidden"><button data-ctf-players="4" type="button" class="active">4 Players</button><button data-ctf-players="6" type="button">6 Players</button></div>
-        <div class="map-control"><button data-map="wasteland" type="button" class="active">Wasteland</button><button data-map="toxic" type="button">Toxic</button><button data-map="ice" type="button">Ice</button><button data-map="inferno" type="button">Inferno</button></div>
+        <div class="map-control" aria-label="Map transfer"><button data-map="wasteland" type="button" class="active">Wasteland</button><button data-map="toxic" type="button">Toxic</button><button data-map="ice" type="button">Ice</button><button data-map="inferno" type="button">Inferno</button></div>
       </div>
       <div class="game-menu-actions">
         <button id="resumeGameBtn" type="button">Resume</button>
@@ -284,19 +294,19 @@
       <h2>Scavenger Armory</h2>
       <div class="shop-item">
         <div><b>Scout Blaster <span id="scoutLevel">L0</span></b><small>Fast, low-power fire. Upgrade track unlocks at 3 kills. Pierces after level 25.</small></div>
-        <div class="shop-actions"><button id="equipScoutBtn" type="button">Equip</button><button id="upgradeScoutBtn" type="button">12 scrap</button></div>
+        <div class="shop-actions"><button id="equipScoutBtn" type="button">Equip</button><button id="upgradeScoutBtn" class="resource-cost resource-silver" type="button"><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">12 scrap</button></div>
       </div>
       <div class="shop-item">
         <div><b>Breach Cannon <span id="cannonLevel">L0</span></b><small>Unlocks at 6 kills. Slow, piercing shots with extra barrels at 50, 75, and 100.</small></div>
-        <div class="shop-actions"><button id="equipCannonBtn" type="button">Equip</button><button id="upgradeCannonBtn" type="button">28 scrap</button></div>
+        <div class="shop-actions"><button id="equipCannonBtn" type="button">Equip</button><button id="upgradeCannonBtn" class="resource-cost resource-silver" type="button"><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">28 scrap</button></div>
       </div>
       <div class="shop-item">
         <div><b>Inferno Repeater <span id="infernoLevel">L0</span></b><small>Unlocks at 9 kills. Harder-hitting piercing fire, max level 50.</small></div>
-        <div class="shop-actions"><button id="equipInfernoBtn" type="button">Equip</button><button id="upgradeInfernoBtn" type="button">42 scrap</button></div>
+        <div class="shop-actions"><button id="equipInfernoBtn" type="button">Equip</button><button id="upgradeInfernoBtn" class="resource-cost resource-silver" type="button"><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">42 scrap</button></div>
       </div>
       <div class="shop-item">
         <div><b>Scrap Shield <span id="shieldLevel">L0</span></b><small>Adds armor before health takes damage.</small></div>
-        <button id="upgradeShieldBtn" type="button">24 scrap</button>
+        <button id="upgradeShieldBtn" class="resource-cost resource-silver" type="button"><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">24 scrap</button>
       </div>
       <button id="closeShopBtn" class="full-button" type="button">Back</button>
     </div>
@@ -306,7 +316,7 @@
     <div class="modal-card game-over-card">
       <p class="eyebrow danger">Survivor Eliminated</p>
       <h2>Wasteland Claimed Another</h2>
-      <p class="final-stats">Kills <b id="finalKills">0</b> <span></span> Scrap <b id="finalScrap">0</b> <span></span> Score <b id="finalScore">0</b></p>
+      <p class="final-stats">Kills <b id="finalKills">0</b> <span></span> Scrap <b id="finalScrap">0</b> <span></span> Gold <b id="finalGold">0</b> <span></span> Silver <b id="finalSilver">0</b> <span></span> Score <b id="finalScore">0</b></p>
       <p id="rewardSummary" class="reward-summary"></p>
       <button id="restartBtn" class="full-button danger-button" type="button">Respawn</button>
     </div>
@@ -316,7 +326,7 @@
     <div class="modal-card dashboard-card">
       <p class="eyebrow">Survivor Profile</p>
       <div class="dashboard-heading"><div><h2 id="dashboardName">Survivor</h2><small id="dashboardAvatar">Dust Scout</small></div><b id="dashboardKingdom">Frontier Camp</b></div>
-      <div class="dashboard-stats"><div><small>Level</small><b id="dashboardLevel">1</b></div><div><small>Experience</small><b id="dashboardXp">0 XP</b></div><div><small>Stage</small><b id="dashboardStage">1</b></div><div><small>Scrap</small><b id="dashboardScrap">0</b></div></div>
+      <div class="dashboard-stats"><div><small>Level</small><b id="dashboardLevel">1</b></div><div><small>Experience</small><b id="dashboardXp">0 XP</b></div><div><small>Stage</small><b id="dashboardStage">1</b></div><div><small><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">Scrap</small><b id="dashboardScrap">0</b></div><div><small><img class="resource-icon" src="assets/nightfall/icons/scrap-gold-v1.svg" alt="" aria-hidden="true">Gold</small><b id="dashboardGold">0</b></div><div><small><img class="resource-icon" src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">Silver</small><b id="dashboardSilver">0</b></div></div>
       <div class="dashboard-section"><b>Weapons And Shields</b><div id="dashboardLoadout" class="dashboard-list"></div></div>
       <div class="dashboard-section"><b>Tactical Upgrades</b><div id="dashboardTactics" class="dashboard-list"></div></div>
       <div class="dashboard-section"><b>Story Timeline</b><p id="dashboardMission" class="dashboard-copy"></p></div>
@@ -346,13 +356,13 @@
       </div>
       <label class="volume-control" for="volumeSlider">Volume <input id="volumeSlider" type="range" min="0" max="100" value="55" /></label>
       <div class="settings-block">
-        <div><b>Music</b><small id="musicStatus">Built-in wasteland soundtrack</small></div>
+        <div><b>Music</b><small id="musicStatus">We Walk the Ruins — menu theme</small></div>
         <label class="switch-control"><input id="musicToggle" type="checkbox" /><span>On</span></label>
       </div>
       <label class="volume-control" for="musicVolumeSlider">Music volume <input id="musicVolumeSlider" type="range" min="0" max="100" value="36" /></label>
       <div class="music-source-controls">
         <label for="musicSource">Music source</label>
-        <select id="musicSource"><option value="builtin">Game soundtrack</option><option value="local">My downloaded tracks</option><option value="api" disabled>Streaming API (connection required)</option></select>
+        <select id="musicSource"><option value="bundled">Wasteland soundtrack</option><option value="local">My downloaded tracks</option><option value="builtin">Synth fallback</option><option value="api" disabled>Streaming API (connection required)</option></select>
         <label id="localTrackPicker" class="track-picker hidden">Choose tracks<input id="localTrackInput" type="file" accept="audio/*" multiple /></label>
         <div class="music-actions"><button id="previousTrackBtn" type="button" title="Previous track">&#9664;</button><button id="playMusicBtn" type="button">Play</button><button id="nextTrackBtn" type="button" title="Next track">&#9654;</button><button id="shuffleMusicBtn" type="button">Shuffle</button></div>
       </div>
@@ -394,6 +404,6 @@
   </div>
   <div id="landscapeHint" class="landscape-hint hidden" role="status">Rotate to landscape for the best combat view.</div>
 
-  <script type="module" src="game3d.js"></script>
+  <script type="module" src="./bootstrap.mjs"></script>
 </body>
 </html>

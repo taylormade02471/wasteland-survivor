@@ -8,6 +8,7 @@ export const ENEMY_ARCHETYPES = Object.freeze({
   heavy: freezeProfile({ role: "tank", health: 240, damage: 18, speed: 2.8, range: 18, unlockWave: 6, weight: 0.55, affinities: { wasteland: 1.2, toxic: 0.95, ice: 0.9, inferno: 1.25 } }),
   drone: freezeProfile({ role: "flanker", health: 60, damage: 9, speed: 8.4, range: 19, unlockWave: 5, weight: 0.75, affinities: { wasteland: 0.9, toxic: 1.1, ice: 1.15, inferno: 1.3 } }),
   mutant: freezeProfile({ role: "bruiser", health: 190, damage: 20, speed: 5.3, range: 4, unlockWave: 7, weight: 0.55, affinities: { wasteland: 1, toxic: 1.55, ice: 0.7, inferno: 1.1 } }),
+  spider: freezeProfile({ role: "ambush-range", health: 210, damage: 16, speed: 4.4, range: 24, unlockWave: 8, weight: 0.45, affinities: { wasteland: 1.05, toxic: 1.45, ice: 0.82, inferno: 0.95 } }),
   boss: freezeProfile({ role: "boss", health: 900, damage: 32, speed: 3.4, range: 26, unlockWave: 10, weight: 0, affinities: { wasteland: 1, toxic: 1, ice: 1, inferno: 1 } })
 });
 
@@ -86,6 +87,7 @@ export function tacticalIntent(type, {
   if (healthRatio <= 0.2 && type !== "boss" && type !== "shield") return "retreat";
   if (type === "sniper" && distance < profile.range * 0.35) return "retreat";
   if (type === "shield" && hasLineOfSight && distance <= profile.range * 1.5) return "hold";
+  if (type === "spider" && hasLineOfSight && distance <= profile.range) return "hold";
   if ((type === "shooter" || type === "drone") && (!hasLineOfSight || allyCount >= 2)) return "flank";
   if (type === "sniper" && hasLineOfSight) return "hold";
   return "advance";

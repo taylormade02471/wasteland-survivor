@@ -88,8 +88,9 @@ export function resolveMenuPresentation(input = {}) {
 
 export function resolveMenuMedia(input = {}) {
   const tier = normalizeTier(input.tier);
-  const blocked = tier === "low"
-    || Boolean(input.reducedMotion)
+  const heroVideo = Boolean(input.heroVideo);
+  const blocked = (!heroVideo && tier === "low")
+    || (!heroVideo && Boolean(input.reducedMotion))
     || Boolean(input.saveData)
     || Boolean(input.autoplayFailed)
     || Boolean(input.decodeFailed);

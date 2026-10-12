@@ -35,8 +35,9 @@ canvas { image-rendering: auto; }
 }
 
 .home-backdrop { position: fixed; inset: 0; z-index: 4; width: 100%; height: 100%; object-fit: cover; object-position: center; opacity: 0; filter: brightness(.7) saturate(.82) contrast(1.12); pointer-events: none; background: transparent; transition: opacity .45s ease; }
-body.menu-active .home-backdrop.is-ready { opacity: .52; }
+body.menu-active .home-backdrop.is-ready { opacity: 1; }
 .nightfall-background { position: fixed; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; background: radial-gradient(circle at 70% 28%, #274b55 0, #10191a 36%, #050809 78%); opacity: 1; transition: opacity .7s ease; --menu-camera-x: 0%; --menu-camera-y: 0%; --menu-camera-scale: 1.035; --menu-camera-duration: 520ms; --menu-camera-drift: .55%; --menu-amber-light: .3; --menu-cyan-light: .5; --menu-reflection-opacity: .24; --menu-disturbance: 0; }
+body.hero-video-active .nightfall-background { opacity: 0; visibility: hidden; }
 .nightfall-background.nightfall-media-hold { opacity: 1 !important; transition: none; }
 .nightfall-background[data-scene="game"] { opacity: 0; }
 .nightfall-background[data-scene="menu"] .nightfall-image { filter: brightness(1.16) saturate(1.18) contrast(1.04); }
@@ -86,7 +87,6 @@ body.menu-active .home-backdrop.is-ready { opacity: .52; }
 .nightfall-background.nightfall-reduced-motion .nightfall-image { transform: translate3d(var(--menu-camera-x),var(--menu-camera-y),0) scale(var(--menu-camera-scale)); }
 @media (prefers-reduced-motion: reduce) { .home-backdrop { display: none; } .nightfall-background * { animation: none !important; transition-duration: .01ms !important; } }
 #game { position: relative; z-index: 2; }
-.map-control { display: none !important; }
 .aim-reticle { position: fixed; z-index: 18; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; border: 2px solid rgba(102,252,241,.92); border-radius: 50%; box-shadow: 0 0 12px rgba(102,252,241,.8), inset 0 0 8px rgba(102,252,241,.25); transition: opacity .15s ease; }
 .aim-reticle::before, .aim-reticle::after { content: ""; position: absolute; background: #f8f3df; box-shadow: 0 0 7px #66fcf1; }
 .aim-reticle::before { width: 2px; height: 46px; left: 14px; top: -8px; }.aim-reticle::after { width: 46px; height: 2px; left: -8px; top: 14px; }
@@ -290,6 +290,10 @@ body.menu-active .discovery-toast { display: none; }
   .welcome-panel h1 { font-size: clamp(49px,15vw,68px); }
   .title-survivor img { object-position: 50% 15%; }
   .title-hero .welcome-copy { font-size: 12px; }
+  .profile-avatar-stage { grid-template-columns: minmax(0,1fr) 132px; min-height: 150px; }
+  .profile-avatar-viewport { min-height: 150px; }
+  .profile-avatar-stage-copy { padding: 13px; }
+  .profile-avatar-stage-copy strong { font-size: 24px; }
   .avatar-selection-grid { grid-template-columns:1fr; }
   .avatar-choice { grid-template-columns:86px minmax(0,1fr); }
   .avatar-choice img { width:86px; }
@@ -297,6 +301,17 @@ body.menu-active .discovery-toast { display: none; }
 @media (prefers-reduced-motion: reduce) { .title-survivor-glow { animation: none; } }
 .profile-step label { display: grid; gap: 6px; color: #f8f3df; font-size: 12px; font-weight: 800; }
 .profile-step input { width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid rgba(255,255,255,.24); background: #0b1118; color: #f8f3df; font: inherit; }
+.profile-avatar-stage { display: grid; grid-template-columns: minmax(0,1fr) minmax(150px,190px); min-height: 170px; overflow: hidden; border: 1px solid rgba(102,252,241,.34); background: linear-gradient(125deg,rgba(4,11,14,.92),rgba(12,35,38,.62)); box-shadow: inset 0 0 24px rgba(102,252,241,.08); }
+.profile-avatar-stage-copy { align-self: center; display: grid; gap: 7px; padding: 18px; }
+.profile-avatar-stage-copy strong { color: #f8f3df; font: 900 clamp(22px,4vw,36px)/.9 "Bahnschrift Condensed","Arial Narrow",Impact,sans-serif; text-transform: uppercase; }
+.profile-avatar-stage-copy small { max-width: 22ch; color: #b9cfcc; font-size: 11px; line-height: 1.4; }
+.profile-avatar-viewport { position: relative; min-width: 0; min-height: 170px; overflow: hidden; }
+.profile-avatar-preview, .profile-avatar-preview-image { position: absolute; inset: 0; width: 100%; height: 100%; }
+.profile-avatar-preview { z-index: 2; opacity: 0; cursor: grab; touch-action: none; transition: opacity .22s ease; }
+.profile-avatar-preview:active { cursor: grabbing; }
+.profile-avatar-preview.is-ready { opacity: 1; }
+.profile-avatar-preview-image { z-index: 1; object-fit: cover; object-position: 50% 18%; filter: saturate(.92) contrast(1.08); transition: opacity .22s ease, visibility .22s ease; }
+.profile-avatar-preview.is-ready + .profile-avatar-preview-image { opacity: 0; visibility: hidden; }
 .avatar-preview { height: 145px; overflow: hidden; border: 1px solid rgba(102,252,241,.26); background: rgba(0,0,0,.38); }
 .avatar-preview img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%; }
 .avatar-picker { min-width: 0; border: 0; }
@@ -324,7 +339,7 @@ body.menu-active .discovery-toast { display: none; }
 .returning-player { color: #66fcf1; font-weight: 800; }
 .text-button { margin: 12px auto 0; border: 0; background: transparent; color: #9debe7; font-size: 12px; text-decoration: underline; }
 .text-button:hover { background: transparent; color: #fff; }
-.lobby-backdrop-art { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100%; object-fit: cover; object-position: center; filter: brightness(.48) saturate(.9) contrast(1.12); }
+.lobby-backdrop-video { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100%; object-fit: cover; object-position: center; filter: brightness(.72) saturate(.98) contrast(1.08); pointer-events: none; }
 .screen-back-button { display: inline-flex; align-items: center; width: auto; min-height: 34px; margin: 0 0 14px; padding: 7px 11px; border-color: rgba(255,255,255,.2); background: rgba(4,10,13,.66); color: #d5e8e6; font-size: 12px; font-weight: 800; }
 .screen-back-button:hover { border-color: #66fcf1; color: #fff; }
 .screen-back-control { position: fixed; z-index: 43; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); min-width: 44px; min-height: 44px; margin: 0; }
@@ -598,6 +613,13 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   background: rgba(0, 0, 0, 0.36);
   border: 1px solid rgba(255, 255, 255, 0.16);
 }
+
+.resource-readout, .resource-cost, .dashboard-stats small { display: inline-flex; align-items: center; gap: 5px; }
+.resource-icon { width: 18px; height: 18px; flex: 0 0 auto; object-fit: contain; vertical-align: middle; }
+.resource-readout .resource-icon { width: 17px; height: 17px; }
+.resource-cost { justify-content: center; }
+.resource-cost .resource-icon { width: 16px; height: 16px; }
+.dashboard-stats small .resource-icon { width: 14px; height: 14px; }
 
 @media (max-width: 680px) {
   .aim-settings { grid-template-columns: 1fr; }
@@ -877,8 +899,42 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   .touch-action-grid .primary-action { min-height: 42px; }
 }
 
+/* The home hero is deliberately video-only. The live survivor is shown in the lobby instead. */
+body:has(#welcomeScreen:not(.hidden)) #nightfallBackground { display: none !important; }
+body:has(#welcomeScreen:not(.hidden)) .welcome-screen { background: transparent; }
+body:has(#welcomeScreen:not(.hidden)) .welcome-panel { border-color: transparent; background: transparent; box-shadow: none; backdrop-filter: none; }
+body:has(#welcomeScreen:not(.hidden)) .home-backdrop { display: block; opacity: .62; }
+body:has(#lobbyScreen:not(.hidden)) #nightfallBackground { display: none !important; }
+body:has(#lobbyScreen:not(.hidden)) #lobbyScreen { background: transparent; }
+
+.live-character-preview {
+  position: absolute;
+  inset: -5% 0 5%;
+  z-index: 2;
+  width: 100%;
+  height: 110%;
+  opacity: 0;
+  cursor: grab;
+  touch-action: none;
+  transition: opacity .22s ease;
+}
+
+.live-character-preview:active { cursor: grabbing; }
+.live-character-preview.is-ready { opacity: 1; }
+.live-character-preview.is-ready + #lobbyAvatarImage { opacity: 0; visibility: hidden; }
+.lobby-avatar-image { z-index: 1; }
+.lobby-avatar-action { z-index: 3; }
+
+@media (max-width: 760px) {
+  .live-character-preview {
+    inset: -18% -12% 8%;
+    width: 124%;
+    height: 124%;
+  }
+}
+
 /* Lobby visual contract: slim rails, combined loadout ribbon, floating modes. */
-@media (min-width: 681px) and (min-height: 521px) {
+@media (min-width: 761px) and (min-height: 521px) {
   #lobbyScreen {
     display: grid;
     grid-template-columns: minmax(210px, 260px) minmax(0, 1fr) minmax(260px, 340px);
@@ -1089,6 +1145,66 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
   }
 }
 
+/* Narrow PWA windows can be wider than 680px while still too small for the desktop lobby grid. */
+@media (min-width: 681px) and (max-width: 760px) {
+  #lobbyScreen {
+    overflow-y: auto;
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  #lobbyBackBtn {
+    position: relative;
+    inset: auto;
+    order: 0;
+    justify-self: start;
+    margin: 0;
+  }
+
+  .lobby-title-plate,
+  #fightCommands,
+  .lobby-survivor-hero,
+  .lobby-edge-controls,
+  .lobby-game-options,
+  .team-size-choices,
+  .ctf-player-choices {
+    position: relative;
+    inset: auto;
+    width: min(100%, 520px);
+    margin: 0 auto;
+  }
+
+  .lobby-title-plate { order: 1; padding: 12px 14px; }
+  .lobby-title-plate h1 { max-width: none; font-size: 32px; }
+  .lobby-title-plate .replay-status { display: none; }
+  .lobby-survivor-hero { order: 2; grid-template-columns: 96px minmax(0, 1fr); height: 132px; align-items: stretch; gap: 8px; }
+  .lobby-avatar-button, .lobby-avatar-image { height: 132px; }
+  .lobby-avatar-image { object-position: center bottom; }
+  .lobby-avatar-action, .lobby-avatar-glow { display: none; }
+  .lobby-profile-readout { margin: 0; gap: 3px; align-self: stretch; }
+  .lobby-identity-line { min-height: 30px; padding: 4px 7px; }
+  .lobby-identity-line strong { font-size: 16px; }
+  .lobby-identity-line em { font-size: 7px; }
+  .lobby-player-tag { padding-left: 7px; font-size: 8px; }
+  .lobby-level-line { min-height: 25px; padding: 3px 7px; }
+  .lobby-level-line b { font-size: 12px; }
+  .lobby-level-line span { font-size: 8px; }
+  .lobby-readout-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+  .lobby-readout-grid > span { padding: 3px 5px; }
+  .lobby-readout-grid small { font-size: 6px; }
+  .lobby-readout-grid b { font-size: 8px; }
+  #lobbyNavigation { order: 3; display: grid; gap: 10px; }
+  #fightCommands { order: 1; grid-template-columns: 1fr; gap: 7px; }
+  #fightCommands .floating-command { min-height: 64px; padding: 10px 12px; }
+  .team-size-choices, .ctf-player-choices { order: 2; }
+  .team-size-choices .floating-command, .ctf-player-choices .floating-command { min-height: 54px; }
+  .lobby-edge-controls { order: 3; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .lobby-edge-action, .floating-command-secondary { min-height: 44px; }
+  .lobby-game-options { order: 4; }
+}
+
 @media (max-width: 680px), (orientation: landscape) and (max-height: 520px) and (max-width: 960px) {
   #lobbyScreen {
     gap: 8px;
@@ -1156,4 +1272,54 @@ body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, b
     border-radius: 8px;
     background: rgba(4, 10, 13, .78);
   }
+}
+
+/* On phones the primary fight choices are the first actionable block after the
+   title; the survivor readout follows them instead of pushing Solo below the fold. */
+@media (max-width: 680px), (orientation: landscape) and (max-height: 520px) and (max-width: 960px) {
+  #lobbyNavigation { order: 2; }
+  .lobby-survivor-hero { order: 3; }
+  #fightCommands { order: 1; }
+  .team-size-choices, .ctf-player-choices { order: 2; }
+  .lobby-edge-controls { order: 3; }
+  .lobby-game-options { order: 4; }
+}
+
+/* The in-app browser can report a 681-760px CSS viewport even on a phone-sized
+   surface. Keep that narrow range on the stacked lobby layout too. */
+@media (max-width: 760px) {
+  #lobbyScreen {
+    overflow-y: auto;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  #lobbyBackBtn { position: relative; inset: auto; order: 0; justify-self: start; margin: 0; }
+  .lobby-title-plate,
+  #fightCommands,
+  .lobby-survivor-hero,
+  .lobby-edge-controls,
+  .lobby-game-options,
+  .team-size-choices,
+  .ctf-player-choices { position: relative; inset: auto; width: min(100%, 520px); margin: 0 auto; }
+  .lobby-title-plate { order: 1; padding: 9px 11px; }
+  .lobby-title-plate h1 { max-width: none; font-size: clamp(24px, 9vw, 32px); }
+  .lobby-survivor-hero { order: 3; grid-template-columns: 74px minmax(0, 1fr); height: auto; min-height: 102px; gap: 6px; align-items: stretch; }
+  .lobby-avatar-button, .lobby-avatar-image { height: 104px; min-height: 104px; }
+  .lobby-avatar-action, .lobby-avatar-glow { display: none; }
+  .lobby-profile-readout { margin: 0; gap: 3px; align-self: stretch; }
+  .lobby-readout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
+  .lobby-readout-grid > span { padding: 3px 5px; }
+  .lobby-readout-grid small { font-size: 6px; }
+  .lobby-readout-grid b { font-size: 8px; }
+  #lobbyNavigation { order: 2; display: grid; gap: 8px; }
+  #fightCommands { order: 1; grid-template-columns: 1fr; gap: 6px; }
+  #fightCommands .floating-command { min-height: 54px; padding: 8px 10px; border-radius: 8px; }
+  #fightCommands .floating-command b { font-size: 12px; }
+  #fightCommands .floating-command small { font-size: 9px; line-height: 1.15; }
+  .team-size-choices, .ctf-player-choices { order: 2; }
+  .lobby-edge-controls { order: 3; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+  .lobby-edge-action { min-height: 38px; padding: 5px; font-size: 8px; }
+  .lobby-game-options { order: 4; max-height: 176px; overflow: auto; border-radius: 8px; }
 }

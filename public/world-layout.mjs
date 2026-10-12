@@ -263,6 +263,13 @@ export function biomeAt(layout, target) {
   return layout.biomes.find(biome => biome.id === id);
 }
 
+export function shouldEnforceArenaBoundaryCollision(worldBounds, arenaBounds) {
+  const worldWidth = Number(worldBounds?.width);
+  const arenaWidth = Number(arenaBounds?.width);
+  if (!Number.isFinite(worldWidth) || !Number.isFinite(arenaWidth) || arenaWidth <= 0) return false;
+  return worldWidth <= arenaWidth + 1;
+}
+
 function movementElevation(layout, from, position) {
   const bridge = layout.bridges.find(item => item.overpass && containsRect(item, position));
   if (bridge) return from.y >= bridge.clearance * .65 ? bridge.height : sampleTerrainElevation(layout, position);
@@ -277,21 +284,32 @@ function movementElevation(layout, from, position) {
 }
 
 export function resolveWorldMovement(layout, from, desired) {
-  const position = {
+  const clampPosition = target => ({
+    x: Math.max(layout.bounds.min + layout.playerRadius, Math.min(layout.bounds.max - layout.playerRadius, target.x)),
+    z: Math.max(layout.bounds.min + layout.playerRadius, Math.min(layout.bounds.max - layout.playerRadius, target.z)),
+  });
+  const collides = target => {
+    const onRoad = layout.roads.some(road => inLinearBand(road, target, layout.playerRadius));
+    const onRamp = layout.ramps.some(ramp => containsRect(ramp, target, layout.playerRadius));
+    const inTunnel = layout.tunnels.some(tunnel => containsRect(tunnel, target, layout.playerRadius));
+    return layout.blockers.some(blocker => {
+      if (!containsRect(blocker, target, layout.playerRadius)) return false;
+      return !(inTunnel || onRamp || (blocker.routePassable && onRoad));
+    });
+  };
+  const desiredPosition = {
     x: Math.max(layout.bounds.min + layout.playerRadius, Math.min(layout.bounds.max - layout.playerRadius, desired.x)),
     z: Math.max(layout.bounds.min + layout.playerRadius, Math.min(layout.bounds.max - layout.playerRadius, desired.z)),
   };
+  let position = desiredPosition;
   let blocked = position.x !== desired.x || position.z !== desired.z;
-  const onRoad = layout.roads.some(road => inLinearBand(road, position, layout.playerRadius));
-  const onRamp = layout.ramps.some(ramp => containsRect(ramp, position, layout.playerRadius));
-  const inTunnel = layout.tunnels.some(tunnel => containsRect(tunnel, position, layout.playerRadius));
-  for (const blocker of layout.blockers) {
-    if (!containsRect(blocker, position, layout.playerRadius)) continue;
-    if (inTunnel || onRamp || (blocker.routePassable && onRoad)) continue;
-    position.x = from.x;
-    position.z = from.z;
+  if (collides(position)) {
     blocked = true;
-    break;
+    const xOnly = clampPosition({ x: desiredPosition.x, z: from.z });
+    const zOnly = clampPosition({ x: from.x, z: desiredPosition.z });
+    if (!collides(xOnly)) position = xOnly;
+    else if (!collides(zOnly)) position = zOnly;
+    else position = clampPosition(from);
   }
   const y = movementElevation(layout, from, position);
   return {
