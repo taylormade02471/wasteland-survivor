@@ -96,10 +96,12 @@ const ASSET_CONTRACT = Object.freeze({
   kind: "procedural-three-runtime",
   importedRig: false,
   authoredGlbAvailable: true,
+  preferredTexturedRig: true,
+  preferredTexturedClips: ["Idle", "Run", "Fire"],
   runtimeAnimationDriver: "./character-animation-runtime.mjs",
   animationStates: ANIMATION_STATES,
   source: "Six bundled survivor concept images are used as art direction for original procedural and Blender-authored low-poly assets.",
-  remainingBlocker: "Generated GLB assets are browser-renderable operator meshes with named anchors and a deterministic runtime animation driver; full skinned rigs and authored clip tracks remain a later production pass.",
+  remainingBlocker: "The lower-resolution operator fallback GLBs remain static named-anchor meshes; the preferred textured character bundle now carries skinned joints and authored clips.",
 });
 
 function clone(value) {

@@ -54,8 +54,31 @@ test("character asset contract is explicit about current GLB limits", () => {
     const archetype = getCharacterArchetype(id);
     assert.equal(archetype.assetContract.authoredGlbAvailable, true);
     assert.equal(archetype.assetContract.importedRig, false);
+    assert.equal(archetype.assetContract.preferredTexturedRig, true);
+    assert.deepEqual(archetype.assetContract.preferredTexturedClips, ["Idle", "Run", "Fire"]);
     assert.equal(archetype.assetContract.runtimeAnimationDriver, "./character-animation-runtime.mjs");
     assert.deepEqual(archetype.assetContract.animationStates, ["idle", "walk", "run", "aim", "fire", "hit", "downed", "wade"]);
-    assert.match(archetype.assetContract.remainingBlocker, /skinned rigs/i);
+    assert.match(archetype.assetContract.remainingBlocker, /operator fallback/i);
+  }
+});
+
+test("preferred textured survivor GLBs contain skinned joints and authored clips", () => {
+  const files = [
+    "scout-meshy-v1.glb",
+    "ranger-meshy-v2.glb",
+    "heavy-meshy-v1.glb",
+    "tech-runner-meshy-v1.glb",
+    "field-medic-meshy-v1.glb",
+    "warden-meshy-v1.glb",
+  ];
+  for (const fileName of files) {
+    const filePath = path.join(root, "public", "assets", "nightfall", "aaa", "characters", "meshy", fileName);
+    const glb = readGlbJson(filePath);
+    assert.equal(glb.skins?.length, 1, `${fileName} has a skin`);
+    assert.deepEqual(glb.animations?.map(animation => animation.name), ["Idle", "Run", "Fire"], `${fileName} has authored clips`);
+    const attributes = glb.meshes[0].primitives[0].attributes;
+    assert.ok(attributes.JOINTS_0 != null, `${fileName} has joint weights`);
+    assert.ok(attributes.WEIGHTS_0 != null, `${fileName} has vertex weights`);
+    assert.equal(glb.nodes.filter(node => node.name?.startsWith("rig:")).length, 3, `${fileName} has three rig joints`);
   }
 });
