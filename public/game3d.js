@@ -2537,7 +2537,13 @@ function update(dt) {
   camera.position.lerp(cameraTarget, Math.min(1, dt * (frontView ? 12 : 4)));
   cameraShake = Math.max(0, cameraShake - dt * 1.8);
   if (cameraShake) camera.position.add(new THREE.Vector3((Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake));
-  if (frontView) camera.lookAt(camera.position.clone().addScaledVector(facing, 30));
+  if (frontView) {
+    const lookTarget = camera.position.clone().addScaledVector(facing, 30);
+    // Keep the authored terrain in the first-person frame instead of looking
+    // perfectly level over it, which reduced the map to an edge-on gray wall.
+    lookTarget.y = player.g.position.y + .55;
+    camera.lookAt(lookTarget);
+  }
   else camera.lookAt(player.g.position.x, 0, player.g.position.z);
 }
 
