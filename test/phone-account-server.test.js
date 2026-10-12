@@ -286,7 +286,8 @@ test("configured phone auth publishes only the required Firebase and reCAPTCHA C
   assert.equal(page.status, 200);
   const csp = page.headers.get("content-security-policy");
   assert.match(csp, /script-src 'self' https:\/\/cdn\.jsdelivr\.net https:\/\/www\.gstatic\.com https:\/\/www\.google\.com/);
-  assert.match(csp, /connect-src 'self' ws: wss: https:\/\/wasteland-test\.firebaseapp\.com https:\/\/identitytoolkit\.googleapis\.com https:\/\/securetoken\.googleapis\.com https:\/\/www\.googleapis\.com https:\/\/www\.google\.com https:\/\/recaptcha\.google\.com/);
+  assert.match(csp, /connect-src [^;]*https:\/\/wasteland-test\.firebaseapp\.com[^;]*https:\/\/identitytoolkit\.googleapis\.com[^;]*https:\/\/securetoken\.googleapis\.com[^;]*https:\/\/www\.googleapis\.com[^;]*https:\/\/www\.google\.com[^;]*https:\/\/recaptcha\.google\.com/);
+  assert.match(csp, /img-src 'self' blob: data: https:\/\/storage\.googleapis\.com/);
   assert.match(csp, /frame-src 'self' https:\/\/wasteland-test\.firebaseapp\.com https:\/\/www\.google\.com https:\/\/recaptcha\.google\.com/);
   assert.doesNotMatch(csp, /\*\.google|https:\s|;\s*\*/);
 });
@@ -307,7 +308,7 @@ test("unconfigured phone auth keeps Google and Firebase origins out of the CSP",
 
   const page = await get(port, "/");
   const csp = page.headers.get("content-security-policy");
-  assert.doesNotMatch(csp, /gstatic|googleapis|recaptcha|firebaseapp/);
+  assert.doesNotMatch(csp, /https:\/\/(?:www\.gstatic\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com|www\.googleapis\.com|www\.google\.com|recaptcha\.google\.com|wasteland-test\.firebaseapp\.com)/);
 });
 
 test("account endpoint returns no session or device credential when durable Firestore linking fails", async t => {

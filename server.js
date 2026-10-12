@@ -225,7 +225,7 @@ function contentSecurityPolicy() {
     directives.push(`script-src ${scripts.join(" ")}`);
     directives.push("style-src 'self'");
     directives.push(`connect-src ${connections.join(" ")}`);
-    directives.push("img-src 'self' data: https://storage.googleapis.com");
+    directives.push("img-src 'self' blob: data: https://storage.googleapis.com");
     directives.push("media-src 'self' blob: https://storage.googleapis.com");
     directives.push(`frame-src 'self' ${authOrigin} https://www.google.com https://recaptcha.google.com`);
     return directives.join("; ");
@@ -233,7 +233,7 @@ function contentSecurityPolicy() {
   directives.push(`script-src ${scripts.join(" ")}`);
   directives.push("style-src 'self'");
   directives.push(`connect-src ${connections.join(" ")}`);
-  directives.push("img-src 'self' data: https://storage.googleapis.com");
+  directives.push("img-src 'self' blob: data: https://storage.googleapis.com");
   directives.push("media-src 'self' blob: https://storage.googleapis.com");
   return directives.join("; ");
 }
