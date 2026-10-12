@@ -2544,7 +2544,10 @@ function update(dt) {
     const lookTarget = camera.position.clone().addScaledVector(facing, 30);
     // Keep the authored terrain in the first-person frame instead of looking
     // perfectly level over it, which reduced the map to an edge-on gray wall.
-    lookTarget.y = player.g.position.y + .55;
+    // Aim materially into the playfield.  A near-level ray left the ground
+    // edge-on at the 16:9 desktop viewport, so authored texture/detail never
+    // entered the frame even though it was present in the scene.
+    lookTarget.y = player.g.position.y - 5.5;
     camera.lookAt(lookTarget);
   }
   else camera.lookAt(player.g.position.x, 0, player.g.position.z);
