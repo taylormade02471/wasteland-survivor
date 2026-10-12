@@ -906,9 +906,11 @@ function addTerrainSurfaceDetail(mapId) {
   }[mapId] || null;
   if (!palette) return;
   const random = seededRandom(`terrain-surface-detail:${mapId}:${worldLayout.size}`);
+  const nearSpawn = [[-9, -14], [5, -18], [13, -8], [-14, -4], [8, 7], [-5, 12], [18, 4], [-19, 8]];
   for (let index = 0; index < palette.count; index += 1) {
-    const x = worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
-    const z = worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
+    const anchor = nearSpawn[index % nearSpawn.length];
+    const x = index < nearSpawn.length ? anchor[0] : worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
+    const z = index < nearSpawn.length ? anchor[1] : worldLayout.bounds.min + 12 + random() * (worldLayout.size - 24);
     const length = palette.length * (.45 + random() * .9);
     const patch = new THREE.Mesh(
       new THREE.PlaneGeometry(palette.width * (.65 + random()), length),
