@@ -54,6 +54,8 @@ test("character asset contract is explicit about current GLB limits", () => {
     const archetype = getCharacterArchetype(id);
     assert.equal(archetype.assetContract.authoredGlbAvailable, true);
     assert.equal(archetype.assetContract.importedRig, false);
+    assert.equal(archetype.assetContract.runtimeAnimationDriver, "./character-animation-runtime.mjs");
+    assert.deepEqual(archetype.assetContract.animationStates, ["idle", "walk", "run", "aim", "fire", "hit", "downed", "wade"]);
     assert.match(archetype.assetContract.remainingBlocker, /skinned rigs/i);
   }
 });

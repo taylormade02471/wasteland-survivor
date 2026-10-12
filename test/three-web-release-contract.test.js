@@ -265,6 +265,12 @@ test("the deployed shell wires authored 3D map props and a live survivor preview
   assert.doesNotMatch(pageSource, /class="title-survivor"/);
 });
 
+test("the gameplay renderer drives authored character motion states", () => {
+  assert.match(gameSource, /character-animation-runtime\.mjs/);
+  assert.match(gameSource, /updateAuthoredCharacterAnimations\(dt\)/);
+  assert.match(gameSource, /sampleCharacterAnimation\(\{ state, time:/);
+});
+
 test("the menu preview requests a compact textured authored 3D model before the large gameplay mesh", () => {
   const paths = getPreviewCharacterModelPaths("scout");
   assert.equal(paths[0], "./assets/nightfall/aaa/characters/menu/scout-meshy-v1-menu-v1.glb");

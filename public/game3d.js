@@ -42,6 +42,7 @@ import { biomeAt, createConnectedWorldLayout, createTerrainGrid, createWorldScat
 import { getWorldFieldAsset, getWorldFieldPlacements } from "./world-field-assets.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createQuestState, advanceQuestState, questView } from "./story-quests.mjs";
+import { sampleCharacterAnimation } from "./character-animation-runtime.mjs";
 import { renderQualityProfile } from "./render-quality.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
@@ -614,8 +615,42 @@ function attachAuthoredCharacter(group, avatarType) {
     while (group.children.length) group.remove(group.children[0]);
     group.add(root);
     group.userData.authoredCharacter = avatarType;
+    group.userData.animationTime = 0;
+    group.userData.animationPreviousPosition = group.position.clone();
     attachAuthoredWeapon(group, activeGun);
   }).catch(() => {});
+}
+
+function updateAuthoredCharacterAnimations(dt) {
+  const actors = [player, ...allies, ...enemies];
+  for (const actor of actors) {
+    const group = actor?.g;
+    if (!group?.userData?.authoredCharacter) continue;
+    group.userData.animationTime = (group.userData.animationTime || 0) + dt;
+    const previous = group.userData.animationPreviousPosition || group.position.clone();
+    const moved = group.position.distanceTo(previous) > .001;
+    const state = !actor.alive ? "downed" : actor === player && firing ? "fire" : moved ? "run" : actor === player && adsActive ? "aim" : "idle";
+    const pose = sampleCharacterAnimation({ state, time: group.userData.animationTime, intensity: actor.alive ? 1 : .7 });
+    const root = group.children.find(child => child.name?.startsWith("character:")) || group;
+    const named = name => root.getObjectByName?.(name) || group.getObjectByName?.(name);
+    const apply = (name, transform) => {
+      const object = named(name);
+      if (!object) return;
+      object.rotation.x = transform.rotationX || 0;
+      object.rotation.y = transform.rotationY || 0;
+      object.rotation.z = transform.rotationZ || 0;
+    };
+    apply("torso:chest", pose.torso);
+    apply("head:helmet", pose.head);
+    apply("head:hood", pose.head);
+    apply("leftArm:upper", pose.leftArm);
+    apply("rightArm:upper", pose.rightArm);
+    apply("leftLeg:boot", pose.leftLeg);
+    apply("rightLeg:boot", pose.rightLeg);
+    apply("weaponAnchor", pose.weapon);
+    previous.copy(group.position);
+    group.userData.animationPreviousPosition = previous;
+  }
 }
 
 function attachAuthoredWeapon(group, gunName) {
@@ -2482,6 +2517,7 @@ function render() {
   else if (phase === "loadout" && !$("loadoutRoomModal").classList.contains("hidden") && controllerConnected) handleLoadoutController();
   else if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
   update(dt);
+  updateAuthoredCharacterAnimations(dt);
   updateMapVisuals(dt);
   if (discoveryToastUntil && performance.now() >= discoveryToastUntil) {
     discoveryToastUntil = 0;
