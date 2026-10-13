@@ -3017,7 +3017,10 @@ function renderHud() {
   ui.stage.textContent = storyStage;
   ui.chapter.textContent = `Chapter ${campaign.chapterId}: ${campaign.chapterTitle}`;
   ui.mission.textContent = `Mission: ${campaign.missionTitle} · ${hud.mission.label.replace(/^Mission:\s*/i, "")}`;
-  ui.quest.textContent = `QUEST ${quest.value}/${quest.target} · ${quest.objective}`;
+  const requirementSummary = quest.requirements.length > 1
+    ? quest.requirements.map(requirement => `${requirement.metric} ${Math.min(requirement.target, quest.progress[requirement.metric] || 0)}/${requirement.target}`).join(" · ")
+    : `${quest.value}/${quest.target}`;
+  ui.quest.textContent = `QUEST ${requirementSummary} · ${quest.objective}`;
   const questPercent = quest.target ? Math.min(100, Math.round(quest.value / quest.target * 100)) : 0;
   ui.questProgress.setAttribute("aria-valuemax", String(quest.target));
   ui.questProgress.setAttribute("aria-valuenow", String(quest.value));

@@ -373,6 +373,8 @@ test("quest completion visibly announces the authored story and currency reward"
   assert.match(pageSource, /role="progressbar"/);
   assert.match(gameSource, /ui\.questProgress\.setAttribute\("aria-valuemax"/);
   assert.match(gameSource, /ui\.questProgress\.classList\.toggle\("is-complete", quest\.completed\)/);
+  assert.match(gameSource, /const requirementSummary = quest\.requirements\.length > 1/);
+  assert.match(gameSource, /quest\.progress\[requirement\.metric\]/);
   assert.match(pageSource, /id="questProgressFill"/);
   assert.match(gameSource, /ui\.questProgressFill\.style\.setProperty\("--hud-fill"/);
 });

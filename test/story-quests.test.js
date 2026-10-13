@@ -29,6 +29,9 @@ test("the quest chain covers every authored campaign mission", () => {
   let state = createQuestState({ currentIndex: STORY_QUESTS.length - 1 });
   const incomplete = advanceQuestState(state, { stage: 4, discoveries: 9 });
   assert.equal(incomplete.completed, false);
+  const view = questView(incomplete.state);
+  assert.deepEqual(view.progress, { survivedSeconds: 0, scrap: 0, kills: 0, stage: 4, discoveries: 9 });
+  assert.equal(view.requirements.length, 2);
   const complete = advanceQuestState(incomplete.state, { stage: 4, discoveries: 10 });
   assert.equal(complete.completed, true);
   assert.equal(complete.reward.gold, 140);

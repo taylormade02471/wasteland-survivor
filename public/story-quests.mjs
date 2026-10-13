@@ -72,6 +72,7 @@ export function questView(state = {}) {
     metric: quest.metric,
     target: quest.target,
     requirements: quest.requirements || Object.freeze([{ metric: quest.metric, target: quest.target }]),
+    progress: Object.freeze({ ...normalized.progress }),
     value: Math.min(quest.target, normalized.progress[quest.metric] || 0),
     completed: normalized.completedIds.includes(quest.id),
     reward: quest.reward,
