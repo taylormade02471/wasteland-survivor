@@ -1282,6 +1282,49 @@ function addTerrainSurfaceDetail(mapId) {
     patch.receiveShadow = true;
     world.add(patch);
   }
+  addTerrainMicroDetail(mapId, random);
+}
+
+function addTerrainMicroDetail(mapId, random = seededRandom(`terrain-microdetail:${mapId}:${worldLayout.size}`)) {
+  const profiles = {
+    inferno: { count: 46, color: 0x8e2c18, accent: 0xff632d, geometry: new THREE.IcosahedronGeometry(.34, 1), height: .65 },
+    toxic: { count: 42, color: 0x2e8c55, accent: 0x9cff69, geometry: new THREE.ConeGeometry(.24, 1.05, 5), height: .92 },
+    ice: { count: 38, color: 0x83b9cf, accent: 0xe3fbff, geometry: new THREE.ConeGeometry(.28, 1.3, 6), height: 1.08 },
+    wasteland: { count: 50, color: 0x705036, accent: 0xb88b5c, geometry: new THREE.DodecahedronGeometry(.34, 0), height: .55 },
+  }[mapId];
+  if (!profiles) return;
+  const qualityMultiplier = renderQuality.pass >= 5 ? 1.45 : renderQuality.pass >= 3 ? 1.2 : 1;
+  const count = Math.round(profiles.count * qualityMultiplier);
+  const detailMaterial = new THREE.MeshStandardMaterial({
+    color: profiles.color,
+    emissive: profiles.accent,
+    emissiveIntensity: mapId === "inferno" ? .28 : mapId === "toxic" ? .14 : .06,
+    roughness: .76,
+    metalness: mapId === "ice" ? .12 : .02,
+  });
+  const detail = new THREE.InstancedMesh(profiles.geometry, detailMaterial, count);
+  detail.name = `terrain-microdetail:${mapId}`;
+  detail.userData.renderLayer = "authored-biome-microdetail";
+  detail.userData.collision = false;
+  const transform = new THREE.Object3D();
+  const tint = new THREE.Color();
+  for (let index = 0; index < count; index += 1) {
+    const x = worldLayout.bounds.min + 9 + random() * (worldLayout.size - 18);
+    const z = worldLayout.bounds.min + 9 + random() * (worldLayout.size - 18);
+    const scale = .55 + random() * .8;
+    transform.position.set(x, sampleWorldElevation(worldLayout, { x, z }) + profiles.height * scale * .5, z);
+    transform.rotation.set((random() - .5) * .25, random() * Math.PI * 2, (random() - .5) * .25);
+    transform.scale.set(scale, scale * (.8 + random() * .55), scale);
+    transform.updateMatrix();
+    detail.setMatrixAt(index, transform.matrix);
+    tint.setHex(profiles.color).offsetHSL((random() - .5) * .035, (random() - .5) * .12, (random() - .5) * .12);
+    detail.setColorAt(index, tint);
+  }
+  detail.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  if (detail.instanceColor) detail.instanceColor.setUsage(THREE.StaticDrawUsage);
+  detail.castShadow = effectiveGraphicsTier() === "high";
+  detail.receiveShadow = true;
+  world.add(detail);
 }
 
 function addRoadMarkings(segment) {

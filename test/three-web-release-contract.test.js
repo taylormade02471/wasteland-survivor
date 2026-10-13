@@ -325,6 +325,10 @@ test("terrain texture loading keeps the external media route and restores the bu
 
 test("terrain surfaces add authored biome detail when texture sampling is unavailable", () => {
   assert.match(gameSource, /function addTerrainSurfaceDetail\(mapId\)/);
+  assert.match(gameSource, /function addTerrainMicroDetail\(mapId/);
+  assert.match(gameSource, /terrain-microdetail:\$\{mapId\}/);
+  assert.match(gameSource, /userData\.collision = false/);
+  assert.match(gameSource, /addTerrainMicroDetail\(mapId, random\)/);
   assert.match(gameSource, /terrain-detail:\$\{mapId\}/);
   assert.match(gameSource, /addTerrainSurfaceDetail\(mapKey\)/);
   assert.match(gameSource, /function addSpatialBiomeAccents\(\)/);
