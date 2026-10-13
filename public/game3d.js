@@ -50,6 +50,7 @@ import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } f
 import { buildFireVfxProfile, fireVfxFrame } from "./fire-vfx.mjs";
 import { currencyPickupFrame, currencyPickupProfile } from "./currency-pickup-vfx.mjs";
 import { summarizeWorldAssetStates } from "./world-asset-audit.mjs";
+import { summarizeRenderCoverage } from "./render-audit.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { createLiveCharacterPreview, getPreferredCharacterModelPaths, loadFirstAvailableModel } from "./live-character-preview.mjs";
 import {
@@ -294,6 +295,7 @@ let graceUntil = 0;
 let frontView = true;
 let ground, player, ally;
 let activeTerrainTexture = null;
+let terrainTextureState = "pending";
 let mapVisuals = null;
 let armorySurfaceMaps = null;
 let activeQuestBeaconId = null;
@@ -669,7 +671,22 @@ function attachAuthoredCharacter(group, avatarType) {
     group.userData.animationTime = 0;
     group.userData.animationPreviousPosition = group.position.clone();
     attachAuthoredWeapon(group, activeGun);
+    publishRenderAudit();
   }).catch(() => {});
+}
+
+function publishRenderAudit() {
+  const summary = summarizeRenderCoverage({
+    characterCount: [player, ...allies].filter(actor => actor?.g?.userData?.authoredCharacter).length,
+    enemyCount: enemies.filter(actor => actor?.g?.userData?.authoredEnemy).length,
+    weaponCount: player?.g?.userData?.authoredWeapon ? 1 : 0,
+    terrainState: terrainTextureState,
+  });
+  canvas.dataset.authoredCharacterCount = String(summary.characters);
+  canvas.dataset.authoredEnemyCount = String(summary.enemies);
+  canvas.dataset.authoredWeaponCount = String(summary.weapons);
+  canvas.dataset.terrainTextureState = summary.terrain;
+  canvas.dataset.renderAuditComplete = String(summary.complete);
 }
 
 function updateAuthoredCharacterAnimations(dt) {
@@ -765,6 +782,7 @@ function attachAuthoredWeapon(group, gunName) {
     root.rotation.y = Math.PI;
     group.add(root);
     group.userData.authoredWeapon = gunName;
+    publishRenderAudit();
   }).catch(() => {});
 }
 
@@ -780,6 +798,7 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
     while (group.children.length) group.remove(group.children[0]);
     group.add(root);
     group.userData.authoredEnemy = enemyType;
+    publishRenderAudit();
   }).catch(() => {});
 }
 
@@ -1024,18 +1043,26 @@ function loadTerrainTexture(path) {
     loaded.repeat.set(renderQuality.textureRepeat || 1, renderQuality.textureRepeat || 1);
     loaded.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy || 1);
     activeTerrainTexture = loaded;
+    terrainTextureState = "authored";
     if (ground?.material) {
       ground.material.map = loaded;
       ground.material.bumpMap = loaded;
       ground.material.needsUpdate = true;
     }
+    publishRenderAudit();
   };
   const procedural = createProceduralTerrainTexture(path);
   const texture = procedural;
   activeTerrainTexture = texture;
+  terrainTextureState = "procedural";
+  publishRenderAudit();
   const bundledPath = fallbackPath || path;
   const loadPath = source => loader.load(source, loaded => applyLoadedTexture(loaded), undefined, () => {
-    if (source === bundledPath) activeTerrainTexture = procedural;
+    if (source === bundledPath) {
+      activeTerrainTexture = procedural;
+      if (terrainTextureState !== "authored") terrainTextureState = "procedural-fallback";
+      publishRenderAudit();
+    }
   });
   // The bundled authored texture is the deterministic first render. The
   // configured cloud object can replace it later when it is reachable.
