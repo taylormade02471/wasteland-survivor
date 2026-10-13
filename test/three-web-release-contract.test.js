@@ -545,6 +545,13 @@ test("world showcases isolate the requested authored placements from procedural 
   assert.match(gameSource, /canvas\.dataset\.worldShowcaseIsolated = "true";/);
 });
 
+test("world showcases bypass gameplay simulation while keeping the authored camera frame active", () => {
+  assert.match(gameSource, /function frameWorldShowcase\(dt\) \{/);
+  assert.match(gameSource, /if \(renderFocus === "world"\) \{\s*frameWorldShowcase\(dt\);\s*return;\s*\}/);
+  assert.match(gameSource, /applyWorldShowcaseVisibility\(showcase\);/);
+  assert.match(gameSource, /timer: renderFocus === "world" \? "RENDER" : phase === "loadout" \? "WAITING" : formatTime\(timer\),/);
+});
+
 test("world fallbacks preserve readable car, structure, and prop silhouettes", () => {
   assert.match(gameSource, /id\.includes\("car"\) \|\| id\.includes\("bus"\)/);
   assert.match(gameSource, /id\.includes\("building"\) \|\| id\.includes\("outpost"\)/);

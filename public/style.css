@@ -1335,3 +1335,88 @@ body:has(#lobbyScreen:not(.hidden)) #lobbyScreen { background: transparent; }
   .lobby-edge-action { min-height: 38px; padding: 5px; font-size: 8px; }
   .lobby-game-options { order: 4; max-height: 176px; overflow: auto; border-radius: 8px; }
 }
+
+/* Profile-first signed-in lobby: the edge Loadout control remains available, so
+   the large duplicate avatar square does not need to crowd the player readout. */
+#lobbyScreen .lobby-avatar-button { display: none; }
+
+@media (min-width: 761px) and (min-height: 521px) {
+  #lobbyScreen .lobby-survivor-hero {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: start;
+  }
+
+  #lobbyScreen .lobby-profile-readout { align-self: start; }
+}
+
+@media (max-width: 760px) {
+  #lobbyScreen .lobby-survivor-hero {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 0;
+  }
+}
+
+/* Short-landscape profile-first lobby ordering. */
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 960px) {
+  #lobbyScreen {
+    grid-template-columns: minmax(270px, 1fr) minmax(0, 1.1fr);
+    grid-template-rows: auto 64px minmax(166px, auto) auto;
+    grid-template-areas:
+      "back title"
+      "modes modes"
+      "profile actions"
+      "profile options";
+    align-content: start;
+    column-gap: 8px;
+    row-gap: 8px;
+  }
+
+  #lobbyBackBtn {
+    grid-area: back;
+    justify-self: start;
+  }
+
+  .lobby-title-plate {
+    grid-area: title;
+    width: 100%;
+    margin: 0;
+  }
+
+  #lobbyNavigation {
+    display: contents;
+    order: initial;
+  }
+
+  #fightCommands {
+    grid-area: modes;
+    grid-column: auto;
+    order: 2;
+    width: 100%;
+  }
+
+  #lobbyScreen .lobby-survivor-hero {
+    grid-area: profile;
+    order: 3;
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 0;
+    width: 100%;
+    align-self: start;
+  }
+
+  .lobby-edge-controls {
+    grid-area: actions;
+    order: 4;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    align-self: start;
+  }
+
+  .lobby-game-options {
+    grid-area: options;
+    order: 5;
+    width: 100%;
+    align-self: start;
+  }
+}

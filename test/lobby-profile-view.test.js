@@ -183,7 +183,7 @@ test("renders exactly three equal-weight primary fight commands with exact label
   const buttons = [...fightCommands.matchAll(/<button id="([^"]+)"[^>]*class="[^"]*lobby-fight-command[^"]*"[^>]*>[\s\S]*?<b>([^<]+)<\/b>[\s\S]*?<\/button>/g)];
 
   assert.deepEqual(buttons.map(match => [match[1], match[2]]), [
-    ["survivalLobbyBtn", "Survival Mode"],
+    ["survivalLobbyBtn", "Solo Practice"],
     ["teamLobbyBtn", "Multiplayer"],
     ["ctf6LobbyBtn", "Capture the Flag"],
   ]);
@@ -253,4 +253,22 @@ test("phone lobby places the primary fight choices before the survivor strip", (
   assert.match(css, /#fightCommands\s*\{\s*order:\s*1/);
   assert.doesNotMatch(css, /@media \(min-width:\s*681px\) and \(min-height:\s*521px\)/);
   assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*#lobbyScreen/);
+});
+
+test("short landscape keeps the profile ahead of secondary lobby controls", () => {
+  const marker = "/* Short-landscape profile-first lobby ordering. */";
+  const start = css.indexOf(marker);
+  const shortLandscape = start >= 0 ? css.slice(start) : "";
+
+  assert.notEqual(start, -1, "short-landscape profile ordering block is present");
+  assert.match(shortLandscape, /#lobbyNavigation\s*\{[^}]*display:\s*contents/s);
+  assert.match(shortLandscape, /#lobbyScreen\s*\{[^}]*grid-template-areas:\s*"back title"\s*"modes modes"\s*"profile actions"\s*"profile options"/s);
+  assert.match(shortLandscape, /#fightCommands\s*\{[^}]*order:\s*2/s);
+  assert.match(shortLandscape, /#fightCommands\s*\{[^}]*grid-area:\s*modes/s);
+  assert.match(shortLandscape, /\.lobby-survivor-hero\s*\{[^}]*order:\s*3/s);
+  assert.match(shortLandscape, /\.lobby-survivor-hero\s*\{[^}]*grid-area:\s*profile/s);
+  assert.match(shortLandscape, /\.lobby-edge-controls\s*\{[^}]*order:\s*4/s);
+  assert.match(shortLandscape, /\.lobby-edge-controls\s*\{[^}]*grid-area:\s*actions/s);
+  assert.match(shortLandscape, /\.lobby-game-options\s*\{[^}]*order:\s*5/s);
+  assert.match(shortLandscape, /\.lobby-game-options\s*\{[^}]*grid-area:\s*options/s);
 });

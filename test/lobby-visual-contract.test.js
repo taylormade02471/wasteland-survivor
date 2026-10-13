@@ -35,9 +35,19 @@ test("lobby visual shell preserves existing action hooks and primary modes", () 
   assert.match(html, /id="survivalLobbyBtn"[^>]*data-lobby-control/);
   assert.match(html, /id="teamLobbyBtn"[^>]*data-lobby-control/);
   assert.match(html, /id="ctf6LobbyBtn"[^>]*data-lobby-control/);
-  assert.match(html, />Survival(?: Mode)?</);
+  assert.match(html, />Solo Practice</);
   assert.match(html, />Multiplayer</);
   assert.match(html, />Capture the Flag</);
+});
+
+test("signed-in lobby removes the redundant avatar square and prioritizes profile plus solo and multiplayer", () => {
+  assert.match(html, /id="lobbyAvatarButton"/);
+  assert.match(html, /id="lobbyProfileReadout"/);
+  assert.match(html, /id="survivalLobbyBtn"[\s\S]*?<b>Solo Practice<\/b>/);
+  assert.match(html, /id="teamLobbyBtn"[\s\S]*?<b>Multiplayer<\/b>/);
+  assert.match(css, /#lobbyScreen\s+\.lobby-avatar-button\s*\{[^}]*display:\s*none/s);
+  assert.match(css, /@media \(min-width:\s*761px\) and \(min-height:\s*521px\)\s*\{[\s\S]*?#lobbyScreen\s+\.lobby-survivor-hero\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /@media \(max-width:\s*760px\)\s*\{[\s\S]*?#lobbyScreen\s+\.lobby-survivor-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
 });
 
 test("lobby CSS implements slim combined rails and avoids blocky card layout", () => {

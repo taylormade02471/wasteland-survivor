@@ -196,6 +196,18 @@ function applyWorldShowcaseVisibility(showcase) {
   });
   canvas.dataset.worldShowcaseIsolated = "true";
 }
+
+function frameWorldShowcase(dt) {
+  const showcase = currentWorldShowcase();
+  // Reapply the filter every frame so a late asynchronous GLB replacement or
+  // accidental gameplay object cannot leak into this render-only view.
+  applyWorldShowcaseVisibility(showcase);
+  player.g.visible = false;
+  const [cameraX, cameraY, cameraZ] = showcase.camera;
+  const [targetX, targetY, targetZ] = showcase.target;
+  camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), Math.min(1, dt * 8));
+  camera.lookAt(targetX, targetY, targetZ);
+}
 const QUEST_METRIC_LABELS = Object.freeze({ survivedSeconds: "SURVIVAL", scrap: "SCRAP", kills: "RAIDERS", stage: "STAGE", discoveries: "LANDMARKS" });
 
 function updateAvatarCards(value = profileAvatar.value) {
@@ -3540,6 +3552,10 @@ function update(dt) {
     return;
   }
   if (phase === "loadout") return;
+  if (renderFocus === "world") {
+    frameWorldShowcase(dt);
+    return;
+  }
   const sampledController = pollController();
   const inputPaused = localGameplayInputPaused();
   const controller = inputPaused ? neutralControllerInput() : sampledController;
@@ -3757,15 +3773,6 @@ function update(dt) {
     camera.lookAt(0, 5.6, 0);
     return;
   }
-  if (renderFocus === "world") {
-    player.g.visible = false;
-    const showcase = currentWorldShowcase();
-    const [cameraX, cameraY, cameraZ] = showcase.camera;
-    const [targetX, targetY, targetZ] = showcase.target;
-    camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), Math.min(1, dt * 8));
-    camera.lookAt(targetX, targetY, targetZ);
-    return;
-  }
   player.g.visible = !frontView && player.alive;
   // Keep the aim camera just above and ahead of the survivor so the head never
   // sits between the reticle and the world while running and firing.
@@ -3814,7 +3821,7 @@ function renderHud() {
     teamHealthMax,
     mission: `Mission: ${objective}`,
     round: wave,
-    timer: phase === "loadout" ? "WAITING" : formatTime(timer),
+    timer: renderFocus === "world" ? "RENDER" : phase === "loadout" ? "WAITING" : formatTime(timer),
     objective,
     score: { blue: mode === "ctf" ? Math.floor(blue) : blue, red: mode === "ctf" ? Math.floor(red) : red },
   });
