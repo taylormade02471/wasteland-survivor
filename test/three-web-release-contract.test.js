@@ -461,6 +461,10 @@ test("the gameplay renderer exposes a large ranged spider enemy", () => {
 });
 
 test("weapon firing exposes rendered muzzle and tracer feedback", () => {
+  assert.match(gameSource, /function weaponMuzzleOrigin\(actor, direction\)/);
+  assert.match(gameSource, /const authoredWeapon = actor\.g\.getObjectByName\?\.\("authored-weapon"\)/);
+  assert.match(gameSource, /const bounds = new THREE\.Box3\(\)\.setFromObject\(authoredWeapon\)/);
+  assert.match(gameSource, /projectile\.position\.copy\(weaponMuzzleOrigin\(actor, shotDirection\)\)/);
   assert.match(gameSource, /function weaponMuzzleFlash\(actor, direction, color\)/);
   assert.match(gameSource, /flash\.name = "weapon-muzzle-flash"/);
   assert.match(gameSource, /tracer\.name = "weapon-tracer-flash"/);

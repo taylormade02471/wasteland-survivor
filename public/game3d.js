@@ -2357,8 +2357,19 @@ function weaponProfile() {
   };
 }
 
+function weaponMuzzleOrigin(actor, direction) {
+  const fallback = actor.g.position.clone().add(new THREE.Vector3(0, 1, 0)).addScaledVector(direction, .72);
+  const authoredWeapon = actor.g.getObjectByName?.("authored-weapon");
+  if (!authoredWeapon) return fallback;
+  const bounds = new THREE.Box3().setFromObject(authoredWeapon);
+  if (bounds.isEmpty()) return fallback;
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  return center.addScaledVector(direction, Math.max(.22, Math.max(size.x, size.z) * .52));
+}
+
 function weaponMuzzleFlash(actor, direction, color) {
-  const origin = actor.g.position.clone().add(new THREE.Vector3(0, 1, 0)).addScaledVector(direction, .72);
+  const origin = weaponMuzzleOrigin(actor, direction);
   const flash = new THREE.Mesh(
     new THREE.SphereGeometry(.16, 6, 5),
     material(color, 1),
@@ -2420,7 +2431,7 @@ function fire(actor, target, profile = null) {
       projectile.name = "acid-web-projectile";
       actor.g.userData.attackPulseMs = 180;
     }
-    projectile.position.copy(actor.g.position).add(new THREE.Vector3(0, 1, .2));
+    projectile.position.copy(weaponMuzzleOrigin(actor, shotDirection));
     world.add(projectile);
     projectile.scale.set(1, 1, 2.4);
     if (index === 0) weaponMuzzleFlash(actor, shotDirection, projectileColor);
