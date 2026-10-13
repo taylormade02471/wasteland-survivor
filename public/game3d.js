@@ -248,6 +248,16 @@ const AUTHORED_ENEMY_MODELS = Object.freeze({
   boss: "./assets/nightfall/aaa/enemies/meshy/boss-commander-meshy-v1.glb",
 });
 
+// The direct gameplay audit runs alongside terrain and world-field downloads.
+// Use compact textured authored meshes there so one large enemy GLB cannot
+// leave the audit in an indeterminate loading state; normal gameplay still
+// requests the full enemy-specific mesh first.
+const AUDIT_ENEMY_MODELS = Object.freeze({
+  rusher: "./assets/nightfall/aaa/characters/menu/scout-meshy-v1-menu-v1.glb",
+  shooter: "./assets/nightfall/aaa/characters/menu/ranger-meshy-v2-menu-v1.glb",
+  boss: "./assets/nightfall/aaa/characters/menu/heavy-meshy-v1-menu-v1.glb",
+});
+
 const AUTHORED_WEAPON_MODELS = Object.freeze({
   scout: "./assets/nightfall/aaa/weapons/meshy/scout-meshy-v1.glb",
   cannon: "./assets/nightfall/aaa/weapons/meshy/cannon-meshy-v1.glb",
@@ -817,7 +827,10 @@ function attachAuthoredWeapon(group, gunName) {
 function attachAuthoredEnemy(group, enemyType, assetPath) {
   if (!assetPath) return;
   if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadState = "loading";
-  loadCuratedGlb([assetPath]).then(asset => {
+  const paths = renderFocus === "gameplay"
+    ? [AUDIT_ENEMY_MODELS[enemyType], assetPath].filter(Boolean)
+    : [assetPath, AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean);
+  loadCuratedGlb(paths).then(asset => {
     if (!group.parent) return;
     const root = cloneAuthoredRoot(asset?.scene);
     if (!root) {
@@ -1041,6 +1054,7 @@ function unit(color, x, z, avatarType = "scout", useAuthoredModel = false, autho
   if (authoredEnemy?.type === "spider") {
     while (group.children.length) group.remove(group.children[0]);
     createSpiderVisual(group);
+    group.userData.authoredEnemy = "spider";
   } else if (authoredEnemy) attachAuthoredEnemy(group, authoredEnemy.type, authoredEnemy.path);
   return { g: group, hp: 100, maxHp: 100, shield: 0, shieldMax: 0, cooldown: 0, alive: true, orbitAngle: Math.random() * Math.PI * 2, orbitDirection: Math.random() > .5 ? 1 : -1 };
 }
