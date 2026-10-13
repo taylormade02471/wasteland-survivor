@@ -233,8 +233,8 @@ function fitAuthoredWorldRoot(root, maxDimension) {
   return root;
 }
 
-function loadCuratedGlb(paths) {
-  return loadFirstAvailableModel({ loader: curatedGlbLoader, paths, cache: curatedGlbCache, preferBundled: true });
+function loadCuratedGlb(paths, options = {}) {
+  return loadFirstAvailableModel({ loader: curatedGlbLoader, paths, cache: curatedGlbCache, preferBundled: true, ...options });
 }
 
 const AUTHORED_ENEMY_MODELS = Object.freeze({
@@ -830,11 +830,15 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
   const paths = renderFocus === "gameplay"
     ? [AUDIT_ENEMY_MODELS[enemyType], assetPath].filter(Boolean)
     : [assetPath, AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean);
-  loadCuratedGlb(paths).then(asset => {
+  loadCuratedGlb(paths, renderFocus === "gameplay" ? { timeoutMs: 4500 } : {}).then(asset => {
     if (!group.parent) return;
     const root = cloneAuthoredRoot(asset?.scene);
     if (!root) {
-      if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadError = enemyType;
+      if (renderFocus === "gameplay") {
+        canvas.dataset.authoredEnemyLoadError = enemyType;
+        canvas.dataset.authoredEnemyLoadState = "proxy";
+        addGameplayAuditEnemyProxy(group, enemyType);
+      }
       return;
     }
     installAuthoredAnimationSet(root, asset);
@@ -848,6 +852,19 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
   }).catch(() => {
     if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadError = enemyType;
   });
+}
+
+function addGameplayAuditEnemyProxy(group, enemyType) {
+  if (group.userData.auditProxy) return;
+  const colors = { rusher: 0xff5b55, shooter: 0xff8b45, boss: 0xffcf40 };
+  const accent = material(colors[enemyType] || 0x8cff4d, .4);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, .08, 8, 24), accent);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = .08;
+  const beacon = new THREE.Mesh(new THREE.OctahedronGeometry(.22, 1), accent);
+  beacon.position.y = 2.7;
+  group.add(ring, beacon);
+  group.userData.auditProxy = true;
 }
 
 function addRenderAuditRoster() {
