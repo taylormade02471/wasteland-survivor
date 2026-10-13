@@ -6,10 +6,12 @@ test("story quests advance in order and award separate gold and silver", () => {
   let state = createQuestState();
   const first = advanceQuestState(state, { survivedSeconds: 60 });
   assert.equal(first.completed, true);
+  assert.equal(first.quest.missionId, "c1-m1");
   assert.ok(first.reward.gold > 0);
   assert.ok(first.reward.silver > first.reward.gold);
   state = first.state;
   assert.equal(questView(state).id, STORY_QUESTS[1].id);
+  assert.equal(questView(state).missionId, "c1-m2");
   const second = advanceQuestState(state, { scrap: 60 });
   assert.equal(second.completed, true);
   assert.equal(second.state.completedIds.length, 2);

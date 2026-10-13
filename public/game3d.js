@@ -3541,7 +3541,7 @@ function saveProfile(profile = activeProfile) {
 
 function saveProgress() {
   if (!activeProfile || activeProfile.youthAccount) return;
-  activeProfile.progress = { wave, score, kills, scrap, gold, silver, survivalSeconds, questState, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, classProgress, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
+  activeProfile.progress = { wave, score, kills, scrap, gold, silver, survivalSeconds, questState, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, completedMissions: Array.isArray(activeProfile.progress?.completedMissions) ? activeProfile.progress.completedMissions : [], classProgress, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
   saveProfile();
 }
 
@@ -3589,6 +3589,18 @@ function updateStoryProgress() {
     silver += questResult.reward.silver;
     totalXp += questResult.reward.xp;
     playerLevel = Math.max(1, levelFromXp(totalXp));
+    // A completed field quest is also a completed authored campaign mission.
+    // Keep the chapter timeline and the quest tracker on the same durable
+    // progression path instead of advancing only the transient HUD text.
+    const completedMissionId = questResult.quest.missionId;
+    if (completedMissionId && activeProfile) {
+      activeProfile.progress = activeProfile.progress || {};
+      const priorMissions = Array.isArray(activeProfile.progress.completedMissions)
+        ? activeProfile.progress.completedMissions
+        : [];
+      activeProfile.progress.completedMissions = [...new Set([...priorMissions, completedMissionId])];
+      missionIndex = Math.min(1, missionIndex + 1);
+    }
     document.dispatchEvent(new CustomEvent("wasteland:quest-complete", { detail: { quest: questResult.quest, reward: questResult.reward } }));
   }
 }

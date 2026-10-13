@@ -3,11 +3,11 @@
 // making the controls or network layer responsible for progression.
 
 export const STORY_QUESTS = Object.freeze([
-  Object.freeze({ id: "first-watch", title: "First Watch", objective: "Survive the cycle", metric: "survivedSeconds", target: 60, reward: Object.freeze({ gold: 18, silver: 42, xp: 120 }) }),
-  Object.freeze({ id: "scrap-run", title: "Scrap Run", objective: "Collect 60 scrap", metric: "scrap", target: 60, reward: Object.freeze({ gold: 22, silver: 65, xp: 150 }) }),
-  Object.freeze({ id: "raider-breaker", title: "Raider Breaker", objective: "Defeat 10 raiders", metric: "kills", target: 10, reward: Object.freeze({ gold: 30, silver: 80, xp: 200 }) }),
-  Object.freeze({ id: "frontier-reach", title: "Frontier Reach", objective: "Reach stage 3", metric: "stage", target: 3, reward: Object.freeze({ gold: 42, silver: 110, xp: 300 }) }),
-  Object.freeze({ id: "defend-the-frontier", title: "Defend the Frontier", objective: "Discover 4 landmarks", metric: "discoveries", target: 4, reward: Object.freeze({ gold: 60, silver: 160, xp: 450 }) }),
+  Object.freeze({ id: "first-watch", missionId: "c1-m1", title: "First Watch", objective: "Survive the cycle", metric: "survivedSeconds", target: 60, reward: Object.freeze({ gold: 18, silver: 42, xp: 120 }) }),
+  Object.freeze({ id: "scrap-run", missionId: "c1-m2", title: "Scrap Run", objective: "Collect 60 scrap", metric: "scrap", target: 60, reward: Object.freeze({ gold: 22, silver: 65, xp: 150 }) }),
+  Object.freeze({ id: "raider-breaker", missionId: "c2-m1", title: "Raider Breaker", objective: "Defeat 10 raiders", metric: "kills", target: 10, reward: Object.freeze({ gold: 30, silver: 80, xp: 200 }) }),
+  Object.freeze({ id: "frontier-reach", missionId: "c2-m2", title: "Frontier Reach", objective: "Reach stage 3", metric: "stage", target: 3, reward: Object.freeze({ gold: 42, silver: 110, xp: 300 }) }),
+  Object.freeze({ id: "defend-the-frontier", missionId: "c3-m1", title: "Defend the Frontier", objective: "Discover 4 landmarks", metric: "discoveries", target: 4, reward: Object.freeze({ gold: 60, silver: 160, xp: 450 }) }),
 ]);
 
 const whole = value => Math.max(0, Math.floor(Number(value) || 0));
@@ -60,6 +60,7 @@ export function questView(state = {}) {
   const quest = currentQuest(normalized);
   return Object.freeze({
     id: quest.id,
+    missionId: quest.missionId,
     title: quest.title,
     objective: quest.objective,
     metric: quest.metric,
