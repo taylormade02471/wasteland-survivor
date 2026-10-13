@@ -3,10 +3,10 @@ const test = require("node:test");
 
 const modulePath = new URL("../public/graphics-config.mjs", `file://${__filename.replace(/\\/g, "/")}`);
 
-test("selects low graphics for reduced motion or low-memory devices", async () => {
+test("keeps capable authored graphics quality when motion is reduced", async () => {
   const { selectGraphicsTier } = await import(modulePath);
 
-  assert.equal(selectGraphicsTier({ reducedMotion: true, deviceMemory: 16, hardwareConcurrency: 16 }), "low");
+  assert.equal(selectGraphicsTier({ reducedMotion: true, deviceMemory: 16, hardwareConcurrency: 16 }), "high");
   assert.equal(selectGraphicsTier({ reducedMotion: false, deviceMemory: 2, hardwareConcurrency: 8 }), "low");
 });
 

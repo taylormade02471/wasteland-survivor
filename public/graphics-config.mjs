@@ -7,8 +7,9 @@ export function selectGraphicsTier({
   savedTier
 } = {}) {
   if (GRAPHICS_TIERS.has(savedTier)) return savedTier;
-  if (reducedMotion) return "low";
-
+  // Reduced motion disables animation in the presentation layer; it should
+  // not discard authored meshes or textures on capable hardware.
+  void reducedMotion;
   const memory = Number(deviceMemory);
   const cores = Number(hardwareConcurrency);
   if ((Number.isFinite(memory) && memory <= 2) || (Number.isFinite(cores) && cores <= 2)) return "low";
