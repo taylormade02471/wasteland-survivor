@@ -6039,6 +6039,6 @@ $("matchCountdown").classList.add("hidden");
 if (!directRenderFocus) showProfileChoice();
 initializeNightfallBackground().then(() => {
   if (!directRenderFocus) setMenuSection("home");
-  initializeMenuBackdrop();
+  if (!directRenderFocus) initializeMenuBackdrop();
 });
 render();
