@@ -818,7 +818,6 @@ function createTerrainMesh(texture) {
     side: THREE.DoubleSide,
   }));
   mesh.receiveShadow = true;
-  mesh.receiveShadow = true;
   return mesh;
 }
 
