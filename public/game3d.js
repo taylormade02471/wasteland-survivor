@@ -855,6 +855,61 @@ function createProceduralTerrainTexture(path) {
   return texture;
 }
 
+const biomeSkyTextures = new Map();
+
+function createBiomeSkyTexture(mapId = "wasteland") {
+  const key = String(mapId || "wasteland");
+  if (biomeSkyTextures.has(key)) return biomeSkyTextures.get(key);
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  const context = canvas.getContext("2d");
+  const palettes = {
+    wasteland: ["#0b1017", "#4b3b32", "#c27e4a"],
+    toxic: ["#071713", "#1c4937", "#77b75e"],
+    ice: ["#102333", "#638fa8", "#d9f2ff"],
+    inferno: ["#150b13", "#4d1b1e", "#e35b2d"],
+  };
+  const [top, middle, horizon] = palettes[key] || palettes.wasteland;
+  const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(.58, middle);
+  gradient.addColorStop(1, horizon);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const haze = context.createRadialGradient(canvas.width * .5, canvas.height * .72, 4, canvas.width * .5, canvas.height * .72, canvas.width * .48);
+  haze.addColorStop(0, "rgba(255,236,180,.30)");
+  haze.addColorStop(1, "rgba(255,236,180,0)");
+  context.fillStyle = haze;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  if (key === "ice") {
+    context.strokeStyle = "rgba(220,246,255,.24)";
+    context.lineWidth = 2;
+    for (let index = 0; index < 14; index += 1) {
+      const x = (index + 1) * 34;
+      context.beginPath();
+      context.moveTo(x, 24 + (index % 3) * 18);
+      context.lineTo(x + 16, 72 + (index % 4) * 22);
+      context.stroke();
+    }
+  } else if (key === "inferno") {
+    context.fillStyle = "rgba(255,123,49,.18)";
+    context.beginPath();
+    context.arc(canvas.width * .72, canvas.height * .48, 42, 0, Math.PI * 2);
+    context.fill();
+  } else {
+    context.fillStyle = "rgba(255,241,193,.42)";
+    context.beginPath();
+    context.arc(canvas.width * .74, canvas.height * .44, key === "toxic" ? 24 : 30, 0, Math.PI * 2);
+    context.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  biomeSkyTextures.set(key, texture);
+  return texture;
+}
+
 function loadTerrainTexture(path) {
   const fallbackPath = String(path || "").replace(/^https?:\/\/[^/]+\//, "").replace(/^.*?assets\//, "assets/");
   const loader = new THREE.TextureLoader();
@@ -1678,7 +1733,7 @@ function resetMap() {
   effects = [];
   flags = [];
   const cfg = MAPS[mapKey];
-  scene.background = new THREE.Color(cfg.fog);
+  scene.background = createBiomeSkyTexture(mapKey);
   const texture = loadTerrainTexture(runtimeAssetPath(cfg.texture));
   renderQuality = renderQualityProfile(effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1);
   // Keep the authored terrain readable in first-person combat. The previous

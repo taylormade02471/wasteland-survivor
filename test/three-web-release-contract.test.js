@@ -301,6 +301,16 @@ test("terrain surfaces add authored biome detail when texture sampling is unavai
   assert.match(gameSource, /mesh\.receiveShadow = true/);
 });
 
+test("each gameplay map receives a deterministic authored atmosphere", () => {
+  assert.match(gameSource, /const biomeSkyTextures = new Map\(\)/);
+  assert.match(gameSource, /function createBiomeSkyTexture\(mapId = "wasteland"\)/);
+  assert.match(gameSource, /wasteland: \["#0b1017", "#4b3b32", "#c27e4a"\]/);
+  assert.match(gameSource, /toxic: \["#071713", "#1c4937", "#77b75e"\]/);
+  assert.match(gameSource, /ice: \["#102333", "#638fa8", "#d9f2ff"\]/);
+  assert.match(gameSource, /inferno: \["#150b13", "#4d1b1e", "#e35b2d"\]/);
+  assert.match(gameSource, /scene\.background = createBiomeSkyTexture\(mapKey\)/);
+});
+
 test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /character-animation-runtime\.mjs/);
   assert.match(gameSource, /updateAuthoredCharacterAnimations\(dt\)/);
