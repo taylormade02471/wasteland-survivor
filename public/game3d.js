@@ -895,7 +895,7 @@ function addTerrainGallery() {
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .84, metalness: .04 }),
     );
     panel.name = `terrain-gallery-panel:${id}`;
-    panel.position.set(positions[index][0], positions[index][1], -.18);
+    panel.position.set(positions[index][0], positions[index][1], .18);
     loader.load(runtimeAssetPath(MAPS[id].texture), texture => {
       texture.colorSpace = THREE.SRGBColorSpace;
       panel.material.map = texture;
