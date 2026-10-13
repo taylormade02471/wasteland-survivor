@@ -43,6 +43,7 @@ import { getWorldFieldAsset, getWorldFieldPlacements } from "./world-field-asset
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createQuestState, advanceQuestState, questView } from "./story-quests.mjs";
 import { sampleCharacterAnimation } from "./character-animation-runtime.mjs";
+import { advanceWeaponPresentation, beginWeaponReload, createWeaponPresentationState, sampleWeaponPresentationFrame, triggerWeaponShot } from "./weapon-presentation.mjs";
 import { renderQualityProfile } from "./render-quality.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
@@ -259,6 +260,7 @@ let allies = [], enemies = [], bullets = [], hazards = [], flags = [], effects =
 let cameraShake = 0;
 let score = 0, kills = 0, scrap = 0, gold = 0, silver = 0, wave = 1, blue = 0, red = 0, shieldLevel = 0;
 let playerLevel = 1, storyStage = 1, missionIndex = 0, kingdomUnlocked = false;
+let weaponPresentationState = createWeaponPresentationState("scout");
 let questState = createQuestState();
 let renderQuality = renderQualityProfile(3);
 let riskLevel = localStorage.getItem("wastland-survivor-risk") || "standard";
@@ -670,6 +672,21 @@ function updateAuthoredCharacterAnimations(dt) {
     previous.copy(group.position);
     group.userData.animationPreviousPosition = previous;
   }
+}
+
+function updateWeaponPresentation(dt) {
+  weaponPresentationState = advanceWeaponPresentation(weaponPresentationState, dt);
+  const weapon = player?.g?.getObjectByName?.("authored-weapon");
+  if (!weapon) return;
+  const frame = sampleWeaponPresentationFrame(weaponPresentationState, {
+    aim: adsActive ? 1 : 0,
+    viewportWidth: innerWidth,
+  });
+  weapon.position.z = .56 + frame.pose.kickZ;
+  weapon.position.y = 1.05 + frame.pose.liftY;
+  weapon.rotation.z = frame.pose.roll;
+  weapon.userData.presentationStatus = frame.muzzleFlash.visible ? "firing" : weaponPresentationState.smokeMs > 0 ? "smoking" : weaponPresentationState.reloading ? "reloading" : "ready";
+  weapon.userData.presentationFrame = frame;
 }
 
 function attachAuthoredWeapon(group, gunName) {
@@ -1942,6 +1959,7 @@ function start() {
   questState = createQuestState();
   wave = 1;
   activeGun = "scout";
+  weaponPresentationState = createWeaponPresentationState("scout");
   explorationState = createExplorationState();
   discoveryToastUntil = 0;
   ui.discoveryToast.classList.add("hidden");
@@ -2186,6 +2204,9 @@ function fire(actor, target, profile = null) {
   }
   const weapon = profile || weaponProfile();
   actor.cooldown = weapon.delay;
+  if (actor === player && !profile) {
+    weaponPresentationState = triggerWeaponShot(weaponPresentationState).state;
+  }
   const direction = target.clone().sub(actor.g.position);
   direction.y = 0;
   if (!direction.lengthSq()) return;
@@ -2209,6 +2230,7 @@ function fire(actor, target, profile = null) {
 
 function reloadWeapon(manual = true) {
   if (Date.now() < reloadUntil || magazines[activeGun] >= magazineSizes[activeGun]) return;
+  weaponPresentationState = beginWeaponReload(weaponPresentationState).state;
   reloadUntil = Date.now() + (manual ? 900 : 1100);
   setTimeout(() => {
     magazines[activeGun] = magazineSizes[activeGun];
@@ -2800,6 +2822,7 @@ function render() {
   else if (phase === "menu" && !lobbyScreen.classList.contains("hidden")) handleLobbyController();
   update(dt);
   updateAuthoredCharacterAnimations(dt);
+  updateWeaponPresentation(dt);
   updateMapVisuals(dt);
   if (discoveryToastUntil && performance.now() >= discoveryToastUntil) {
     discoveryToastUntil = 0;
@@ -4577,6 +4600,7 @@ function updateArmory() {
 function equip(gunName) {
   if (!gunUnlocked(gunName) && activeGun !== gunName) return;
   activeGun = gunName;
+  weaponPresentationState = createWeaponPresentationState(gunName);
   if (player?.g?.userData?.authoredCharacter) attachAuthoredWeapon(player.g, gunName);
   updateArmory();
 }

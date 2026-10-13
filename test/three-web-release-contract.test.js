@@ -399,6 +399,15 @@ test("weapon firing exposes rendered muzzle and tracer feedback", () => {
   assert.match(gameSource, /impactFlash\(bullet\.m\.position, enemy\.enemyType === "spider" \? 0x9cff69 : 0xffdf52\)/);
 });
 
+test("the authored weapon presentation state drives the live player mesh", () => {
+  assert.match(gameSource, /from "\.\/weapon-presentation\.mjs"/);
+  assert.match(gameSource, /weaponPresentationState = triggerWeaponShot\(weaponPresentationState\)\.state/);
+  assert.match(gameSource, /weaponPresentationState = beginWeaponReload\(weaponPresentationState\)\.state/);
+  assert.match(gameSource, /function updateWeaponPresentation\(dt\)/);
+  assert.match(gameSource, /weapon\.userData\.presentationFrame = frame/);
+  assert.match(gameSource, /updateWeaponPresentation\(dt\)/);
+});
+
 test("the combat camera stays ahead of the survivor head while preserving the existing movement controls", () => {
   assert.match(gameSource, /const cameraTarget = frontView \? player\.g\.position\.clone\(\)\.add\(new THREE\.Vector3\(0, 2\.35, 0\)\)\.addScaledVector\(facing, 1\.12\)/);
   assert.match(gameSource, /player\.g\.visible = !frontView && player\.alive/);
