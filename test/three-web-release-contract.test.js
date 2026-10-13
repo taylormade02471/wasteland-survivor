@@ -338,6 +338,14 @@ test("each gameplay map receives a deterministic authored atmosphere", () => {
   assert.match(gameSource, /scene\.background = createBiomeSkyTexture\(mapKey\)/);
 });
 
+test("each gameplay biome applies an authored lighting profile to the live renderer", () => {
+  assert.match(gameSource, /function applyBiomeLighting\(mapId\)/);
+  assert.match(gameSource, /biomeLighting = `\$\{mapId\}-authored`/);
+  assert.match(gameSource, /applyBiomeLighting\(mapKey\)/);
+  assert.match(gameSource, /inferno: \{ sky:/);
+  assert.match(gameSource, /ice: \{ sky:/);
+});
+
 test("biome weather adds tier-bounded ambient particles without touching collision", () => {
   assert.match(gameSource, /function addBiomeWeatherVisuals\(root\)/);
   assert.match(gameSource, /biome-weather:\$\{weatherKind\}/);

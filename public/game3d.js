@@ -585,14 +585,35 @@ function applyExplorationDiscovery() {
   playTone(completion ? 760 : 620, .08, "triangle", .035);
 }
 
-scene.add(new THREE.HemisphereLight(0xaed8ff, 0x1a110c, 2));
-scene.add(new THREE.AmbientLight(0xc8d0c6, .65));
+const hemisphereLight = new THREE.HemisphereLight(0xaed8ff, 0x1a110c, 2);
+scene.add(hemisphereLight);
+const ambientLight = new THREE.AmbientLight(0xc8d0c6, .65);
+scene.add(ambientLight);
 const sun = new THREE.DirectionalLight(0xffefd1, 3);
 sun.position.set(18, 28, 12);
 sun.castShadow = true;
 scene.add(sun);
 const world = new THREE.Group();
 scene.add(world);
+
+function applyBiomeLighting(mapId) {
+  const profiles = {
+    wasteland: { sky: 0xaed8ff, ground: 0x1a110c, hemi: 1.85, ambient: 0xced6d0, ambientIntensity: .62, sun: 0xffefd1, sunIntensity: 3.1, position: [18, 28, 12] },
+    toxic: { sky: 0x9de0a6, ground: 0x071713, hemi: 2.05, ambient: 0x8fc9a3, ambientIntensity: .7, sun: 0xd4ffbd, sunIntensity: 2.55, position: [-14, 24, 18] },
+    ice: { sky: 0xd9f2ff, ground: 0x102333, hemi: 2.35, ambient: 0xb7d8ec, ambientIntensity: .8, sun: 0xe8f6ff, sunIntensity: 3.45, position: [8, 34, -18] },
+    inferno: { sky: 0xffa56d, ground: 0x150b13, hemi: 1.6, ambient: 0xc65a3e, ambientIntensity: .5, sun: 0xffbd72, sunIntensity: 3.7, position: [-20, 22, 8] },
+  };
+  const profile = profiles[mapId] || profiles.wasteland;
+  hemisphereLight.color.setHex(profile.sky);
+  hemisphereLight.groundColor.setHex(profile.ground);
+  hemisphereLight.intensity = profile.hemi;
+  ambientLight.color.setHex(profile.ambient);
+  ambientLight.intensity = profile.ambientIntensity;
+  sun.color.setHex(profile.sun);
+  sun.intensity = profile.sunIntensity;
+  sun.position.set(...profile.position);
+  canvas.dataset.biomeLighting = `${mapId}-authored`;
+}
 
 function handleDevicePixelRatioChange() {
   observedDevicePixelRatio = null;
@@ -2242,6 +2263,7 @@ function resetMap() {
   effects = [];
   flags = [];
   const cfg = MAPS[mapKey];
+  applyBiomeLighting(mapKey);
   scene.background = createBiomeSkyTexture(mapKey);
   const texture = loadTerrainTexture(runtimeAssetPath(cfg.texture));
   renderQuality = renderQualityProfile(effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1);
