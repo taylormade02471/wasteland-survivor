@@ -667,6 +667,7 @@ function updateAuthoredCharacterAnimations(dt) {
     const group = actor?.g;
     if (!group) continue;
     group.userData.animationTime = (group.userData.animationTime || 0) + dt;
+    group.userData.attackPulseMs = Math.max(0, (group.userData.attackPulseMs || 0) - dt * 1000);
     if (group.userData.spiderVisual) {
       const gait = actor.alive ? Math.sin(group.userData.animationTime * 8.5) * .16 : .035;
       group.userData.spiderLegs?.forEach((leg, index) => {
@@ -675,6 +676,10 @@ function updateAuthoredCharacterAnimations(dt) {
         leg.lower.rotation.z = leg.lower.userData.restRotation.z - phase * .72;
       });
       group.position.y = actor.alive ? Math.abs(Math.sin(group.userData.animationTime * 8.5)) * .025 : 0;
+      const attackT = Math.max(0, Math.min(1, group.userData.attackPulseMs / 180));
+      const pulse = 1 + Math.sin((1 - attackT) * Math.PI) * .12;
+      group.userData.spiderCore?.scale.set(1.05 * pulse, .76 / pulse, 1.28 * pulse);
+      group.userData.spiderEyes?.forEach(eye => eye.scale.setScalar(1 + attackT * .35));
     }
     if (!group.userData.authoredCharacter && !group.userData.authoredEnemy) continue;
     const previous = group.userData.animationPreviousPosition || group.position.clone();
@@ -773,6 +778,7 @@ function createSpiderVisual(group) {
   const eyeMaterial = material(0xff5d75, 1);
   const fangMaterial = material(0xd9f4c8, .35);
   const spiderLegs = [];
+  const spiderEyes = [];
   const abdomen = new THREE.Mesh(new THREE.SphereGeometry(.92, 12, 8), shell);
   abdomen.scale.set(1.05, .76, 1.28);
   abdomen.position.set(0, .94, -.28);
@@ -805,6 +811,7 @@ function createSpiderVisual(group) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(.11, 8, 6), eyeMaterial);
     eye.position.set(side * .22, 1.08, 1.17);
     group.add(eye);
+    spiderEyes.push(eye);
   }
   const fang = new THREE.Mesh(new THREE.ConeGeometry(.1, .38, 6), fangMaterial);
   fang.position.set(-.22, .56, 1.08);
@@ -820,6 +827,8 @@ function createSpiderVisual(group) {
   group.userData.attackProfile = { projectile: "acid-web", range: 24 };
   group.userData.spiderVisual = true;
   group.userData.spiderLegs = spiderLegs;
+  group.userData.spiderCore = thorax;
+  group.userData.spiderEyes = spiderEyes;
 }
 
 function unit(color, x, z, avatarType = "scout", useAuthoredModel = false, authoredEnemy = null) {
@@ -2376,6 +2385,10 @@ function fire(actor, target, profile = null) {
     const shotDirection = direction.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset);
     const projectileColor = actor.enemyType === "spider" ? 0x9cff69 : 0xffdf52;
     const projectile = new THREE.Mesh(new THREE.SphereGeometry(.13, 8, 8), material(projectileColor, 1));
+    if (actor.enemyType === "spider") {
+      projectile.name = "acid-web-projectile";
+      actor.g.userData.attackPulseMs = 180;
+    }
     projectile.position.copy(actor.g.position).add(new THREE.Vector3(0, 1, .2));
     world.add(projectile);
     projectile.scale.set(1, 1, 2.4);
