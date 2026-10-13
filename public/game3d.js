@@ -2157,7 +2157,7 @@ function applyRequestedRenderFocus() {
   if (renderFocus === "gameplay" && player && worldLayout) {
     prepareAuditFocus();
     const auditEnemyTypes = ["rusher", "shooter", "spider", "boss"];
-    const auditPositions = [[20, -20], [10, -12], [30, -10], [20, -2]];
+    const auditPositions = [[17, -10], [23, -10], [29, -10], [20, -3]];
     auditEnemyTypes.forEach((type, index) => {
       spawnEnemy(index, type);
       const enemy = enemies[index];
@@ -3265,6 +3265,10 @@ function updateSoloEnemies(dt) {
   const orbitSpeed = .42 * pressure;
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
+    if (enemy.g.userData.auditSpawn) {
+      enemy.g.rotation.y = Math.atan2(player.g.position.x - enemy.g.position.x, player.g.position.z - enemy.g.position.z);
+      continue;
+    }
     const toPlayer = player.g.position.clone().sub(enemy.g.position);
     toPlayer.y = 0;
     const distance = toPlayer.length() || 1;
