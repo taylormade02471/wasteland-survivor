@@ -324,6 +324,13 @@ test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /animationBaseY/);
 });
 
+test("authored GLB animation clips drive live character and enemy states", () => {
+  assert.match(gameSource, /new THREE\.AnimationMixer\(root\)/);
+  assert.match(gameSource, /mixer\.clipAction\(clip\)/);
+  assert.match(gameSource, /driveAuthoredAnimation\(authoredRoot, state, dt\)/);
+  assert.match(gameSource, /next\.reset\(\)\.fadeIn\(\.12\)\.play\(\)/);
+});
+
 test("the first-person spawn stays clear of the origin overpass ramp", () => {
   assert.match(gameSource, /player = unit\(0x55e5ff, 20, -36, activeProfile\?\.avatarType/);
 });

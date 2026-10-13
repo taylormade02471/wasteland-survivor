@@ -179,6 +179,31 @@ function cloneAuthoredRoot(scene) {
   return root;
 }
 
+function installAuthoredAnimationSet(root, asset) {
+  const clips = Array.isArray(asset?.animations) ? asset.animations.filter(Boolean) : [];
+  if (!root || !clips.length || typeof THREE.AnimationMixer !== "function") return;
+  const mixer = new THREE.AnimationMixer(root);
+  const actions = new Map(clips.map(clip => [String(clip.name || "").toLowerCase(), mixer.clipAction(clip)]));
+  root.userData.animationMixer = mixer;
+  root.userData.animationActions = actions;
+  root.userData.animationState = "";
+}
+
+function driveAuthoredAnimation(root, state, dt) {
+  const mixer = root?.userData?.animationMixer;
+  const actions = root?.userData?.animationActions;
+  if (!mixer || !actions) return;
+  mixer.update(Math.max(0, Math.min(.1, Number(dt) || 0)));
+  const requested = String(state || "idle").toLowerCase();
+  const clipName = [requested, requested === "downed" ? "idle" : null, "idle"].find(name => name && actions.has(name));
+  if (!clipName || root.userData.animationState === clipName) return;
+  const next = actions.get(clipName);
+  const previous = actions.get(root.userData.animationState);
+  previous?.fadeOut?.(.12);
+  next.reset().fadeIn(.12).play();
+  root.userData.animationState = clipName;
+}
+
 function fitAuthoredWorldRoot(root, maxDimension) {
   const initialBox = new THREE.Box3().setFromObject(root);
   const initialSize = new THREE.Vector3();
@@ -612,6 +637,7 @@ function attachAuthoredCharacter(group, avatarType) {
     if (!group.parent) return;
     const root = cloneAuthoredRoot(asset?.scene);
     if (!root) return;
+    installAuthoredAnimationSet(root, asset);
     fitAuthoredWorldRoot(root, 2.35);
     root.rotation.y = Math.PI;
     while (group.children.length) group.remove(group.children[0]);
@@ -642,6 +668,8 @@ function updateAuthoredCharacterAnimations(dt) {
     const previous = group.userData.animationPreviousPosition || group.position.clone();
     const moved = group.position.distanceTo(previous) > .001;
     const state = !actor.alive ? "downed" : actor === player && firing ? "fire" : moved ? "run" : actor === player && adsActive ? "aim" : "idle";
+    const authoredRoot = group.children.find(child => child.userData?.animationMixer);
+    driveAuthoredAnimation(authoredRoot, state, dt);
     const pose = sampleCharacterAnimation({ state, time: group.userData.animationTime, intensity: actor.alive ? 1 : .7 });
     const root = group.children.find(child => child.name?.startsWith("character:")) || group;
     if (group.userData.animationBaseY == null) group.userData.animationBaseY = root.position.y;
@@ -714,6 +742,7 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
     if (!group.parent) return;
     const root = cloneAuthoredRoot(asset?.scene);
     if (!root) return;
+    installAuthoredAnimationSet(root, asset);
     fitAuthoredWorldRoot(root, enemyType === "boss" ? 3.8 : enemyType === "drone" ? 1.9 : 2.5);
     root.rotation.y = Math.PI;
     while (group.children.length) group.remove(group.children[0]);
