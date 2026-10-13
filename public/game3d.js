@@ -3509,8 +3509,10 @@ function update(dt) {
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
   if (renderFocus === "gameplay") {
     player.g.visible = false;
-    camera.position.lerp(new THREE.Vector3(20, 18, -30), Math.min(1, dt * 8));
-    camera.lookAt(20, 0, -11);
+    // Keep the deterministic audit lineup in the camera frustum instead of
+    // looking down into the terrain immediately in front of the spawn point.
+    camera.position.lerp(new THREE.Vector3(20, 7.5, 12), Math.min(1, dt * 8));
+    camera.lookAt(20, 1.3, -11);
     return;
   }
   if (renderFocus === "roster") {

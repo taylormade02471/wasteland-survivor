@@ -302,7 +302,7 @@ test("the gameplay audit focus renders authored enemies, quest terrain, and both
   assert.match(gameSource, /spawnCurrencyPickupBurst\(goldPosition, \{ gold: 3 \}\)/);
   assert.match(gameSource, /spawnCurrencyPickupBurst\(silverPosition, \{ silver: 5 \}\)/);
   assert.match(gameSource, /if \(renderFocus === "gameplay"\) \{/);
-  assert.match(gameSource, /camera\.lookAt\(20, 0, -11\)/);
+  assert.match(gameSource, /camera\.lookAt\(20, 1\.3, -11\)/);
   assert.match(gameSource, /const prepareAuditFocus = \(\) =>/);
   assert.match(gameSource, /welcomeScreen\.classList\.add\("hidden"\)/);
   assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory"\]\)/);
