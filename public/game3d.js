@@ -863,6 +863,56 @@ function addRenderAuditRoster() {
   canvas.dataset.rosterAuditComplete = "true";
 }
 
+function addTerrainGallery() {
+  world.children.forEach(child => { child.visible = false; });
+  const gallery = new THREE.Group();
+  gallery.name = "terrain-gallery-stage";
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(30, .3, 10),
+    new THREE.MeshStandardMaterial({ color: 0x121b21, roughness: .8, metalness: .18 }),
+  );
+  floor.position.set(0, -.15, 0);
+  floor.receiveShadow = true;
+  gallery.add(floor);
+  const ids = Object.keys(MAPS);
+  const positions = [[-7.6, 4.7], [7.6, 4.7], [-7.6, -4.7], [7.6, -4.7]];
+  const loader = new THREE.TextureLoader();
+  let loadedCount = 0;
+  canvas.dataset.terrainGalleryExpected = String(ids.length);
+  canvas.dataset.terrainGalleryLoaded = "0";
+  ids.forEach((id, index) => {
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(13.6, 8.9, .28),
+      new THREE.MeshStandardMaterial({ color: 0x26343d, roughness: .72, metalness: .24 }),
+    );
+    frame.name = `terrain-gallery-frame:${id}`;
+    frame.position.set(positions[index][0], 4.55, positions[index][1]);
+    frame.castShadow = true;
+    frame.receiveShadow = true;
+    gallery.add(frame);
+    const panel = new THREE.Mesh(
+      new THREE.PlaneGeometry(12.8, 8.1),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .84, metalness: .04 }),
+    );
+    panel.name = `terrain-gallery-panel:${id}`;
+    panel.position.set(positions[index][0], 4.55, positions[index][1] - .18);
+    loader.load(runtimeAssetPath(MAPS[id].texture), texture => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      panel.material.map = texture;
+      panel.material.needsUpdate = true;
+      loadedCount += 1;
+      canvas.dataset.terrainGalleryLoaded = String(loadedCount);
+      canvas.dataset.terrainGalleryComplete = String(loadedCount === ids.length);
+    }, undefined, () => {});
+    gallery.add(panel);
+  });
+  world.add(gallery);
+  camera.position.set(0, 8.4, 22);
+  camera.lookAt(0, 4.5, 0);
+  document.body.dataset.renderFocus = "terrain-gallery";
+  canvas.dataset.terrainGalleryStage = gallery.name;
+}
+
 function createSpiderVisual(group) {
   const shell = material(0x314d3f, .08);
   const shellHighlight = material(0x6e9f59, .18);
@@ -1964,6 +2014,10 @@ function addBurnedArmoryVisual(root) {
 }
 
 function applyRequestedRenderFocus() {
+  if (renderFocus === "terrain-gallery" && player && worldLayout) {
+    addTerrainGallery();
+    return;
+  }
   if (renderFocus === "roster" && player && worldLayout) {
     addRenderAuditRoster();
     return;
@@ -3306,6 +3360,12 @@ function update(dt) {
     const rosterCameraTarget = new THREE.Vector3(0, 7.5, 25);
     camera.position.lerp(rosterCameraTarget, Math.min(1, dt * 8));
     camera.lookAt(0, 1.1, -1);
+    return;
+  }
+  if (renderFocus === "terrain-gallery") {
+    player.g.visible = false;
+    camera.position.lerp(new THREE.Vector3(0, 8.4, 22), Math.min(1, dt * 8));
+    camera.lookAt(0, 4.5, 0);
     return;
   }
   player.g.visible = !frontView && player.alive;

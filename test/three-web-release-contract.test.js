@@ -294,6 +294,14 @@ test("the live roster focus exposes every authored survivor and enemy family for
   assert.match(gameSource, /camera\.lookAt\(0, 1\.1, -1\)/);
 });
 
+test("the terrain gallery focus exposes all four authored map textures for visual audit", () => {
+  assert.match(gameSource, /function addTerrainGallery\(\)/);
+  assert.match(gameSource, /terrain-gallery-stage/);
+  assert.match(gameSource, /terrainGalleryExpected/);
+  assert.match(gameSource, /terrainGalleryComplete/);
+  assert.match(gameSource, /renderFocus === "terrain-gallery"/);
+});
+
 test("terrain texture loading keeps the external media route and restores the bundled texture on load failure", () => {
   assert.match(gameSource, /function createProceduralTerrainTexture\(path\)/);
   assert.match(gameSource, /new THREE\.CanvasTexture\(canvas\)/);
