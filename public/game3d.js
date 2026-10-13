@@ -810,8 +810,8 @@ function createSpiderVisual(group) {
   group.add(fang, secondFang);
   // Enlarge the ranged spider for a clearer combat silhouette and keep its
   // targeting radius aligned with the enlarged visual footprint.
-  group.scale.setScalar(1.35);
-  group.userData.hitRadius = 1.35;
+  group.scale.setScalar(1.6);
+  group.userData.hitRadius = 1.6;
   group.userData.enemyVisual = "spider-ranged";
   group.userData.attackProfile = { projectile: "acid-web", range: 24 };
   group.userData.spiderVisual = true;
@@ -2182,6 +2182,22 @@ function prep() {
   playTone(480, .1, "sine", .05);
 }
 
+function moveResupply(dt, controller) {
+  const chest = chests[0];
+  if (!chest) return;
+  const keyboard = keyboardMovementAxes(keys);
+  const mx = controller?.mx || keyboard.strafe;
+  const mz = controller?.mz || keyboard.vertical;
+  const length = Math.hypot(mx, mz);
+  if (!length) return;
+  const from = chest.group.position.clone();
+  const target = from.clone().add(new THREE.Vector3(mx / length, 0, mz / length).multiplyScalar(8 * dt));
+  const resolved = resolveWorldMovement(worldLayout, from, target);
+  chest.x = resolved.position.x;
+  chest.z = resolved.position.z;
+  chest.group.position.copy(resolved.position);
+}
+
 function finishRound(winner) {
   if (mode === "solo") {
     if (winner === "red") gameOver("Survivor Eliminated");
@@ -2677,6 +2693,7 @@ function update(dt) {
   }
   if (phase === "prep") {
     chests.forEach(chest => { chest.group.rotation.y += dt; });
+    moveResupply(dt, controller);
     const closeEnough = canAccessChest(player.g.position, chests);
     ui.chest.classList.toggle("hidden", !closeEnough);
     const chest = chests[0];
@@ -2818,7 +2835,7 @@ function update(dt) {
   player.g.visible = !frontView && player.alive;
   // Keep the aim camera just above and ahead of the survivor so the head never
   // sits between the reticle and the world while running and firing.
-  const cameraTarget = frontView ? player.g.position.clone().add(new THREE.Vector3(0, 2.35, 0)).addScaledVector(facing, 1.12) : new THREE.Vector3(player.g.position.x, 26, player.g.position.z + 22);
+  const cameraTarget = frontView ? player.g.position.clone().add(new THREE.Vector3(0, 2.65, 0)).addScaledVector(facing, 1.45) : new THREE.Vector3(player.g.position.x, 26, player.g.position.z + 22);
   camera.position.lerp(cameraTarget, Math.min(1, dt * (frontView ? 12 : 4)));
   cameraShake = Math.max(0, cameraShake - dt * 1.8);
   if (cameraShake) camera.position.add(new THREE.Vector3((Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake, (Math.random() - .5) * cameraShake));
@@ -2829,7 +2846,7 @@ function update(dt) {
     // Aim materially into the playfield.  A near-level ray left the ground
     // edge-on at the 16:9 desktop viewport, so authored texture/detail never
     // entered the frame even though it was present in the scene.
-    lookTarget.y = player.g.position.y - 5.5;
+    lookTarget.y = player.g.position.y - 5.8;
     camera.lookAt(lookTarget);
   }
   else camera.lookAt(player.g.position.x, 0, player.g.position.z);

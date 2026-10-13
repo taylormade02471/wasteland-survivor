@@ -422,8 +422,8 @@ test("the gameplay renderer exposes a large ranged spider enemy", () => {
   assert.match(gameSource, /enemyType === "spider"/);
   assert.match(gameSource, /spider: 0x/);
   assert.match(gameSource, /spider-ranged/);
-  assert.match(gameSource, /group\.scale\.setScalar\(1\.35\)/);
-  assert.match(gameSource, /group\.userData\.hitRadius = 1\.35/);
+  assert.match(gameSource, /group\.scale\.setScalar\(1\.6\)/);
+  assert.match(gameSource, /group\.userData\.hitRadius = 1\.6/);
   assert.match(gameSource, /group\.userData\.spiderVisual = true/);
   assert.match(gameSource, /group\.userData\.spiderLegs = spiderLegs/);
   assert.match(gameSource, /leg\.upper\.rotation\.z = leg\.upper\.userData\.restRotation\.z \+ phase/);
@@ -452,12 +452,18 @@ test("the authored weapon presentation state drives the live player mesh", () =>
 });
 
 test("the combat camera stays ahead of the survivor head while preserving the existing movement controls", () => {
-  assert.match(gameSource, /const cameraTarget = frontView \? player\.g\.position\.clone\(\)\.add\(new THREE\.Vector3\(0, 2\.35, 0\)\)\.addScaledVector\(facing, 1\.12\)/);
+  assert.match(gameSource, /const cameraTarget = frontView \? player\.g\.position\.clone\(\)\.add\(new THREE\.Vector3\(0, 2\.65, 0\)\)\.addScaledVector\(facing, 1\.45\)/);
   assert.match(gameSource, /player\.g\.visible = !frontView && player\.alive/);
   assert.match(gameSource, /nextMouseYaw\(\{ yaw: viewYaw, movementX: event\.movementX, sensitivity:/);
   assert.match(gameSource, /firstPersonMovementDelta\(\{/);
   assert.doesNotMatch(gameSource, /viewYaw\s*-=\s*event\.movementX/);
   assert.doesNotMatch(gameSource, /keys\.d\s*=\s*0/);
+});
+
+test("the prep-phase magic-hand resupply can be moved through authored collision", () => {
+  assert.match(gameSource, /function moveResupply\(dt, controller\)/);
+  assert.match(gameSource, /moveResupply\(dt, controller\)/);
+  assert.match(gameSource, /chest\.group\.position\.copy\(resolved\.position\)/);
 });
 
 test("the world renderer adds visible utility poles without adding hidden blockers", () => {
