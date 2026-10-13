@@ -878,6 +878,25 @@ function addTerrainGallery() {
   const positions = [[-7.6, 2.4], [7.6, 2.4], [-7.6, 8.7], [7.6, 8.7]];
   const loader = new THREE.TextureLoader();
   let loadedCount = 0;
+  const labelTexture = (label, color) => {
+    const labelCanvas = document.createElement("canvas");
+    labelCanvas.width = 512;
+    labelCanvas.height = 96;
+    const context = labelCanvas.getContext("2d");
+    context.fillStyle = "rgba(7, 14, 18, .88)";
+    context.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
+    context.strokeStyle = `#${color.toString(16).padStart(6, "0")}`;
+    context.lineWidth = 5;
+    context.strokeRect(4, 4, labelCanvas.width - 8, labelCanvas.height - 8);
+    context.fillStyle = "#f4f1df";
+    context.font = "700 34px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(label.toUpperCase(), labelCanvas.width / 2, labelCanvas.height / 2);
+    const texture = new THREE.CanvasTexture(labelCanvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  };
   canvas.dataset.terrainGalleryExpected = String(ids.length);
   canvas.dataset.terrainGalleryLoaded = "0";
   ids.forEach((id, index) => {
@@ -890,6 +909,11 @@ function addTerrainGallery() {
     frame.castShadow = true;
     frame.receiveShadow = true;
     gallery.add(frame);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(MAPS[id].label, MAPS[id].hazard), transparent: true, depthWrite: false }));
+    label.name = `terrain-gallery-label:${id}`;
+    label.position.set(positions[index][0], positions[index][1] + 4.7, .22);
+    label.scale.set(5.2, .98, 1);
+    gallery.add(label);
     const panel = new THREE.Mesh(
       new THREE.PlaneGeometry(12.8, 8.1),
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .84, metalness: .04 }),
@@ -911,6 +935,7 @@ function addTerrainGallery() {
   camera.lookAt(0, 5.6, 0);
   document.body.dataset.renderFocus = "terrain-gallery";
   canvas.dataset.terrainGalleryStage = gallery.name;
+  canvas.dataset.terrainGalleryLabels = ids.join(",");
 }
 
 function createSpiderVisual(group) {

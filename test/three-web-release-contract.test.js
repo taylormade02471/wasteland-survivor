@@ -299,6 +299,8 @@ test("the terrain gallery focus exposes all four authored map textures for visua
   assert.match(gameSource, /terrain-gallery-stage/);
   assert.match(gameSource, /terrainGalleryExpected/);
   assert.match(gameSource, /terrainGalleryComplete/);
+  assert.match(gameSource, /terrain-gallery-label:/);
+  assert.match(gameSource, /terrainGalleryLabels/);
   assert.match(gameSource, /renderFocus === "terrain-gallery"/);
 });
 
