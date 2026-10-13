@@ -267,6 +267,7 @@ test("the deployed shell wires authored 3D map props and a live survivor preview
   assert.match(gameSource, /const AUTHORED_ENEMY_MODELS/);
   assert.match(gameSource, /const AUDIT_ENEMY_MODELS/);
   assert.match(gameSource, /addGameplayAuditEnemyProxy/);
+  assert.match(gameSource, /function addGameplayAuditStage/);
   assert.match(gameSource, /if \(renderFocus !== "gameplay"\) addWorldFieldAssets\(\)/);
   assert.match(gameSource, /renderFocus !== "gameplay"\);/);
   assert.match(gameSource, /const AUTHORED_WEAPON_MODELS/);

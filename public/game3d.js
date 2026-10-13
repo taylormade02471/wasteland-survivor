@@ -875,6 +875,41 @@ function addGameplayAuditEnemyProxy(group, enemyType) {
   group.userData.auditProxy = true;
 }
 
+function addGameplayAuditStage() {
+  const stage = new THREE.Group();
+  stage.name = "gameplay-audit-stage";
+  stage.position.x = 20;
+  const palette = [0xff5b55, 0xff8b45, 0x8cff4d, 0xffcf40];
+  [-4.5, -1.5, 1.5, 4.5].forEach((x, index) => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.1, .12, 10, 28),
+      new THREE.MeshBasicMaterial({ color: palette[index], fog: false }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, -1.25, -7.5);
+    const marker = new THREE.Mesh(
+      new THREE.OctahedronGeometry(.72, 1),
+      new THREE.MeshBasicMaterial({ color: palette[index], fog: false }),
+    );
+    marker.position.set(x, .15, -7.5);
+    stage.add(ring, marker);
+  });
+  const currency = [
+    { x: -2.5, color: 0xffd34d, y: -.55 },
+    { x: 2.5, color: 0xdce8f2, y: -.55 },
+  ];
+  currency.forEach(item => {
+    const pickup = new THREE.Mesh(
+      new THREE.TorusGeometry(.48, .12, 8, 20),
+      new THREE.MeshBasicMaterial({ color: item.color, fog: false }),
+    );
+    pickup.position.set(item.x, item.y, -6.8);
+    pickup.rotation.x = Math.PI / 2;
+    stage.add(pickup);
+  });
+  scene.add(stage);
+}
+
 function addRenderAuditRoster() {
   const survivorTypes = ["scout", "ranger", "heavy", "tech", "medic", "warden"];
   const enemyTypes = [...Object.keys(AUTHORED_ENEMY_MODELS), "spider"];
@@ -2156,6 +2191,7 @@ function applyRequestedRenderFocus() {
   }
   if (renderFocus === "gameplay" && player && worldLayout) {
     prepareAuditFocus();
+    addGameplayAuditStage();
     const auditEnemyTypes = ["rusher", "shooter", "spider", "boss"];
     const auditPositions = [[17, -10], [23, -10], [29, -10], [20, -3]];
     auditEnemyTypes.forEach((type, index) => {
