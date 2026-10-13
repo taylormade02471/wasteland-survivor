@@ -332,6 +332,15 @@ test("biome weather adds tier-bounded ambient particles without touching collisi
   assert.match(gameSource, /const count = pass >= 5 \? 96 : pass >= 3 \? 48 : 20/);
 });
 
+test("toxic and ice maps add animated surface rings without collision blockers", () => {
+  assert.match(gameSource, /function addBiomeSurfaceRings\(root\)/);
+  assert.match(gameSource, /biome-surface-ring:\$\{mapKey\}/);
+  assert.match(gameSource, /root\.userData\.surfaceRings = rings/);
+  assert.match(gameSource, /mapVisuals\.userData\.surfaceRings\?\.forEach/);
+  assert.match(gameSource, /ring\.userData\.mapAnim = "surface-ring"/);
+  assert.match(gameSource, /addBiomeSurfaceRings\(root\)/);
+});
+
 test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /character-animation-runtime\.mjs/);
   assert.match(gameSource, /updateAuthoredCharacterAnimations\(dt\)/);

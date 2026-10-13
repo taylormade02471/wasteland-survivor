@@ -1475,10 +1475,35 @@ function addMapVisuals() {
   addMountainVisuals(root);
   addInfernoFireVisuals(root);
   addBurnedArmoryVisual(root);
+  addBiomeSurfaceRings(root);
   addBiomeWeatherVisuals(root);
   addRenderQualityDetailPoints(root);
   world.add(root);
   mapVisuals = root;
+}
+
+function addBiomeSurfaceRings(root) {
+  const profiles = {
+    toxic: { color: 0x9cff69, positions: [[104, 52], [118, 65], [92, 40]] },
+    ice: { color: 0xc8f5ff, positions: [[-76, -202], [-102, -176], [-48, -184]] },
+  };
+  const profile = profiles[mapKey];
+  if (!profile) return;
+  const rings = [];
+  profile.positions.forEach(([x, z], index) => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.1 + index * .22, .035, 8, 28),
+      new THREE.MeshBasicMaterial({ color: profile.color, transparent: true, opacity: .46, depthWrite: false }),
+    );
+    ring.name = `biome-surface-ring:${mapKey}:${index + 1}`;
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, sampleWorldElevation(worldLayout, { x, z }) + .12, z);
+    ring.userData.mapAnim = "surface-ring";
+    ring.userData.pulse = index * .8;
+    root.add(ring);
+    rings.push(ring);
+  });
+  root.userData.surfaceRings = rings;
 }
 
 function addBiomeWeatherVisuals(root) {
@@ -1784,6 +1809,12 @@ function updateMapVisuals(dt) {
     beacon.userData.ring.rotation.z += dt * (index % 2 ? -.7 : .7);
     beacon.userData.ring.scale.setScalar(pulse);
     beacon.userData.core.scale.setScalar(.9 + pulse * .16);
+  });
+  mapVisuals.userData.surfaceRings?.forEach((ring, index) => {
+    const pulse = .78 + Math.sin(elapsed * 1.7 + (ring.userData.pulse || index)) * .18;
+    ring.scale.set(pulse, pulse, pulse);
+    ring.rotation.z += dt * (index % 2 ? -.32 : .32);
+    if (ring.material) ring.material.opacity = .28 + pulse * .2;
   });
   mapVisuals.traverse(node => {
     if (node.userData?.mapAnim === "detail-point") {
