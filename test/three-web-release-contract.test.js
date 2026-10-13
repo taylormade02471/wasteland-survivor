@@ -506,6 +506,13 @@ test("quest completion visibly announces the authored story and currency reward"
   assert.match(gameSource, /ui\.questProgressFill\.style\.setProperty\("--hud-fill"/);
 });
 
+test("a completed solo quest saves its gold, silver, and chapter progress immediately", () => {
+  const storyBlock = gameSource.match(/function updateStoryProgress\(\)[\s\S]*?function avatarLabel/)?.[0] || "";
+  assert.match(storyBlock, /if \(questResult\.completed\) \{[\s\S]*?gold \+= questResult\.reward\.gold;[\s\S]*?silver \+= questResult\.reward\.silver;/);
+  assert.match(storyBlock, /completedMissions = \[\.\.\.new Set\(\[\.\.\.priorMissions, completedMissionId\]\)\];[\s\S]*?saveProgress\(\);/);
+  assert.match(storyBlock, /saveProgress\(\);[\s\S]*?spawnQuestCompletionBurst\(player\.g\.position, questResult\.reward\);/);
+});
+
 test("world props expose authored-load state while preserving a readable fallback", () => {
   assert.match(gameSource, /holder\.userData\.assetState = "fallback-loading"/);
   assert.match(gameSource, /holder\.userData\.assetState = "authored"/);

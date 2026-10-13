@@ -4782,6 +4782,10 @@ function updateStoryProgress() {
       activeProfile.progress.completedMissions = [...new Set([...priorMissions, completedMissionId])];
       missionIndex = Math.min(1, missionIndex + 1);
     }
+    // Save the reward and chapter transition at the completion event instead
+    // of waiting for a later round boundary. This keeps earned progress when
+    // a player reloads or leaves immediately after the reward burst.
+    saveProgress();
     ui.discoveryTitle.textContent = `QUEST COMPLETE: ${questResult.quest.title}`;
     ui.discoveryReward.innerHTML = `+${questResult.reward.xp} XP / <span class="reward-chip"><img src="assets/nightfall/icons/scrap-gold-v1.svg" alt="" aria-hidden="true">+${questResult.reward.gold} GOLD</span> / <span class="reward-chip"><img src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">+${questResult.reward.silver} SILVER</span>`;
     ui.discoveryToast.classList.remove("hidden");
