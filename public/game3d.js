@@ -2357,8 +2357,11 @@ function resetMap() {
   renderQuality = renderQualityProfile(effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1);
   // Keep the authored terrain readable in first-person combat. The previous
   // density hid the road, elevation, and texture under a single flat wash.
-  const fogDensity = renderQuality.pass >= 5 ? .0038 : renderQuality.pass >= 3 ? .0046 : .0054;
+  const baseFogDensity = renderQuality.pass >= 5 ? .0038 : renderQuality.pass >= 3 ? .0046 : .0054;
+  const biomeFogMultipliers = { wasteland: 1, toxic: 1.28, ice: .72, inferno: .92 };
+  const fogDensity = baseFogDensity * (biomeFogMultipliers[mapKey] || 1);
   scene.fog = new THREE.FogExp2(cfg.fog, fogDensity);
+  canvas.dataset.biomeFog = `${mapKey}-depth-${fogDensity.toFixed(4)}`;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(renderQuality.textureRepeat, renderQuality.textureRepeat);
   texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy);

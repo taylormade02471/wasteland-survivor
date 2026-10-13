@@ -356,6 +356,12 @@ test("each gameplay biome applies an authored lighting profile to the live rende
   assert.match(gameSource, /ice: \{ sky:/);
 });
 
+test("each gameplay biome applies authored depth fog without changing movement geometry", () => {
+  assert.match(gameSource, /const biomeFogMultipliers = \{ wasteland: 1, toxic: 1\.28, ice: \.72, inferno: \.92 \}/);
+  assert.match(gameSource, /new THREE\.FogExp2\(cfg\.fog, fogDensity\)/);
+  assert.match(gameSource, /biomeFog = `\$\{mapKey\}-depth-/);
+});
+
 test("biome weather adds tier-bounded ambient particles without touching collision", () => {
   assert.match(gameSource, /function addBiomeWeatherVisuals\(root\)/);
   assert.match(gameSource, /biome-weather:\$\{weatherKind\}/);
