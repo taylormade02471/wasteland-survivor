@@ -1,7 +1,9 @@
 export const CONTROL_DIRECTION_LOCK = Object.freeze({
   id: "right-positive-v1",
   mouseRadiansPerPixel: 0.0026,
-  mouseYawSign: 1,
+  // Three.js camera-right is the negative world-X direction at the default
+  // forward heading, so a positive screen-space mouse delta must reduce yaw.
+  mouseYawSign: -1,
   touchYawSign: 1,
   controllerYawSign: 1,
   keyboard: Object.freeze({ forward: "w", back: "s", left: "a", right: "d" }),

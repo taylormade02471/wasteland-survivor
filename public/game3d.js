@@ -4826,8 +4826,9 @@ canvas.addEventListener("pointermove", event => {
     setInputMode("mouse");
     if (localGameplayInputPaused()) return;
     if (frontView && phase === "combat" && !menuOpen) {
-      // A rightward mouse movement turns the survivor right. The slightly
-      // higher base rate restores a full 360-degree pan without changing WASD.
+      // A rightward screen-space mouse movement turns the camera right. The
+      // camera-space sign is locked in control-direction-lock.mjs; keep this
+      // path separate from camera-relative WASD movement.
       viewYaw = nextMouseYaw({ yaw: viewYaw, movementX: event.movementX, sensitivity: adsActive ? aimSettings.adsSensitivity : aimSettings.sensitivity });
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }
