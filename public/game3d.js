@@ -110,7 +110,7 @@ const curatedGlbCache = new Map();
 const ui = {
   hp: $("hpText"), hpBar: $("hpBar"), shield: $("shieldText"), shieldBar: $("shieldBar"), heat: $("heatText"), heatBar: $("heatBar"),
   ammo: $("ammoText"), ability: $("abilityText"), abilityBar: $("abilityBar"), team: $("teamText"), teamName: $("teamName"), teamHealth: $("teamHealthText"), teamHealthBar: $("teamHealthBar"), objective: $("objectiveText"),
-  scrap: $("scrapText"), gold: $("goldText"), silver: $("silverText"), quest: $("questText"), questProgress: $("questProgressFill"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
+  scrap: $("scrapText"), gold: $("goldText"), silver: $("silverText"), quest: $("questText"), questProgress: $("questProgress"), questProgressFill: $("questProgressFill"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
   discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"),
   controllerStatus: $("controllerStatus"), controllerOnly: $("controllerOnlyToggle"), soundToggle: $("soundToggle"), volume: $("volumeSlider"), musicToggle: $("musicToggle"), musicVolume: $("musicVolumeSlider"), musicSource: $("musicSource"), musicStatus: $("musicStatus"),
@@ -3018,7 +3018,11 @@ function renderHud() {
   ui.chapter.textContent = `Chapter ${campaign.chapterId}: ${campaign.chapterTitle}`;
   ui.mission.textContent = `Mission: ${campaign.missionTitle} · ${hud.mission.label.replace(/^Mission:\s*/i, "")}`;
   ui.quest.textContent = `QUEST ${quest.value}/${quest.target} · ${quest.objective}`;
-  ui.questProgress.style.setProperty("--hud-fill", `${quest.target ? Math.min(100, Math.round(quest.value / quest.target * 100)) : 0}%`);
+  const questPercent = quest.target ? Math.min(100, Math.round(quest.value / quest.target * 100)) : 0;
+  ui.questProgress.setAttribute("aria-valuemax", String(quest.target));
+  ui.questProgress.setAttribute("aria-valuenow", String(quest.value));
+  ui.questProgress.classList.toggle("is-complete", quest.completed);
+  ui.questProgressFill.style.setProperty("--hud-fill", `${questPercent}%`);
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
   ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
   const exploration = explorationProgress(worldLayout, explorationState);
