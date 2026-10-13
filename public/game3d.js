@@ -1794,15 +1794,33 @@ function addConnectedWorldObjects() {
 function createWorldFieldFallback(asset) {
   const root = new THREE.Group();
   const isLarge = asset.fit.maxDimension >= 8;
-  const color = asset.id.includes("barrel") ? 0x7f4b27 : asset.id.includes("car") ? 0x58352d : 0x4a4a43;
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(asset.fit.maxDimension * (isLarge ? .78 : .62), Math.max(.45, asset.collider.height), asset.fit.maxDimension * (isLarge ? .48 : .62)),
-    material(color, .03),
-  );
-  mesh.position.y = Math.max(.24, asset.collider.height / 2);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  root.add(mesh);
+  const add = (geometry, surface, position = [0, 0, 0], rotation = [0, 0, 0]) => {
+    const mesh = new THREE.Mesh(geometry, surface);
+    mesh.position.set(...position);
+    mesh.rotation.set(...rotation);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    root.add(mesh);
+    return mesh;
+  };
+  const width = asset.fit.maxDimension * (isLarge ? .78 : .62);
+  const depth = asset.fit.maxDimension * (isLarge ? .48 : .62);
+  const height = Math.max(.45, asset.collider.height);
+  const id = asset.id.toLowerCase();
+  if (id.includes("car") || id.includes("bus") || id.includes("pickup") || id.includes("locomotive")) {
+    const body = material(0x58352d, .03);
+    add(new THREE.BoxGeometry(width, Math.max(.5, height * .42), depth), body, [0, Math.max(.25, height * .22), 0]);
+    add(new THREE.BoxGeometry(width * .62, Math.max(.35, height * .34), depth * .72), material(0x29363a, .04), [0, Math.max(.5, height * .58), -.05]);
+    const wheel = new THREE.CylinderGeometry(Math.max(.18, width * .09), Math.max(.18, width * .09), Math.max(.16, depth * .12), 8);
+    for (const x of [-width * .32, width * .32]) for (const z of [-depth * .42, depth * .42]) add(wheel, material(0x151718), [x, Math.max(.24, height * .18), z], [Math.PI / 2, 0, 0]);
+  } else if (id.includes("building") || id.includes("outpost") || id.includes("tower") || id.includes("dumpster")) {
+    add(new THREE.BoxGeometry(width, height * .72, depth), material(0x4a4a43, .02), [0, height * .36, 0]);
+    add(new THREE.ConeGeometry(Math.max(width, depth) * .62, Math.max(.35, height * .28), 4), material(0x302823, .02), [0, height * .86, 0], [0, Math.PI / 4, 0]);
+  } else if (id.includes("barrel") || id.includes("trash") || id.includes("tire") || id.includes("cone")) {
+    add(new THREE.CylinderGeometry(Math.max(.22, width * .34), Math.max(.25, width * .42), height, id.includes("cone") ? 6 : 10), material(id.includes("cone") ? 0xd56b2b : 0x7f4b27, .03), [0, height / 2, 0]);
+  } else {
+    add(new THREE.BoxGeometry(width, height, depth), material(0x4a4a43, .03), [0, height / 2, 0]);
+  }
   return root;
 }
 

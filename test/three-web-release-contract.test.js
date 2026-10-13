@@ -352,6 +352,13 @@ test("world props expose authored-load state while preserving a readable fallbac
   assert.match(gameSource, /holder\.userData\.requestedAssetPath = asset\.runtimePath/);
 });
 
+test("world fallbacks preserve readable car, structure, and prop silhouettes", () => {
+  assert.match(gameSource, /id\.includes\("car"\) \|\| id\.includes\("bus"\)/);
+  assert.match(gameSource, /id\.includes\("building"\) \|\| id\.includes\("outpost"\)/);
+  assert.match(gameSource, /id\.includes\("barrel"\) \|\| id\.includes\("trash"\)/);
+  assert.match(gameSource, /new THREE\.CylinderGeometry/);
+});
+
 test("the first-person spawn stays clear of the origin overpass ramp", () => {
   assert.match(gameSource, /player = unit\(0x55e5ff, 20, -36, activeProfile\?\.avatarType/);
 });
