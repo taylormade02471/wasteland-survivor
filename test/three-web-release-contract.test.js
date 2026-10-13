@@ -388,6 +388,14 @@ test("the gameplay renderer exposes a large ranged spider enemy", () => {
   assert.match(gameSource, /enemy\.g\.userData\.hitRadius \|\| 1\.1/);
 });
 
+test("weapon firing exposes rendered muzzle and tracer feedback", () => {
+  assert.match(gameSource, /function weaponMuzzleFlash\(actor, direction, color\)/);
+  assert.match(gameSource, /flash\.name = "weapon-muzzle-flash"/);
+  assert.match(gameSource, /tracer\.name = "weapon-tracer-flash"/);
+  assert.match(gameSource, /weaponMuzzleFlash\(actor, shotDirection, projectileColor\)/);
+  assert.match(gameSource, /effects\.push\(\{ mesh: tracer, velocity: direction\.clone\(\)\.multiplyScalar\(10\), life: \.09 \}\)/);
+});
+
 test("the combat camera stays ahead of the survivor head while preserving the existing movement controls", () => {
   assert.match(gameSource, /const cameraTarget = frontView \? player\.g\.position\.clone\(\)\.add\(new THREE\.Vector3\(0, 2\.35, 0\)\)\.addScaledVector\(facing, 1\.12\)/);
   assert.match(gameSource, /player\.g\.visible = !frontView && player\.alive/);

@@ -2150,6 +2150,30 @@ function weaponProfile() {
   };
 }
 
+function weaponMuzzleFlash(actor, direction, color) {
+  const origin = actor.g.position.clone().add(new THREE.Vector3(0, 1, 0)).addScaledVector(direction, .72);
+  const flash = new THREE.Mesh(
+    new THREE.SphereGeometry(.16, 6, 5),
+    material(color, 1),
+  );
+  flash.name = "weapon-muzzle-flash";
+  flash.position.copy(origin).addScaledVector(direction, .22);
+  flash.scale.set(.8, .8, 1.8);
+  flash.rotation.y = Math.atan2(direction.x, direction.z);
+  world.add(flash);
+  effects.push({ mesh: flash, velocity: new THREE.Vector3(), life: .12 });
+
+  const tracer = new THREE.Mesh(
+    new THREE.CylinderGeometry(.025, .04, .9, 6),
+    material(color, .8),
+  );
+  tracer.name = "weapon-tracer-flash";
+  tracer.position.copy(origin).addScaledVector(direction, .62);
+  tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+  world.add(tracer);
+  effects.push({ mesh: tracer, velocity: direction.clone().multiplyScalar(10), life: .09 });
+}
+
 function fire(actor, target, profile = null) {
   if (actor.cooldown > 0) return;
   if (actor === player && !profile) {
@@ -2175,6 +2199,7 @@ function fire(actor, target, profile = null) {
     projectile.position.copy(actor.g.position).add(new THREE.Vector3(0, 1, .2));
     world.add(projectile);
     projectile.scale.set(1, 1, 2.4);
+    if (index === 0) weaponMuzzleFlash(actor, shotDirection, projectileColor);
     bullets.push({ m: projectile, v: shotDirection.multiplyScalar(35), life: 1.1, blue: actor === player || allies.includes(actor), damage: weapon.damage, pierce: weapon.pierce, hits: new Set() });
   }
   burst(actor.g.position.clone().add(new THREE.Vector3(0, 1, .6)), actor === player || allies.includes(actor) ? 0x66fcf1 : 0xff5d75, 4);
