@@ -42,6 +42,7 @@ import { biomeAt, createConnectedWorldLayout, createTerrainGrid, createWorldScat
 import { getWorldFieldAsset, getWorldFieldPlacements } from "./world-field-assets.mjs";
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createQuestState, advanceQuestState, questView } from "./story-quests.mjs";
+import { questBeaconFrame, questBeaconProfile } from "./quest-beacon.mjs";
 import { sampleCharacterAnimation } from "./character-animation-runtime.mjs";
 import { advanceWeaponPresentation, beginWeaponReload, createWeaponPresentationState, sampleWeaponPresentationFrame, triggerWeaponShot } from "./weapon-presentation.mjs";
 import { renderQualityProfile } from "./render-quality.mjs";
@@ -294,6 +295,7 @@ let ground, player, ally;
 let activeTerrainTexture = null;
 let mapVisuals = null;
 let armorySurfaceMaps = null;
+let activeQuestBeaconId = null;
 let chests = [];
 let chestSpawnRadius = 70;
 let allies = [], enemies = [], bullets = [], hazards = [], flags = [], effects = [];
@@ -1448,6 +1450,44 @@ function addBiomeGateways() {
   });
 }
 
+function addQuestBeacon(root) {
+  const quest = questView(questState);
+  const profile = questBeaconProfile({ questId: quest.id, mapKey });
+  if (!profile.visible) return null;
+  const group = new THREE.Group();
+  group.name = `quest-beacon:${profile.questId}`;
+  const glow = material(profile.color, .82);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(.1, .2, 3.4, 8), glow);
+  post.position.y = 1.7;
+  const core = new THREE.Mesh(new THREE.SphereGeometry(.42, 14, 10), glow);
+  core.position.y = 3.55;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, .08, 8, 28), glow);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = .12;
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(.28, .72, 6), glow);
+  arrow.position.y = 4.35;
+  arrow.rotation.x = Math.PI;
+  [post, core, ring, arrow].forEach(mesh => { mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh); });
+  const groundY = sampleWorldElevation(worldLayout, profile);
+  group.position.set(profile.x, groundY, profile.z);
+  group.userData = { mapAnim: "quest-beacon", profile, core, ring, arrow };
+  root.add(group);
+  root.userData.questBeacon = group;
+  return group;
+}
+
+function refreshQuestBeacon() {
+  if (!mapVisuals) return;
+  const quest = questView(questState);
+  const profile = questBeaconProfile({ questId: quest.id, mapKey });
+  const existing = mapVisuals.userData.questBeacon;
+  if (existing?.userData?.profile?.questId === profile.questId && Boolean(existing.userData.profile.visible) === profile.visible) return;
+  if (existing) mapVisuals.remove(existing);
+  mapVisuals.userData.questBeacon = null;
+  activeQuestBeaconId = profile.visible ? profile.questId : null;
+  addQuestBeacon(mapVisuals);
+}
+
 function addMapVisuals() {
   const root = new THREE.Group();
   root.name = "map-visuals";
@@ -1479,6 +1519,7 @@ function addMapVisuals() {
     group.userData = { beaconId: beacon.id, core, ring, pulse: beacons.indexOf(beacon) * .9 };
     root.add(group);
   }
+  addQuestBeacon(root);
   addMountainVisuals(root);
   addInfernoFireVisuals(root);
   addBurnedArmoryVisual(root);
@@ -1886,6 +1927,16 @@ function updateMapVisuals(dt) {
     if (node.userData?.mapAnim === "detail-point") {
       const pulse = .72 + Math.sin(elapsed * 2.4 + (node.userData.pulse || 0)) * .22;
       node.scale.setScalar(pulse);
+      return;
+    }
+    if (node.userData?.mapAnim === "quest-beacon") {
+      const frame = questBeaconFrame({ profile: node.userData.profile, elapsed });
+      node.userData.core.scale.setScalar(frame.scale);
+      node.userData.ring.rotation.z = frame.rotation;
+      node.userData.ring.scale.setScalar(frame.scale);
+      node.userData.core.material.opacity = frame.opacity;
+      node.userData.ring.material.opacity = frame.opacity * .72;
+      node.userData.arrow.position.y = 4.35 + Math.sin(elapsed * 2.4) * .16;
       return;
     }
     if (node.userData?.mapAnim === "fire-light") {
@@ -4132,6 +4183,7 @@ function updateStoryProgress() {
     discoveries: discoveryCount,
   });
   questState = questResult.state;
+  refreshQuestBeacon();
   if (questResult.completed) {
     gold += questResult.reward.gold;
     silver += questResult.reward.silver;
