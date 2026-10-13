@@ -676,12 +676,15 @@ function updateAuthoredCharacterAnimations(dt) {
       });
       group.position.y = actor.alive ? Math.abs(Math.sin(group.userData.animationTime * 8.5)) * .025 : 0;
     }
-    if (!group.userData.authoredCharacter) continue;
+    if (!group.userData.authoredCharacter && !group.userData.authoredEnemy) continue;
     const previous = group.userData.animationPreviousPosition || group.position.clone();
     const moved = group.position.distanceTo(previous) > .001;
     const state = !actor.alive ? "downed" : actor === player && firing ? "fire" : moved ? "run" : actor === player && adsActive ? "aim" : "idle";
+    const authoredState = group.userData.authoredEnemy
+      ? (!actor.alive ? "hit" : actor.cooldown > 0 ? "attack" : moved ? "move" : "idle")
+      : state;
     const authoredRoot = group.children.find(child => child.userData?.animationMixer);
-    driveAuthoredAnimation(authoredRoot, state, dt);
+    driveAuthoredAnimation(authoredRoot, authoredState, dt);
     const pose = sampleCharacterAnimation({ state, time: group.userData.animationTime, intensity: actor.alive ? 1 : .7 });
     const root = group.children.find(child => child.name?.startsWith("character:")) || group;
     if (group.userData.animationBaseY == null) group.userData.animationBaseY = root.position.y;

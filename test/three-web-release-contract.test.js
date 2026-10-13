@@ -343,7 +343,11 @@ test("the gameplay renderer drives authored character motion states", () => {
 test("authored GLB animation clips drive live character and enemy states", () => {
   assert.match(gameSource, /new THREE\.AnimationMixer\(root\)/);
   assert.match(gameSource, /mixer\.clipAction\(clip\)/);
-  assert.match(gameSource, /driveAuthoredAnimation\(authoredRoot, state, dt\)/);
+  assert.match(gameSource, /driveAuthoredAnimation\(authoredRoot, authoredState, dt\)/);
+  assert.match(gameSource, /if \(!group\.userData\.authoredCharacter && !group\.userData\.authoredEnemy\) continue;/);
+  assert.match(gameSource, /const authoredState = group\.userData\.authoredEnemy/);
+  assert.match(gameSource, /\? \(!actor\.alive \? "hit" : actor\.cooldown > 0 \? "attack" : moved \? "move" : "idle"\)/);
+  assert.match(gameSource, /driveAuthoredAnimation\(authoredRoot, authoredState, dt\)/);
   assert.match(gameSource, /next\.reset\(\)\.fadeIn\(\.12\)\.play\(\)/);
 });
 
