@@ -297,6 +297,7 @@ let frontView = true;
 let ground, player, ally;
 let activeTerrainTexture = null;
 let terrainTextureState = "pending";
+let terrainMicrodetailCount = 0;
 let mapVisuals = null;
 let armorySurfaceMaps = null;
 let activeQuestBeaconId = null;
@@ -705,11 +706,14 @@ function publishRenderAudit() {
     enemyCount: enemies.filter(actor => actor?.g?.userData?.authoredEnemy).length,
     weaponCount: player?.g?.userData?.authoredWeapon ? 1 : 0,
     terrainState: terrainTextureState,
+    terrainDetailCount: terrainMicrodetailCount,
   });
   canvas.dataset.authoredCharacterCount = String(summary.characters);
   canvas.dataset.authoredEnemyCount = String(summary.enemies);
   canvas.dataset.authoredWeaponCount = String(summary.weapons);
   canvas.dataset.terrainTextureState = summary.terrain;
+  canvas.dataset.terrainMicrodetailCount = String(summary.terrainDetails);
+  canvas.dataset.terrainMicrodetailComplete = String(summary.terrainDetails > 0);
   canvas.dataset.renderAuditComplete = String(summary.complete);
 }
 
@@ -1325,6 +1329,10 @@ function addTerrainMicroDetail(mapId, random = seededRandom(`terrain-microdetail
   detail.castShadow = effectiveGraphicsTier() === "high";
   detail.receiveShadow = true;
   world.add(detail);
+  terrainMicrodetailCount = count;
+  canvas.dataset.terrainMicrodetailMap = mapId;
+  canvas.dataset.terrainMicrodetailCount = String(count);
+  publishRenderAudit();
 }
 
 function addRoadMarkings(segment) {
@@ -2382,6 +2390,7 @@ function createWorldFieldBlockers() {
 
 function resetMap() {
   world.clear();
+  terrainMicrodetailCount = 0;
   rosterAuditActors = [];
   mapVisuals = null;
   const connectedLayout = createConnectedWorldLayout();

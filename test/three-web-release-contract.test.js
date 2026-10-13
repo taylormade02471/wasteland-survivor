@@ -329,6 +329,7 @@ test("terrain surfaces add authored biome detail when texture sampling is unavai
   assert.match(gameSource, /terrain-microdetail:\$\{mapId\}/);
   assert.match(gameSource, /userData\.collision = false/);
   assert.match(gameSource, /addTerrainMicroDetail\(mapId, random\)/);
+  assert.match(gameSource, /terrainMicrodetailComplete/);
   assert.match(gameSource, /terrain-detail:\$\{mapId\}/);
   assert.match(gameSource, /addTerrainSurfaceDetail\(mapKey\)/);
   assert.match(gameSource, /function addSpatialBiomeAccents\(\)/);
