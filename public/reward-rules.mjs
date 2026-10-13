@@ -5,6 +5,23 @@ export const RISK_PROFILES = Object.freeze({
 });
 const DIFFICULTY = Object.freeze({ easy: 1, medium: 1.25, expert: 1.6, insane: 2.2 });
 const whole = value => Math.max(0, Math.floor(Number(value) || 0));
+const ENEMY_CURRENCY = Object.freeze({
+  rusher: Object.freeze({ gold: 1, silver: 3 }),
+  shooter: Object.freeze({ gold: 2, silver: 5 }),
+  heavy: Object.freeze({ gold: 3, silver: 8 }),
+  sniper: Object.freeze({ gold: 3, silver: 8 }),
+  spider: Object.freeze({ gold: 4, silver: 10 }),
+  boss: Object.freeze({ gold: 8, silver: 18 }),
+});
+
+export function enemyCurrencyDrop({ enemyType = "rusher", wave = 1 } = {}) {
+  const base = ENEMY_CURRENCY[enemyType] || ENEMY_CURRENCY.rusher;
+  const tier = Math.max(0, whole(wave) - 1);
+  return Object.freeze({
+    gold: base.gold + Math.floor(tier * .5),
+    silver: base.silver + tier,
+  });
+}
 
 export function rewardPreview({ risk = "standard", difficulty = "medium", winStreak = 0 } = {}) {
   const profile = RISK_PROFILES[risk] || RISK_PROFILES.standard;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rewardPreview, settleMatch } from "../public/reward-rules.mjs";
+import { enemyCurrencyDrop, rewardPreview, settleMatch } from "../public/reward-rules.mjs";
 test("risk levels trade larger rewards for larger capped defeat penalties", () => {
   const protectedLoss = settleMatch({ outcome: "loss", risk: "protected", currentScrap: 100, kills: 2 });
   const highLoss = settleMatch({ outcome: "loss", risk: "high", currentScrap: 100, kills: 2 });
@@ -29,4 +29,12 @@ test("match settlement returns separate gold and silver currencies", () => {
   assert.ok(reward.silverEarned > reward.goldEarned);
   assert.equal(reward.nextGold, 4 + reward.goldEarned);
   assert.equal(reward.nextSilver, 7 + reward.silverEarned);
+});
+
+test("enemy currency drops are deterministic, distinct, and boss-weighted", () => {
+  const rusher = enemyCurrencyDrop({ enemyType: "rusher", wave: 1 });
+  const boss = enemyCurrencyDrop({ enemyType: "boss", wave: 5 });
+  assert.ok(rusher.gold > 0 && rusher.silver > rusher.gold);
+  assert.ok(boss.gold > rusher.gold && boss.silver > rusher.silver);
+  assert.deepEqual(enemyCurrencyDrop({ enemyType: "rusher", wave: 1 }), rusher);
 });

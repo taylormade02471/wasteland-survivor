@@ -33,3 +33,10 @@ test("discovery rewards create visible gold and silver pickup bursts", () => {
   assert.match(gameSource, /currency-pickup:gold/);
   assert.match(gameSource, /currency-pickup:silver/);
 });
+
+test("enemy defeats award deterministic currency and spawn the same pickup visuals", () => {
+  assert.match(gameSource, /enemyCurrencyDrop\(\{ enemyType: enemy\.enemyType, wave \}\)/);
+  assert.match(gameSource, /gold \+= currencyDrop\.gold/);
+  assert.match(gameSource, /silver \+= currencyDrop\.silver/);
+  assert.match(gameSource, /spawnCurrencyPickupBurst\(enemy\.g\.position, currencyDrop\)/);
+});
