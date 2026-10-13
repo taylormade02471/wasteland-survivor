@@ -46,6 +46,7 @@ import { sampleCharacterAnimation } from "./character-animation-runtime.mjs";
 import { advanceWeaponPresentation, beginWeaponReload, createWeaponPresentationState, sampleWeaponPresentationFrame, triggerWeaponShot } from "./weapon-presentation.mjs";
 import { renderQualityProfile } from "./render-quality.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
+import { buildFireVfxProfile, fireVfxFrame } from "./fire-vfx.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { createLiveCharacterPreview, getPreferredCharacterModelPaths, loadFirstAvailableModel } from "./live-character-preview.mjs";
 import {
@@ -1603,6 +1604,7 @@ function createFlameVisual(color = 0xff5b22, scale = 1, pulse = 0) {
 function addInfernoFireVisuals(root) {
   const fireline = new THREE.Group();
   fireline.name = "inferno-fireline-visuals";
+  const fireVfxProfile = buildFireVfxProfile(renderQuality.pass);
   const fireBase = material(0x7e1f12, .42);
   [
     { x: -198, z: 76, scale: .82 },
@@ -1618,6 +1620,64 @@ function addInfernoFireVisuals(root) {
     const flame = createFlameVisual(index % 2 ? 0xffb72e : 0xff5a24, point.scale, index * .8);
     flame.position.set(point.x, groundY + .12, point.z);
     fireline.add(base, flame);
+
+    const smokePositions = new Float32Array(fireVfxProfile.smokeCount * 3);
+    for (let smokeIndex = 0; smokeIndex < fireVfxProfile.smokeCount; smokeIndex += 1) {
+      const frame = fireVfxFrame({ profile: fireVfxProfile, elapsed: smokeIndex * .17, index: smokeIndex });
+      const offset = smokeIndex * 3;
+      smokePositions[offset] = frame.x * point.scale;
+      smokePositions[offset + 1] = frame.y;
+      smokePositions[offset + 2] = frame.x * .42 * point.scale;
+    }
+    const smokeGeometry = new THREE.BufferGeometry();
+    smokeGeometry.setAttribute("position", new THREE.BufferAttribute(smokePositions, 3));
+    const smoke = new THREE.Points(smokeGeometry, new THREE.PointsMaterial({
+      color: 0x6f625b,
+      size: .52 + renderQuality.pass * .04,
+      transparent: true,
+      opacity: fireVfxProfile.smokeOpacity,
+      depthWrite: false,
+    }));
+    smoke.name = `fire-smoke-plume:${index + 1}`;
+    smoke.userData.mapAnim = "fire-smoke-plume";
+    smoke.userData.profile = fireVfxProfile;
+    smoke.userData.origin = new THREE.Vector3(point.x, groundY + .6, point.z);
+    smoke.userData.scale = point.scale;
+    fireline.add(smoke);
+
+    const emberGeometry = new THREE.BufferGeometry();
+    const emberPositions = new Float32Array(fireVfxProfile.emberCount * 3);
+    for (let emberIndex = 0; emberIndex < fireVfxProfile.emberCount; emberIndex += 1) {
+      const offset = emberIndex * 3;
+      emberPositions[offset] = ((emberIndex * 17) % 23 - 11) * .045 * point.scale;
+      emberPositions[offset + 1] = (emberIndex % 9) * .18;
+      emberPositions[offset + 2] = ((emberIndex * 11) % 19 - 9) * .045 * point.scale;
+    }
+    emberGeometry.setAttribute("position", new THREE.BufferAttribute(emberPositions, 3));
+    const embers = new THREE.Points(emberGeometry, new THREE.PointsMaterial({
+      color: 0xffb22e,
+      size: .16 + renderQuality.pass * .012,
+      transparent: true,
+      opacity: .65,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }));
+    embers.name = `fire-ember-field:${index + 1}`;
+    embers.userData.mapAnim = "fire-ember-field";
+    embers.userData.origin = new THREE.Vector3(point.x, groundY + .15, point.z);
+    embers.userData.phase = index * .7;
+    fireline.add(embers);
+
+    const heat = new THREE.Mesh(
+      new THREE.SphereGeometry(1.4 * point.scale, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff8b40, transparent: true, opacity: fireVfxProfile.heatOpacity, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    heat.name = `heat-shimmer:${index + 1}`;
+    heat.userData.mapAnim = "heat-shimmer";
+    heat.userData.origin = new THREE.Vector3(point.x, groundY + .95, point.z);
+    heat.userData.phase = index * .9;
+    heat.scale.y = .6;
+    fireline.add(heat);
   });
   root.add(fireline);
 }
@@ -1825,6 +1885,37 @@ function updateMapVisuals(dt) {
     }
     if (node.userData?.mapAnim === "fire-light") {
       node.intensity = node.userData.baseIntensity * (.82 + Math.sin(elapsed * 7.2 + (node.userData.pulse || 0)) * .18);
+      return;
+    }
+    if (node.userData?.mapAnim === "fire-smoke-plume") {
+      const { profile, origin } = node.userData;
+      const positions = node.geometry.attributes.position.array;
+      const scale = node.userData.scale || 1;
+      for (let index = 0; index < profile.smokeCount; index += 1) {
+        const frame = fireVfxFrame({ profile, elapsed: elapsed + index * .13, index });
+        const offset = index * 3;
+        positions[offset] = frame.x * scale;
+        positions[offset + 1] = frame.y;
+        positions[offset + 2] = frame.x * .42 * scale;
+      }
+      node.position.copy(origin);
+      node.material.opacity = profile.smokeOpacity * (.86 + Math.sin(elapsed * 1.2) * .08);
+      node.geometry.attributes.position.needsUpdate = true;
+      return;
+    }
+    if (node.userData?.mapAnim === "fire-ember-field") {
+      const origin = node.userData.origin;
+      node.position.copy(origin);
+      node.position.y += Math.sin(elapsed * 2.8 + node.userData.phase) * .06;
+      node.rotation.y += dt * .5;
+      return;
+    }
+    if (node.userData?.mapAnim === "heat-shimmer") {
+      const origin = node.userData.origin;
+      const pulse = .82 + Math.sin(elapsed * 3.4 + node.userData.phase) * .12;
+      node.position.set(origin.x + Math.sin(elapsed * .9 + node.userData.phase) * .12, origin.y + pulse * .22, origin.z);
+      node.scale.set(pulse, .58 + pulse * .22, pulse);
+      node.material.opacity = .06 + pulse * .035;
       return;
     }
     if (node.userData?.mapAnim !== "flame") return;
