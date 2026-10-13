@@ -53,6 +53,7 @@ import { questCompleteFrame, questCompleteProfile } from "./quest-complete-vfx.m
 import { summarizeWorldAssetStates } from "./world-asset-audit.mjs";
 import { summarizeRenderCoverage } from "./render-audit.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
+import { cloneSkinnedScene } from "./skeleton-clone.mjs";
 import { createLiveCharacterPreview, getPreferredCharacterModelPaths, loadFirstAvailableModel } from "./live-character-preview.mjs";
 import {
   LOBBY_CONTROL_ORDER,
@@ -186,7 +187,7 @@ function prepareAuthoredMaterial(source) {
 }
 
 function cloneAuthoredRoot(scene) {
-  const root = scene?.clone ? scene.clone(true) : null;
+  const root = cloneSkinnedScene(scene);
   root?.traverse?.(node => {
     if (!node.isMesh) return;
     node.castShadow = true;
@@ -713,7 +714,7 @@ function attachAuthoredCharacter(group, avatarType) {
 function publishRenderAudit() {
   const summary = summarizeRenderCoverage({
     characterCount: [player, ...allies].filter(actor => actor?.g?.userData?.authoredCharacter).length,
-    enemyCount: enemies.filter(actor => actor?.g?.userData?.authoredEnemy).length,
+    enemyCount: enemies.filter(actor => actor?.g?.userData?.authoredEnemyAsset).length,
     weaponCount: player?.g?.userData?.authoredWeapon ? 1 : 0,
     terrainState: terrainTextureState,
     terrainDetailCount: terrainMicrodetailCount,
@@ -827,18 +828,18 @@ function attachAuthoredWeapon(group, gunName) {
 function attachAuthoredEnemy(group, enemyType, assetPath) {
   if (!assetPath) return;
   if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadState = "loading";
-  const paths = renderFocus === "gameplay"
-    ? [AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean)
-    : [assetPath, AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean);
+  // The audit must render the actual enemy mesh first. A compact character
+  // mesh is only a network fallback for a slow or unavailable asset.
+  const paths = [assetPath, AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean);
   if (renderFocus === "gameplay") {
     setTimeout(() => {
       if (group.userData.authoredEnemy || group.userData.auditProxy) return;
       canvas.dataset.authoredEnemyLoadState = "proxy";
       canvas.dataset.authoredEnemyLoadError = enemyType;
       addGameplayAuditEnemyProxy(group, enemyType);
-    }, 6000);
+    }, 16000);
   }
-  loadCuratedGlb(paths, renderFocus === "gameplay" ? { timeoutMs: 4500 } : {}).then(asset => {
+  loadCuratedGlb(paths, renderFocus === "gameplay" ? { timeoutMs: 12000 } : {}).then(asset => {
     if (!group.parent) return;
     const root = cloneAuthoredRoot(asset?.scene);
     if (!root) {
@@ -856,7 +857,7 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
     while (group.children.length) group.remove(group.children[0]);
     group.add(root);
     group.userData.authoredEnemy = enemyType;
-    if (renderFocus === "gameplay") addGameplayAuditEnemyProxy(group, enemyType);
+    group.userData.authoredEnemyAsset = true;
     publishGameplayAuditActorDiagnostics();
     if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadState = "ready";
     publishRenderAudit();

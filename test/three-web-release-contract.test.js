@@ -340,6 +340,20 @@ test("direct render audits keep combat alive long enough for authored GLB callba
   assert.match(gameSource, /if \(directRenderFocus\) \{[\s\S]*phase = "combat";[\s\S]*timer = Number\.POSITIVE_INFINITY;/);
 });
 
+test("gameplay audit prefers the real enemy GLB and only marks successful imported assets", () => {
+  assert.match(gameSource, /const paths = \[assetPath, AUDIT_ENEMY_MODELS\[enemyType\]\]\.filter\(Boolean\);/);
+  assert.match(gameSource, /group\.userData\.authoredEnemyAsset = true;/);
+  assert.doesNotMatch(gameSource, /if \(renderFocus === "gameplay"\) addGameplayAuditEnemyProxy\(group, enemyType\);/);
+});
+
+test("authored characters use skeleton-safe clones in gameplay and menu preview", () => {
+  assert.match(gameSource, /import \{ cloneSkinnedScene \} from "\.\/skeleton-clone\.mjs";/);
+  assert.match(gameSource, /const root = cloneSkinnedScene\(scene\);/);
+  const previewSource = fs.readFileSync(path.join(repo, "public", "live-character-preview.mjs"), "utf8");
+  assert.match(previewSource, /import \{ cloneSkinnedScene \} from "\.\/skeleton-clone\.mjs";/);
+  assert.match(previewSource, /const clone = cloneSkinnedScene\(scene\);/);
+});
+
 test("gameplay audit stage is part of the scene and follows the audit camera", () => {
   assert.match(gameSource, /scene\.add\(stage\);/);
   assert.match(gameSource, /function syncGameplayAuditStage\(\)/);

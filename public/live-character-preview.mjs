@@ -1,5 +1,6 @@
 import { getCharacterArchetype } from "./character-models.mjs";
 import { sampleSimpleCharacterMotion } from "./simple-character-motion.mjs";
+import { cloneSkinnedScene } from "./skeleton-clone.mjs";
 
 const PREFERRED_CHARACTER_MODELS = Object.freeze({
   scout: "./assets/nightfall/aaa/characters/meshy/scout-meshy-v1.glb",
@@ -38,7 +39,7 @@ function cloneMaterial(material) {
 }
 
 function cloneScene(scene) {
-  const clone = scene?.clone ? scene.clone(true) : null;
+  const clone = cloneSkinnedScene(scene);
   clone?.traverse?.(node => {
     if (node.isMesh) {
       node.castShadow = true;
