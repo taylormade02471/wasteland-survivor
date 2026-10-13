@@ -2097,21 +2097,29 @@ function addInfernoFireVisuals(root) {
   root.add(fireline);
 }
 
+function configureArmorySurfaceTexture(texture, profile, { colorSpace } = {}) {
+  // TextureLoader gives us a Texture object before its image is available.  Do
+  // not force a GPU update in that interval: WebGL reports it as an invalid
+  // empty texture and some phones retain the failed state for the first frame.
+  if (!texture?.image) return false;
+  if (colorSpace) texture.colorSpace = colorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(profile.textureRepeat, profile.textureRepeat);
+  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy);
+  texture.needsUpdate = true;
+  return true;
+}
+
 function getArmorySurfaceMaps(profile) {
   if (!armorySurfaceMaps) {
     const loader = new THREE.TextureLoader();
     armorySurfaceMaps = {
-      baseColor: loader.load(ARMORY_SURFACE_TEXTURES.baseColor),
-      bump: loader.load(ARMORY_SURFACE_TEXTURES.bump),
+      baseColor: loader.load(ARMORY_SURFACE_TEXTURES.baseColor, texture => configureArmorySurfaceTexture(texture, profile, { colorSpace: THREE.SRGBColorSpace })),
+      bump: loader.load(ARMORY_SURFACE_TEXTURES.bump, texture => configureArmorySurfaceTexture(texture, profile)),
     };
-    armorySurfaceMaps.baseColor.colorSpace = THREE.SRGBColorSpace;
   }
-  for (const texture of Object.values(armorySurfaceMaps)) {
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(profile.textureRepeat, profile.textureRepeat);
-    texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy);
-    texture.needsUpdate = true;
-  }
+  configureArmorySurfaceTexture(armorySurfaceMaps.baseColor, profile, { colorSpace: THREE.SRGBColorSpace });
+  configureArmorySurfaceTexture(armorySurfaceMaps.bump, profile);
   return armorySurfaceMaps;
 }
 

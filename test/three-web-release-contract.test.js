@@ -398,6 +398,14 @@ test("terrain texture loading keeps the external media route and restores the bu
   assert.match(gameSource, /const texture = loadTerrainTexture\(runtimeAssetPath\(cfg\.texture\)\)/);
 });
 
+test("armory surface textures wait for image data before their GPU settings are applied", () => {
+  const armoryBlock = gameSource.match(/function configureArmorySurfaceTexture\([\s\S]*?function addBurnedArmoryVisual/)?.[0] || "";
+  assert.match(armoryBlock, /if \(!texture\?\.image\) return false;/);
+  assert.match(armoryBlock, /loader\.load\(ARMORY_SURFACE_TEXTURES\.baseColor, texture => configureArmorySurfaceTexture\(texture, profile, \{ colorSpace: THREE\.SRGBColorSpace \}\)\)/);
+  assert.match(armoryBlock, /loader\.load\(ARMORY_SURFACE_TEXTURES\.bump, texture => configureArmorySurfaceTexture\(texture, profile\)\)/);
+  assert.match(armoryBlock, /if \(!texture\?\.image\) return false;[\s\S]*?texture\.needsUpdate = true;/);
+});
+
 test("terrain surfaces add authored biome detail when texture sampling is unavailable", () => {
   assert.match(gameSource, /function addTerrainSurfaceDetail\(mapId\)/);
   assert.match(gameSource, /function addTerrainMicroDetail\(mapId/);
