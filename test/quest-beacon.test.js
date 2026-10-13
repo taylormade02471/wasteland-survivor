@@ -42,3 +42,9 @@ test("the renderer wires an active quest beacon into map visuals", () => {
   assert.match(gameSource, /mapAnim === "quest-beacon"/);
   assert.match(gameSource, /refreshQuestBeacon/);
 });
+
+test("active quest beacons carry a visible volumetric beam for long-range story navigation", () => {
+  assert.match(gameSource, /quest-beacon-beam/);
+  assert.match(gameSource, /new THREE\.CylinderGeometry\(\.16, \.52, 9\.5/);
+  assert.match(gameSource, /node\.userData\.beam\.material\.opacity/);
+});

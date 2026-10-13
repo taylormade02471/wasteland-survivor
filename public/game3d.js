@@ -1557,10 +1557,16 @@ function addQuestBeacon(root) {
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(.28, .72, 6), glow);
   arrow.position.y = 4.35;
   arrow.rotation.x = Math.PI;
-  [post, core, ring, arrow].forEach(mesh => { mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh); });
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(.16, .52, 9.5, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: profile.color, transparent: true, opacity: .16, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  beam.name = "quest-beacon-beam";
+  beam.position.y = 6.6;
+  [post, core, ring, arrow, beam].forEach(mesh => { mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh); });
   const groundY = sampleWorldElevation(worldLayout, profile);
   group.position.set(profile.x, groundY, profile.z);
-  group.userData = { mapAnim: "quest-beacon", profile, core, ring, arrow };
+  group.userData = { mapAnim: "quest-beacon", profile, core, ring, arrow, beam };
   root.add(group);
   root.userData.questBeacon = group;
   return group;
@@ -2030,6 +2036,9 @@ function updateMapVisuals(dt) {
       node.userData.ring.scale.setScalar(frame.scale);
       node.userData.core.material.opacity = frame.opacity;
       node.userData.ring.material.opacity = frame.opacity * .72;
+      node.userData.beam.material.opacity = .1 + frame.opacity * .16;
+      node.userData.beam.scale.x = .9 + frame.scale * .18;
+      node.userData.beam.scale.z = .9 + frame.scale * .18;
       node.userData.arrow.position.y = 4.35 + Math.sin(elapsed * 2.4) * .16;
       return;
     }
