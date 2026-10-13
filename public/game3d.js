@@ -875,7 +875,7 @@ function addTerrainGallery() {
   floor.receiveShadow = true;
   gallery.add(floor);
   const ids = Object.keys(MAPS);
-  const positions = [[-7.6, 4.7], [7.6, 4.7], [-7.6, -4.7], [7.6, -4.7]];
+  const positions = [[-7.6, 2.4], [7.6, 2.4], [-7.6, 8.7], [7.6, 8.7]];
   const loader = new THREE.TextureLoader();
   let loadedCount = 0;
   canvas.dataset.terrainGalleryExpected = String(ids.length);
@@ -886,7 +886,7 @@ function addTerrainGallery() {
       new THREE.MeshStandardMaterial({ color: 0x26343d, roughness: .72, metalness: .24 }),
     );
     frame.name = `terrain-gallery-frame:${id}`;
-    frame.position.set(positions[index][0], 4.55, positions[index][1]);
+    frame.position.set(positions[index][0], positions[index][1], 0);
     frame.castShadow = true;
     frame.receiveShadow = true;
     gallery.add(frame);
@@ -895,7 +895,7 @@ function addTerrainGallery() {
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .84, metalness: .04 }),
     );
     panel.name = `terrain-gallery-panel:${id}`;
-    panel.position.set(positions[index][0], 4.55, positions[index][1] - .18);
+    panel.position.set(positions[index][0], positions[index][1], -.18);
     loader.load(runtimeAssetPath(MAPS[id].texture), texture => {
       texture.colorSpace = THREE.SRGBColorSpace;
       panel.material.map = texture;
@@ -907,8 +907,8 @@ function addTerrainGallery() {
     gallery.add(panel);
   });
   world.add(gallery);
-  camera.position.set(0, 8.4, 22);
-  camera.lookAt(0, 4.5, 0);
+  camera.position.set(0, 7.2, 24);
+  camera.lookAt(0, 5.6, 0);
   document.body.dataset.renderFocus = "terrain-gallery";
   canvas.dataset.terrainGalleryStage = gallery.name;
 }
@@ -3364,8 +3364,8 @@ function update(dt) {
   }
   if (renderFocus === "terrain-gallery") {
     player.g.visible = false;
-    camera.position.lerp(new THREE.Vector3(0, 8.4, 22), Math.min(1, dt * 8));
-    camera.lookAt(0, 4.5, 0);
+    camera.position.lerp(new THREE.Vector3(0, 7.2, 24), Math.min(1, dt * 8));
+    camera.lookAt(0, 5.6, 0);
     return;
   }
   player.g.visible = !frontView && player.alive;
