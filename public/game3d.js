@@ -828,7 +828,7 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
   if (!assetPath) return;
   if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadState = "loading";
   const paths = renderFocus === "gameplay"
-    ? [AUDIT_ENEMY_MODELS[enemyType], assetPath].filter(Boolean)
+    ? [AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean)
     : [assetPath, AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean);
   loadCuratedGlb(paths, renderFocus === "gameplay" ? { timeoutMs: 4500 } : {}).then(asset => {
     if (!group.parent) return;
@@ -2499,7 +2499,10 @@ function resetMap() {
   addTerrainSurfaceDetail(mapKey);
   addSpatialBiomeAccents();
   addConnectedWorldObjects();
-  addWorldFieldAssets();
+  // Keep the gameplay audit isolated from the 27 large world GLBs so its
+  // enemy/terrain capture cannot exhaust a phone or browser tab. Normal
+  // gameplay still loads the complete authored field catalog.
+  if (renderFocus !== "gameplay") addWorldFieldAssets();
   addMapVisuals();
   addInstancedRocks(createWorldScatter(worldLayout, { seed: `${mapKey}:${mode}:${storyStage}:rocks`, count: Math.round(72 * mapScale) }));
   const hazardCount = 4 + Math.floor(storyStage / 2);
@@ -2527,7 +2530,7 @@ function resetMap() {
   // Keep the first-person spawn on the open south approach, not inside the
   // north overpass ramp that crosses the world origin and would fill the
   // opening camera with its gray deck.
-  player = unit(0x55e5ff, 20, -36, activeProfile?.avatarType || "scout", true);
+  player = unit(0x55e5ff, 20, -36, activeProfile?.avatarType || "scout", renderFocus !== "gameplay");
   applyWorldMovement(player);
   applyRequestedRenderFocus();
   classProgress = normalizeClassProgress({ ...classProgress, classId: avatarClass(activeProfile?.avatarType || "scout") });
