@@ -1462,9 +1462,42 @@ function addMapVisuals() {
   addMountainVisuals(root);
   addInfernoFireVisuals(root);
   addBurnedArmoryVisual(root);
+  addBiomeWeatherVisuals(root);
   addRenderQualityDetailPoints(root);
   world.add(root);
   mapVisuals = root;
+}
+
+function addBiomeWeatherVisuals(root) {
+  const pass = renderQuality.pass;
+  const count = pass >= 5 ? 96 : pass >= 3 ? 48 : 20;
+  const random = seededRandom(`weather:${mapKey}:${storyStage}`);
+  const positions = new Float32Array(count * 3);
+  const speeds = new Float32Array(count);
+  const span = worldLayout.size * .44;
+  const colorByMap = { inferno: 0xff9b42, ice: 0xd7f5ff, desert: 0xf0cf82, city: 0x9daeb2 };
+  const sizeByMap = { inferno: .2, ice: .16, desert: .12, city: .14 };
+  const weatherKind = { inferno: "embers", ice: "snow", desert: "dust", city: "ash" }[mapKey] || "ash";
+  for (let index = 0; index < count; index += 1) {
+    positions[index * 3] = (random() * 2 - 1) * span;
+    positions[index * 3 + 1] = 3 + random() * 22;
+    positions[index * 3 + 2] = (random() * 2 - 1) * span;
+    speeds[index] = .7 + random() * 1.1;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const points = new THREE.Points(geometry, new THREE.PointsMaterial({
+    color: colorByMap[mapKey] || colorByMap.city,
+    size: sizeByMap[mapKey] || .14,
+    transparent: true,
+    opacity: pass >= 5 ? .58 : .38,
+    depthWrite: false,
+    blending: mapKey === "inferno" ? THREE.AdditiveBlending : THREE.NormalBlending,
+  }));
+  points.name = `biome-weather:${weatherKind}`;
+  points.userData.mapAnim = "weather";
+  root.add(points);
+  root.userData.weather = { points, speeds, span, weatherKind, elapsed: 0 };
 }
 
 function addRenderQualityDetailPoints(root) {
@@ -1717,6 +1750,21 @@ function updateMapVisuals(dt) {
   if (!mapVisuals) return;
   const elapsed = (mapVisuals.userData.elapsed || 0) + dt;
   mapVisuals.userData.elapsed = elapsed;
+  const weather = mapVisuals.userData.weather;
+  if (weather?.points) {
+    const positions = weather.points.geometry.attributes.position.array;
+    weather.elapsed += dt;
+    for (let index = 0; index < weather.speeds.length; index += 1) {
+      const offset = index * 3;
+      positions[offset + 1] -= weather.speeds[index] * dt;
+      positions[offset] += Math.sin(weather.elapsed * .8 + index) * dt * .08;
+      if (positions[offset + 1] < .4) {
+        positions[offset + 1] = 18 + (index % 7) * .8;
+        positions[offset] = ((positions[offset] + weather.span) % (weather.span * 2)) - weather.span;
+      }
+    }
+    weather.points.geometry.attributes.position.needsUpdate = true;
+  }
   mapVisuals.children.forEach((beacon, index) => {
     if (!beacon.userData?.ring || !beacon.userData?.core) return;
     const pulse = .88 + Math.sin(elapsed * 2.2 + (beacon.userData.pulse || index)) * .14;

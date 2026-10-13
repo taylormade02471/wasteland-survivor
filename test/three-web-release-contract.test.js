@@ -325,6 +325,13 @@ test("each gameplay map receives a deterministic authored atmosphere", () => {
   assert.match(gameSource, /scene\.background = createBiomeSkyTexture\(mapKey\)/);
 });
 
+test("biome weather adds tier-bounded ambient particles without touching collision", () => {
+  assert.match(gameSource, /function addBiomeWeatherVisuals\(root\)/);
+  assert.match(gameSource, /biome-weather:\$\{weatherKind\}/);
+  assert.match(gameSource, /points\.geometry\.attributes\.position\.needsUpdate = true/);
+  assert.match(gameSource, /const count = pass >= 5 \? 96 : pass >= 3 \? 48 : 20/);
+});
+
 test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /character-animation-runtime\.mjs/);
   assert.match(gameSource, /updateAuthoredCharacterAnimations\(dt\)/);
