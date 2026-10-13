@@ -855,14 +855,14 @@ function loadTerrainTexture(path) {
   };
   const procedural = createProceduralTerrainTexture(path);
   const texture = procedural;
-  loader.load(path, loaded => applyLoadedTexture(texture, loaded), undefined, () => {
-    const fallback = fallbackPath && fallbackPath !== path ? fallbackPath : null;
-    if (fallback) {
-      loader.load(fallback, loaded => applyLoadedTexture(texture, loaded), undefined, () => applyLoadedTexture(texture, procedural));
-    } else {
-      applyLoadedTexture(texture, procedural);
-    }
+  const bundledPath = fallbackPath || path;
+  const loadPath = source => loader.load(source, loaded => applyLoadedTexture(texture, loaded), undefined, () => {
+    if (source === bundledPath) applyLoadedTexture(texture, procedural);
   });
+  // The bundled authored texture is the deterministic first render. The
+  // configured cloud object can replace it later when it is reachable.
+  loadPath(bundledPath);
+  if (path && path !== bundledPath) loadPath(path);
   return texture;
 }
 

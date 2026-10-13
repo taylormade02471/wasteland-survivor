@@ -283,8 +283,12 @@ test("terrain texture loading keeps the external media route and restores the bu
   assert.match(gameSource, /const fallbackPath = String\(path \|\| ""\)\.replace/);
   assert.match(gameSource, /const loader = new THREE\.TextureLoader\(\);/);
   assert.match(gameSource, /const texture = procedural;/);
-  assert.match(gameSource, /loader\.load\(path, loaded => applyLoadedTexture\(texture, loaded\)/);
-  assert.match(gameSource, /loader\.load\(fallback, loaded => applyLoadedTexture\(texture, loaded\)/);
+  assert.match(gameSource, /const bundledPath = fallbackPath \|\| path;/);
+  assert.match(gameSource, /loadPath\(bundledPath\);/);
+  assert.match(gameSource, /if \(path && path !== bundledPath\) loadPath\(path\);/);
+  assert.match(gameSource, /const bundledPath = fallbackPath \|\| path;/);
+  assert.match(gameSource, /loadPath\(bundledPath\);/);
+  assert.match(gameSource, /if \(path && path !== bundledPath\) loadPath\(path\);/);
   assert.match(gameSource, /texture\.source = loaded\.source/);
   assert.match(gameSource, /const texture = loadTerrainTexture\(runtimeAssetPath\(cfg\.texture\)\)/);
 });
