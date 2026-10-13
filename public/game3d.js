@@ -304,6 +304,7 @@ let worldFieldAssetHolders = [];
 let chests = [];
 let chestSpawnRadius = 70;
 let allies = [], enemies = [], bullets = [], hazards = [], flags = [], effects = [];
+let rosterAuditActors = [];
 let cameraShake = 0;
 let score = 0, kills = 0, scrap = 0, gold = 0, silver = 0, wave = 1, blue = 0, red = 0, shieldLevel = 0;
 let playerLevel = 1, storyStage = 1, missionIndex = 0, kingdomUnlocked = false;
@@ -691,7 +692,7 @@ function publishRenderAudit() {
 }
 
 function updateAuthoredCharacterAnimations(dt) {
-  const actors = [player, ...allies, ...enemies];
+  const actors = [player, ...allies, ...enemies, ...rosterAuditActors];
   for (const actor of actors) {
     const group = actor?.g;
     if (!group) continue;
@@ -801,6 +802,32 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
     group.userData.authoredEnemy = enemyType;
     publishRenderAudit();
   }).catch(() => {});
+}
+
+function addRenderAuditRoster() {
+  const survivorTypes = ["scout", "ranger", "heavy", "tech", "medic", "warden"];
+  const enemyTypes = [...Object.keys(AUTHORED_ENEMY_MODELS), "spider"];
+  const survivorColors = [0x55e5ff, 0x7ad7ff, 0xffb84d, 0x76ef9c, 0xff7bb5, 0xc8a8ff];
+  const enemyColors = [0xff5b55, 0xff8b45, 0xb97aff, 0x4dbbff, 0xff3d3d, 0x66fcf1, 0x8cff4d, 0xffcf40, 0x8cff4d];
+  const survivors = survivorTypes.map((type, index) => {
+    const actor = unit(survivorColors[index], -10 + index * 4, 2.8, type, true);
+    actor.rosterAudit = true;
+    return actor;
+  });
+  const visualClass = type => ["heavy", "shield", "boss", "mutant"].includes(type) ? "heavy" : type === "sniper" ? "ranger" : type === "drone" ? "tech" : type === "spider" ? "spider" : "scout";
+  const enemiesForAudit = enemyTypes.map((type, index) => {
+    const actor = unit(enemyColors[index], -12 + index * 3, -5.5, visualClass(type), false, { type, path: AUTHORED_ENEMY_MODELS[type] });
+    actor.enemyType = type;
+    actor.rosterAudit = true;
+    return actor;
+  });
+  rosterAuditActors = [...survivors, ...enemiesForAudit];
+  camera.position.set(0, 7.5, 25);
+  camera.lookAt(0, 1.1, -1);
+  document.body.dataset.renderFocus = "roster";
+  canvas.dataset.rosterCharacters = String(survivors.length);
+  canvas.dataset.rosterEnemies = String(enemiesForAudit.length);
+  canvas.dataset.rosterAuditComplete = "true";
 }
 
 function createSpiderVisual(group) {
@@ -1898,6 +1925,10 @@ function addBurnedArmoryVisual(root) {
 }
 
 function applyRequestedRenderFocus() {
+  if (renderFocus === "roster" && player && worldLayout) {
+    addRenderAuditRoster();
+    return;
+  }
   const armoryFocusRequested = renderFocus === "armory";
   if (!armoryFocusRequested || !player || !worldLayout) return;
   const structure = worldLayout.structures.find(item => item.id === "armory-shell");
@@ -2186,6 +2217,7 @@ function createWorldFieldBlockers() {
 
 function resetMap() {
   world.clear();
+  rosterAuditActors = [];
   mapVisuals = null;
   const connectedLayout = createConnectedWorldLayout();
   worldLayout = Object.freeze({

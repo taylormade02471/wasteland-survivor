@@ -283,6 +283,13 @@ test("the deployed shell wires authored 3D map props and a live survivor preview
   assert.doesNotMatch(pageSource, /class="title-survivor"/);
 });
 
+test("the live roster focus exposes every authored survivor and enemy family for visual audit", () => {
+  assert.match(gameSource, /renderFocus === "roster"/);
+  assert.match(gameSource, /rosterCharacters/);
+  assert.match(gameSource, /rosterEnemies/);
+  assert.match(gameSource, /AUTHORED_ENEMY_MODELS/);
+});
+
 test("terrain texture loading keeps the external media route and restores the bundled texture on load failure", () => {
   assert.match(gameSource, /function createProceduralTerrainTexture\(path\)/);
   assert.match(gameSource, /new THREE\.CanvasTexture\(canvas\)/);
