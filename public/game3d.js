@@ -3509,8 +3509,8 @@ function update(dt) {
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
   if (renderFocus === "gameplay") {
     player.g.visible = false;
-    camera.position.lerp(new THREE.Vector3(20, 7.2, -32), Math.min(1, dt * 8));
-    camera.lookAt(20, 1.1, -11);
+    camera.position.lerp(new THREE.Vector3(20, 18, -30), Math.min(1, dt * 8));
+    camera.lookAt(20, 0, -11);
     return;
   }
   if (renderFocus === "roster") {
