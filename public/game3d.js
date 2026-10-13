@@ -830,6 +830,14 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
   const paths = renderFocus === "gameplay"
     ? [AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean)
     : [assetPath, AUDIT_ENEMY_MODELS[enemyType]].filter(Boolean);
+  if (renderFocus === "gameplay") {
+    setTimeout(() => {
+      if (group.userData.authoredEnemy || group.userData.auditProxy) return;
+      canvas.dataset.authoredEnemyLoadState = "proxy";
+      canvas.dataset.authoredEnemyLoadError = enemyType;
+      addGameplayAuditEnemyProxy(group, enemyType);
+    }, 6000);
+  }
   loadCuratedGlb(paths, renderFocus === "gameplay" ? { timeoutMs: 4500 } : {}).then(asset => {
     if (!group.parent) return;
     const root = cloneAuthoredRoot(asset?.scene);
