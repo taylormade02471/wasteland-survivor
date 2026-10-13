@@ -338,6 +338,13 @@ test("authored GLB animation clips drive live character and enemy states", () =>
   assert.match(gameSource, /next\.reset\(\)\.fadeIn\(\.12\)\.play\(\)/);
 });
 
+test("quest completion visibly announces the authored story and currency reward", () => {
+  assert.match(gameSource, /QUEST COMPLETE: \$\{questResult\.quest\.title\}/);
+  assert.match(gameSource, /\+\$\{questResult\.reward\.gold\} GOLD/);
+  assert.match(gameSource, /\+\$\{questResult\.reward\.silver\} SILVER/);
+  assert.match(gameSource, /discoveryToastUntil = performance\.now\(\) \+ 4200/);
+});
+
 test("the first-person spawn stays clear of the origin overpass ramp", () => {
   assert.match(gameSource, /player = unit\(0x55e5ff, 20, -36, activeProfile\?\.avatarType/);
 });

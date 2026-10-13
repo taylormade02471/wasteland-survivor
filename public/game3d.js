@@ -3840,6 +3840,10 @@ function updateStoryProgress() {
       activeProfile.progress.completedMissions = [...new Set([...priorMissions, completedMissionId])];
       missionIndex = Math.min(1, missionIndex + 1);
     }
+    ui.discoveryTitle.textContent = `QUEST COMPLETE: ${questResult.quest.title}`;
+    ui.discoveryReward.textContent = `+${questResult.reward.xp} XP / +${questResult.reward.gold} GOLD / +${questResult.reward.silver} SILVER`;
+    ui.discoveryToast.classList.remove("hidden");
+    discoveryToastUntil = performance.now() + 4200;
     document.dispatchEvent(new CustomEvent("wasteland:quest-complete", { detail: { quest: questResult.quest, reward: questResult.reward } }));
   }
 }
