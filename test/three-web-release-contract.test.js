@@ -305,6 +305,8 @@ test("the gameplay audit focus renders authored enemies, quest terrain, and both
   assert.match(gameSource, /camera\.lookAt\(20, 0, -11\)/);
   assert.match(gameSource, /const prepareAuditFocus = \(\) =>/);
   assert.match(gameSource, /welcomeScreen\.classList\.add\("hidden"\)/);
+  assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory"\]\)/);
+  assert.match(gameSource, /if \(!directRenderFocus\) showProfileChoice\(\)/);
 });
 
 test("the terrain gallery focus exposes all four authored map textures for visual audit", () => {

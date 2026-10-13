@@ -5931,13 +5931,22 @@ refreshInputMode();
 updateVoiceButtons();
 updateNetworkStatus();
 start();
-phase = "menu";
-$("loadoutRoomModal").classList.add("hidden");
-document.body.classList.add("menu-active");
+const directRenderFocus = new Set(["gameplay", "roster", "terrain-gallery", "armory"]).has(renderFocus);
+if (directRenderFocus) {
+  phase = "combat";
+  $("loadoutRoomModal").classList.add("hidden");
+  document.body.classList.remove("menu-active", "loadout-active");
+  welcomeScreen.classList.add("hidden");
+  lobbyScreen.classList.add("hidden");
+} else {
+  phase = "menu";
+  $("loadoutRoomModal").classList.add("hidden");
+  document.body.classList.add("menu-active");
+}
 $("matchCountdown").classList.add("hidden");
-showProfileChoice();
+if (!directRenderFocus) showProfileChoice();
 initializeNightfallBackground().then(() => {
-  setMenuSection("home");
+  if (!directRenderFocus) setMenuSection("home");
   initializeMenuBackdrop();
 });
 render();
