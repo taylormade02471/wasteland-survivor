@@ -102,7 +102,7 @@ const ASSET_CONTRACT = Object.freeze({
   animationStates: ANIMATION_STATES,
   source: "Six bundled survivor concept images are used as art direction for original procedural and Blender-authored low-poly assets.",
   authoredGlbSkinned: true,
-  remainingBlocker: "Final browser visual audit across all character, enemy, map, and terrain surfaces remains before the AAA pass can be called complete.",
+  remainingBlocker: "Cross-device visual audit of the authored roster, terrain gallery, quest landmarks, and gameplay lighting remains before the AAA pass can be called complete.",
 });
 
 function clone(value) {

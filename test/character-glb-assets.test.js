@@ -59,7 +59,8 @@ test("character asset contract is explicit about current GLB limits", () => {
     assert.deepEqual(archetype.assetContract.preferredTexturedClips, ["Idle", "Run", "Fire"]);
     assert.equal(archetype.assetContract.runtimeAnimationDriver, "./character-animation-runtime.mjs");
     assert.deepEqual(archetype.assetContract.animationStates, ["idle", "walk", "run", "aim", "fire", "hit", "downed", "wade"]);
-    assert.match(archetype.assetContract.remainingBlocker, /visual audit/i);
+  assert.match(archetype.assetContract.remainingBlocker, /visual audit/i);
+  assert.match(archetype.assetContract.remainingBlocker, /terrain gallery/i);
   }
 });
 
