@@ -369,6 +369,9 @@ test("quest completion visibly announces the authored story and currency reward"
   assert.match(gameSource, /scrap-gold-v1\.svg/);
   assert.match(gameSource, /scrap-silver-v1\.svg/);
   assert.match(styleSource, /\.discovery-toast \.reward-chip/);
+  assert.match(pageSource, /class="quest-progress"[^>]*aria-label="Quest progress"/);
+  assert.match(pageSource, /id="questProgressFill"/);
+  assert.match(gameSource, /ui\.questProgress\.style\.setProperty\("--hud-fill"/);
 });
 
 test("world props expose authored-load state while preserving a readable fallback", () => {
