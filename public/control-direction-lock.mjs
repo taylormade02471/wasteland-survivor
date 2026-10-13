@@ -36,8 +36,12 @@ export function aimYawFromAxes(horizontal, vertical) {
   return Math.atan2(finite(horizontal), finite(vertical));
 }
 
+export function mouseYawDelta({ movementX = 0, sensitivity = 1 } = {}) {
+  return finite(movementX) * CONTROL_DIRECTION_LOCK.mouseYawSign * CONTROL_DIRECTION_LOCK.mouseRadiansPerPixel * Math.max(0, finite(sensitivity, 1));
+}
+
 export function nextMouseYaw({ yaw = 0, movementX = 0, sensitivity = 1 } = {}) {
-  return wrapYaw(finite(yaw) + finite(movementX) * CONTROL_DIRECTION_LOCK.mouseYawSign * CONTROL_DIRECTION_LOCK.mouseRadiansPerPixel * Math.max(0, finite(sensitivity, 1)));
+  return wrapYaw(finite(yaw) + mouseYawDelta({ movementX, sensitivity }));
 }
 
 export function firstPersonForwardInput(vertical) {

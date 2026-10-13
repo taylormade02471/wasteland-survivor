@@ -7,6 +7,7 @@ import {
   firstPersonForwardInput,
   firstPersonMovementDelta,
   keyboardMovementAxes,
+  mouseYawDelta,
   nextMouseYaw,
   wrapYaw,
 } from "../public/control-direction-lock.mjs";
@@ -27,6 +28,8 @@ test("the immutable control contract keeps every horizontal input right-positive
 });
 
 test("rightward mouse input turns right at the locked sensitivity", () => {
+  assert.equal(mouseYawDelta({ movementX: 100, sensitivity: 1 }), 0.26);
+  assert.equal(mouseYawDelta({ movementX: -100, sensitivity: 1 }), -0.26);
   const rightYaw = nextMouseYaw({ yaw: 0, movementX: 100, sensitivity: 1 });
   const leftYaw = nextMouseYaw({ yaw: 0, movementX: -100, sensitivity: 1 });
   assert.equal(rightYaw, 0.26);
@@ -34,6 +37,16 @@ test("rightward mouse input turns right at the locked sensitivity", () => {
 
   const forwardAfterRightTurn = firstPersonMovementDelta({ yaw: rightYaw, forward: 1, speed: 1 });
   assert.ok(forwardAfterRightTurn.x > 0, "moving forward after a right turn must travel toward screen-right");
+});
+
+test("rightward mouse input stays screen-right from the default south-facing heading", () => {
+  const yaw = Math.PI;
+  const turned = nextMouseYaw({ yaw, movementX: 1 });
+  const facing = { x: Math.sin(yaw), z: Math.cos(yaw) };
+  const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+  const nextFacing = { x: Math.sin(turned), z: Math.cos(turned) };
+  const turnDirection = (nextFacing.x - facing.x) * right.x + (nextFacing.z - facing.z) * right.z;
+  assert.ok(turnDirection > 0, "positive mouse movement must turn toward the camera's local right");
 });
 
 test("mouse yaw wraps after complete turns without changing right-positive direction", () => {
