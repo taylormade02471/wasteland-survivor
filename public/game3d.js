@@ -2099,6 +2099,30 @@ function applyRequestedRenderFocus() {
     addRenderAuditRoster();
     return;
   }
+  if (renderFocus === "gameplay" && player && worldLayout) {
+    const auditEnemyTypes = ["rusher", "shooter", "spider", "boss"];
+    const auditPositions = [[20, -20], [10, -12], [30, -10], [20, -2]];
+    auditEnemyTypes.forEach((type, index) => {
+      spawnEnemy(index, type);
+      const enemy = enemies[index];
+      const [x, z] = auditPositions[index];
+      enemy.g.position.set(x, sampleWorldElevation(worldLayout, { x, z }), z);
+      enemy.g.userData.auditSpawn = true;
+    });
+    const goldPosition = new THREE.Vector3(14, 0, -10);
+    const silverPosition = new THREE.Vector3(26, 0, -10);
+    goldPosition.y = sampleWorldElevation(worldLayout, goldPosition) + .3;
+    silverPosition.y = sampleWorldElevation(worldLayout, silverPosition) + .3;
+    spawnCurrencyPickupBurst(goldPosition, { gold: 3 });
+    spawnCurrencyPickupBurst(silverPosition, { silver: 5 });
+    frontView = true;
+    viewYaw = Math.PI;
+    graceUntil = Number.POSITIVE_INFINITY;
+    document.body.dataset.renderFocus = "gameplay";
+    canvas.dataset.gameplayAuditEnemies = auditEnemyTypes.join(",");
+    canvas.dataset.gameplayAuditCurrency = "gold,silver";
+    return;
+  }
   const armoryFocusRequested = renderFocus === "armory";
   if (!armoryFocusRequested || !player || !worldLayout) return;
   const structure = worldLayout.structures.find(item => item.id === "armory-shell");

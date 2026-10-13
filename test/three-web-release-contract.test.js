@@ -294,6 +294,15 @@ test("the live roster focus exposes every authored survivor and enemy family for
   assert.match(gameSource, /camera\.lookAt\(0, 1\.1, -1\)/);
 });
 
+test("the gameplay audit focus renders authored enemies, quest terrain, and both currencies together", () => {
+  assert.match(gameSource, /renderFocus === "gameplay"/);
+  assert.match(gameSource, /const auditEnemyTypes = \["rusher", "shooter", "spider", "boss"\]/);
+  assert.match(gameSource, /canvas\.dataset\.gameplayAuditEnemies/);
+  assert.match(gameSource, /canvas\.dataset\.gameplayAuditCurrency = "gold,silver"/);
+  assert.match(gameSource, /spawnCurrencyPickupBurst\(goldPosition, \{ gold: 3 \}\)/);
+  assert.match(gameSource, /spawnCurrencyPickupBurst\(silverPosition, \{ silver: 5 \}\)/);
+});
+
 test("the terrain gallery focus exposes all four authored map textures for visual audit", () => {
   assert.match(gameSource, /function addTerrainGallery\(\)/);
   assert.match(gameSource, /terrain-gallery-stage/);
