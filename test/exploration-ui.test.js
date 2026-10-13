@@ -39,7 +39,7 @@ test("mouse aim remains unlocked, right-positive, and clamped to the browser edg
   assert.match(pointerMove, /mouseAimScreen\.x\s*=\s*THREE\.MathUtils\.clamp\(event\.clientX, 0, innerWidth\)/);
   assert.match(pointerMove, /mouseAimScreen\.y\s*=\s*THREE\.MathUtils\.clamp\(event\.clientY, 0, innerHeight\)/);
   assert.match(pointerMove, /viewYaw\s*=\s*nextMouseYaw\(\{ yaw: viewYaw, movementX: event\.movementX, sensitivity:/);
-  assert.match(controls, /mouseRadiansPerPixel:\s*0\.0026/);
+  assert.match(controls, /mouseRadiansPerPixel:\s*0\.0032/);
   assert.doesNotMatch(pointerMove, /document\.pointerLockElement/);
   assert.doesNotMatch(pointerDown, /requestGameplayPointerLock/);
 });

@@ -328,12 +328,31 @@ test("the gameplay audit focus renders authored enemies, quest terrain, and both
   assert.match(gameSource, /spawnCurrencyPickupBurst\(goldPosition, \{ gold: 3 \}\)/);
   assert.match(gameSource, /spawnCurrencyPickupBurst\(silverPosition, \{ silver: 5 \}\)/);
   assert.match(gameSource, /if \(renderFocus === "gameplay"\) \{/);
-  assert.match(gameSource, /camera\.lookAt\(20, 1\.3, -11\)/);
+  assert.match(gameSource, /camera\.lookAt\(21\.5, 1\.5, -6\)/);
   assert.match(gameSource, /const prepareAuditFocus = \(\) =>/);
   assert.match(gameSource, /welcomeScreen\.classList\.add\("hidden"\)/);
   assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory"\]\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) showProfileChoice\(\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) initializeMenuBackdrop\(\)/);
+});
+
+test("direct render audits keep combat alive long enough for authored GLB callbacks", () => {
+  assert.match(gameSource, /if \(directRenderFocus\) \{[\s\S]*phase = "combat";[\s\S]*timer = Number\.POSITIVE_INFINITY;/);
+});
+
+test("gameplay audit stage is part of the scene and follows the audit camera", () => {
+  assert.match(gameSource, /scene\.add\(stage\);/);
+  assert.match(gameSource, /function syncGameplayAuditStage\(\)/);
+  assert.match(gameSource, /stage\.position\.copy\(camera\.position\)/);
+  assert.match(gameSource, /stage\.quaternion\.copy\(camera\.quaternion\)/);
+  assert.match(gameSource, /syncGameplayAuditStage\(\);/);
+  assert.match(gameSource, /stage\.visible = false;/);
+  assert.match(gameSource, /gameplay-audit-key-light/);
+  assert.match(gameSource, /gameplay-audit-fill-light/);
+  assert.match(gameSource, /function applyGameplayAuditMaterial\(root, enemyType\)/);
+  assert.match(gameSource, /applyGameplayAuditMaterial\(root, enemyType\);/);
+  assert.match(gameSource, /node\.frustumCulled = false;/);
+  assert.match(gameSource, /camera\.lookAt\(21\.5, 1\.5, -6\);/);
 });
 
 test("the terrain gallery focus exposes all four authored map textures for visual audit", () => {

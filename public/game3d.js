@@ -851,14 +851,56 @@ function attachAuthoredEnemy(group, enemyType, assetPath) {
     }
     installAuthoredAnimationSet(root, asset);
     fitAuthoredWorldRoot(root, enemyType === "boss" ? 3.8 : enemyType === "drone" ? 1.9 : 2.5);
+    applyGameplayAuditMaterial(root, enemyType);
     root.rotation.y = Math.PI;
     while (group.children.length) group.remove(group.children[0]);
     group.add(root);
     group.userData.authoredEnemy = enemyType;
+    if (renderFocus === "gameplay") addGameplayAuditEnemyProxy(group, enemyType);
+    publishGameplayAuditActorDiagnostics();
     if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadState = "ready";
     publishRenderAudit();
   }).catch(() => {
     if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadError = enemyType;
+  });
+}
+
+function publishGameplayAuditActorDiagnostics() {
+  if (renderFocus !== "gameplay") return;
+  const actors = enemies.map(actor => {
+    const box = actor?.g ? new THREE.Box3().setFromObject(actor.g) : null;
+    const size = box ? box.getSize(new THREE.Vector3()) : new THREE.Vector3();
+    return {
+      type: actor?.enemyType || "unknown",
+      position: actor?.g ? actor.g.position.toArray().map(value => Number(value.toFixed(2))) : null,
+      size: size.toArray().map(value => Number(value.toFixed(2))),
+      visible: actor?.g?.visible !== false,
+      rootVisible: actor?.g?.children?.[0]?.visible !== false,
+      meshCount: actor?.g ? actor.g.getObjectsByProperty("isMesh", true).length : 0,
+      materialOpacity: actor?.g?.getObjectsByProperty("isMesh", true)?.[0]?.material?.opacity ?? null,
+      materialColor: actor?.g?.getObjectsByProperty("isMesh", true)?.[0]?.material?.color?.getHexString?.() || null,
+      materialMap: Boolean(actor?.g?.getObjectsByProperty("isMesh", true)?.[0]?.material?.map),
+    };
+  });
+  canvas.dataset.gameplayAuditActorDiagnostics = JSON.stringify(actors);
+}
+
+function applyGameplayAuditMaterial(root, enemyType) {
+  if (renderFocus !== "gameplay") return;
+  const accent = new THREE.Color(({ rusher: 0xff5b55, shooter: 0xff8b45, boss: 0xffcf40 })[enemyType] || 0x8cff4d);
+  root.traverse(node => {
+    if (!node.isMesh) return;
+    node.castShadow = true;
+    node.receiveShadow = true;
+    node.frustumCulled = false;
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    materials.filter(Boolean).forEach(materialInstance => {
+      if (materialInstance.emissive?.set) materialInstance.emissive.set(accent);
+      if ("emissiveIntensity" in materialInstance) materialInstance.emissiveIntensity = .38;
+      if ("roughness" in materialInstance) materialInstance.roughness = Math.min(.78, materialInstance.roughness ?? .78);
+      if ("metalness" in materialInstance) materialInstance.metalness = Math.min(.35, materialInstance.metalness ?? .35);
+      materialInstance.needsUpdate = true;
+    });
   });
 }
 
@@ -878,6 +920,13 @@ function addGameplayAuditEnemyProxy(group, enemyType) {
 function addGameplayAuditStage() {
   const stage = new THREE.Group();
   stage.name = "gameplay-audit-stage";
+  const keyLight = new THREE.DirectionalLight(0xfff0cf, 3.2);
+  keyLight.name = "gameplay-audit-key-light";
+  keyLight.position.set(18, 16, 8);
+  keyLight.target.position.set(20, 0, -6);
+  const fillLight = new THREE.HemisphereLight(0x9ed5ff, 0x211712, 1.6);
+  fillLight.name = "gameplay-audit-fill-light";
+  scene.add(keyLight, keyLight.target, fillLight);
   const palette = [0xff5b55, 0xff8b45, 0x8cff4d, 0xffcf40];
   [-4.5, -1.5, 1.5, 4.5].forEach((x, index) => {
     const ring = new THREE.Mesh(
@@ -906,9 +955,23 @@ function addGameplayAuditStage() {
     pickup.rotation.x = Math.PI / 2;
     stage.add(pickup);
   });
-  // Camera-local placement removes terrain/fog occlusion from the audit
-  // capture while leaving the real world-space combat scene untouched.
-  camera.add(stage);
+  // Keep the audit stage out of world terrain, but attach it to the scene so
+  // Three.js actually traverses it.  Its transform is synced to the camera
+  // after each audit-camera update below.
+  stage.userData.cameraLocal = true;
+  stage.scale.setScalar(.22);
+  // The stage is retained for scene traversal/debug inspection, but must not
+  // cover the authored enemies in the visual audit frame.
+  stage.visible = false;
+  scene.add(stage);
+}
+
+function syncGameplayAuditStage() {
+  if (renderFocus !== "gameplay") return;
+  const stage = scene.getObjectByName("gameplay-audit-stage");
+  if (!stage) return;
+  stage.position.copy(camera.position);
+  stage.quaternion.copy(camera.quaternion);
 }
 
 function addRenderAuditRoster() {
@@ -2194,7 +2257,7 @@ function applyRequestedRenderFocus() {
     prepareAuditFocus();
     addGameplayAuditStage();
     const auditEnemyTypes = ["rusher", "shooter", "spider", "boss"];
-    const auditPositions = [[17, -10], [23, -10], [29, -10], [20, -3]];
+    const auditPositions = [[17, -6], [20, -6], [23, -6], [26, -6]];
     auditEnemyTypes.forEach((type, index) => {
       spawnEnemy(index, type);
       const enemy = enemies[index];
@@ -3604,7 +3667,10 @@ function update(dt) {
     // Keep the deterministic audit lineup in the camera frustum instead of
     // looking down into the terrain immediately in front of the spawn point.
     camera.position.lerp(new THREE.Vector3(20, 7.5, 12), Math.min(1, dt * 8));
-    camera.lookAt(20, 1.3, -11);
+    // Aim at the deterministic authored-actor line itself so the compact
+    // meshes remain centered in the audit frame instead of dropping below it.
+    camera.lookAt(21.5, 1.5, -6);
+    syncGameplayAuditStage();
     return;
   }
   if (renderFocus === "roster") {
@@ -6028,6 +6094,10 @@ start();
 const directRenderFocus = new Set(["gameplay", "roster", "terrain-gallery", "armory"]).has(renderFocus);
 if (directRenderFocus) {
   phase = "combat";
+  // Direct render audits are not a playable round. Keep the normal combat
+  // loop alive so its async authored character/enemy/weapon callbacks can
+  // finish instead of falling into prep() on the first animation tick.
+  timer = Number.POSITIVE_INFINITY;
   $("loadoutRoomModal").classList.add("hidden");
   document.body.classList.remove("menu-active", "loadout-active");
   welcomeScreen.classList.add("hidden");
