@@ -1814,16 +1814,26 @@ function addWorldFieldAssets() {
     holder.position.set(placement.x, sampleWorldElevation(worldLayout, placement), placement.z);
     holder.rotation.y = placement.rotation;
     holder.add(createWorldFieldFallback(asset));
+    holder.userData.assetState = "fallback-loading";
+    holder.userData.requestedAssetPath = asset.runtimePath;
     world.add(holder);
     loadCuratedGlb([asset.runtimePath]).then(loaded => {
       if (!holder.parent) return;
       const authoredRoot = cloneAuthoredRoot(loaded?.scene);
-      if (!authoredRoot) return;
+      if (!authoredRoot) {
+        holder.userData.assetState = "fallback-invalid-authored-root";
+        return;
+      }
       fitAuthoredWorldRoot(authoredRoot, asset.fit.maxDimension);
       while (holder.children.length) holder.remove(holder.children[0]);
       holder.add(authoredRoot);
       holder.userData.authoredAssetPath = asset.runtimePath;
-    }).catch(() => {});
+      holder.userData.assetState = "authored";
+    }).catch(error => {
+      if (!holder.parent) return;
+      holder.userData.assetState = "fallback-load-error";
+      holder.userData.assetLoadError = String(error?.message || error || "unknown").slice(0, 160);
+    });
   }
 }
 

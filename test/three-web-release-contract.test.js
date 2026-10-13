@@ -345,6 +345,13 @@ test("quest completion visibly announces the authored story and currency reward"
   assert.match(gameSource, /discoveryToastUntil = performance\.now\(\) \+ 4200/);
 });
 
+test("world props expose authored-load state while preserving a readable fallback", () => {
+  assert.match(gameSource, /holder\.userData\.assetState = "fallback-loading"/);
+  assert.match(gameSource, /holder\.userData\.assetState = "authored"/);
+  assert.match(gameSource, /holder\.userData\.assetState = "fallback-load-error"/);
+  assert.match(gameSource, /holder\.userData\.requestedAssetPath = asset\.runtimePath/);
+});
+
 test("the first-person spawn stays clear of the origin overpass ramp", () => {
   assert.match(gameSource, /player = unit\(0x55e5ff, 20, -36, activeProfile\?\.avatarType/);
 });
