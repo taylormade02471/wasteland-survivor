@@ -331,13 +331,17 @@ test("the gameplay audit focus renders authored enemies, quest terrain, and both
   assert.match(gameSource, /camera\.lookAt\(21\.5, 1\.5, -6\)/);
   assert.match(gameSource, /const prepareAuditFocus = \(\) =>/);
   assert.match(gameSource, /welcomeScreen\.classList\.add\("hidden"\)/);
-  assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory"\]\)/);
+  assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory", "world"\]\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) showProfileChoice\(\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) initializeMenuBackdrop\(\)/);
 });
 
 test("direct render audits keep combat alive long enough for authored GLB callbacks", () => {
   assert.match(gameSource, /if \(directRenderFocus\) \{[\s\S]*phase = "combat";[\s\S]*timer = Number\.POSITIVE_INFINITY;/);
+});
+
+test("world showcase audits keep their authored mesh frame instead of auto-completing a round", () => {
+  assert.match(gameSource, /else if \(!directRenderFocus && !enemies\.length && spawnQueue === 0\) finishRound\("blue"\);/);
 });
 
 test("gameplay audit prefers the real enemy GLB and only marks successful imported assets", () => {
@@ -518,6 +522,27 @@ test("world props expose authored-load state while preserving a readable fallbac
   assert.match(gameSource, /holder\.userData\.assetState = "authored"/);
   assert.match(gameSource, /holder\.userData\.assetState = "fallback-load-error"/);
   assert.match(gameSource, /holder\.userData\.requestedAssetPath = asset\.runtimePath/);
+});
+
+test("world showcase focus frames the live city, rail, and outpost authored map meshes", () => {
+  assert.match(gameSource, /const WORLD_SHOWCASE_PRESETS = Object\.freeze\(/);
+  assert.match(gameSource, /convoy: Object\.freeze\(/);
+  assert.match(gameSource, /rail: Object\.freeze\(/);
+  assert.match(gameSource, /outpost: Object\.freeze\(/);
+  assert.match(gameSource, /"city-bus", "city-car-a", "city-pickup"/);
+  assert.match(gameSource, /"inferno-track", "inferno-locomotive", "inferno-signal"/);
+  assert.match(gameSource, /function currentWorldShowcase\(\)/);
+  assert.match(gameSource, /if \(renderFocus === "world" && player && worldLayout\)/);
+  assert.match(gameSource, /canvas\.dataset\.worldShowcaseScene/);
+  assert.match(gameSource, /renderFocus === "world"/);
+  assert.match(gameSource, /"world"\]\)\.has\(renderFocus\)/);
+});
+
+test("world showcases isolate the requested authored placements from procedural map scaffolding", () => {
+  assert.match(gameSource, /function applyWorldShowcaseVisibility\(showcase\)/);
+  assert.match(gameSource, /const requestedFields = new Set\(showcase\.placements\.map\(placement => `field:\$\{placement\}`\)\);/);
+  assert.match(gameSource, /const show = child === ground \|\| requestedFields\.has\(child\.name\);/);
+  assert.match(gameSource, /canvas\.dataset\.worldShowcaseIsolated = "true";/);
 });
 
 test("world fallbacks preserve readable car, structure, and prop silhouettes", () => {

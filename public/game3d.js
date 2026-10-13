@@ -96,6 +96,7 @@ function runtimeAssetPath(path) {
 }
 const canvas = $("game");
 const renderFocus = new URLSearchParams(window.location.search).get("renderFocus");
+const worldShowcaseRequest = new URLSearchParams(window.location.search).get("worldScene");
 canvas.dataset.controlDirectionLock = CONTROL_DIRECTION_LOCK.id;
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
@@ -156,6 +157,45 @@ const MAPS = {
   ice: { label: "Icy Mountain", texture: "assets/icy-mountain-terrain-v2.png", fog: 0xc3d9e7, hazard: 0x4dbbff },
   inferno: { label: "Fire Inferno", texture: "assets/fire-inferno-terrain-v2.png", fog: 0x351510, hazard: 0xff5a24 }
 };
+// Direct visual proof for authored world meshes. This is deliberately a
+// render-only audit route: normal solo, team, and PWA gameplay continue to
+// use their existing camera and controls without any showcase override.
+const WORLD_SHOWCASE_PRESETS = Object.freeze({
+  convoy: Object.freeze({
+    label: "City Convoy",
+    camera: Object.freeze([70, 8.7, -108]),
+    target: Object.freeze([70, 1.9, -72]),
+    placements: Object.freeze(["city-bus", "city-car-a", "city-pickup"]),
+  }),
+  rail: Object.freeze({
+    label: "Inferno Railway",
+    camera: Object.freeze([-132, 10.5, 122]),
+    target: Object.freeze([-154, 2.8, 97]),
+    placements: Object.freeze(["inferno-track", "inferno-locomotive", "inferno-signal"]),
+  }),
+  outpost: Object.freeze({
+    label: "Desert Outpost",
+    camera: Object.freeze([207, 11.5, 216]),
+    target: Object.freeze([181, 3.5, 181]),
+    placements: Object.freeze(["desert-outpost", "outpost-table"]),
+  }),
+});
+
+function currentWorldShowcase() {
+  const id = Object.prototype.hasOwnProperty.call(WORLD_SHOWCASE_PRESETS, worldShowcaseRequest)
+    ? worldShowcaseRequest
+    : "convoy";
+  return { id, ...WORLD_SHOWCASE_PRESETS[id] };
+}
+
+function applyWorldShowcaseVisibility(showcase) {
+  const requestedFields = new Set(showcase.placements.map(placement => `field:${placement}`));
+  world.children.forEach(child => {
+    const show = child === ground || requestedFields.has(child.name);
+    child.visible = show;
+  });
+  canvas.dataset.worldShowcaseIsolated = "true";
+}
 const QUEST_METRIC_LABELS = Object.freeze({ survivedSeconds: "SURVIVAL", scrap: "SCRAP", kills: "RAIDERS", stage: "STAGE", discoveries: "LANDMARKS" });
 
 function updateAvatarCards(value = profileAvatar.value) {
@@ -2288,6 +2328,28 @@ function applyRequestedRenderFocus() {
     canvas.dataset.gameplayAuditCurrency = "gold,silver";
     return;
   }
+  if (renderFocus === "world" && player && worldLayout) {
+    prepareAuditFocus();
+    const showcase = currentWorldShowcase();
+    applyWorldShowcaseVisibility(showcase);
+    const [cameraX, cameraY, cameraZ] = showcase.camera;
+    const [targetX, targetY, targetZ] = showcase.target;
+    const playerPosition = { x: targetX, z: targetZ + 12 };
+    player.g.position.set(
+      playerPosition.x,
+      sampleWorldElevation(worldLayout, playerPosition),
+      playerPosition.z,
+    );
+    viewYaw = Math.PI;
+    graceUntil = Number.POSITIVE_INFINITY;
+    camera.position.set(cameraX, cameraY, cameraZ);
+    camera.lookAt(targetX, targetY, targetZ);
+    document.body.dataset.renderFocus = "world";
+    canvas.dataset.worldShowcaseScene = showcase.id;
+    canvas.dataset.worldShowcaseLabel = showcase.label;
+    canvas.dataset.worldShowcaseAssets = showcase.placements.join(",");
+    return;
+  }
   const armoryFocusRequested = renderFocus === "armory";
   if (!armoryFocusRequested || !player || !worldLayout) return;
   prepareAuditFocus();
@@ -3668,7 +3730,7 @@ function update(dt) {
     if (!player.alive || player.hp <= 0) {
       player.alive = false;
       finishRound("red");
-    } else if (!enemies.length && spawnQueue === 0) finishRound("blue");
+    } else if (!directRenderFocus && !enemies.length && spawnQueue === 0) finishRound("blue");
   }
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
   if (renderFocus === "gameplay") {
@@ -3693,6 +3755,15 @@ function update(dt) {
     player.g.visible = false;
     camera.position.lerp(new THREE.Vector3(0, 7.2, 24), Math.min(1, dt * 8));
     camera.lookAt(0, 5.6, 0);
+    return;
+  }
+  if (renderFocus === "world") {
+    player.g.visible = false;
+    const showcase = currentWorldShowcase();
+    const [cameraX, cameraY, cameraZ] = showcase.camera;
+    const [targetX, targetY, targetZ] = showcase.target;
+    camera.position.lerp(new THREE.Vector3(cameraX, cameraY, cameraZ), Math.min(1, dt * 8));
+    camera.lookAt(targetX, targetY, targetZ);
     return;
   }
   player.g.visible = !frontView && player.alive;
@@ -6104,7 +6175,7 @@ refreshInputMode();
 updateVoiceButtons();
 updateNetworkStatus();
 start();
-const directRenderFocus = new Set(["gameplay", "roster", "terrain-gallery", "armory"]).has(renderFocus);
+const directRenderFocus = new Set(["gameplay", "roster", "terrain-gallery", "armory", "world"]).has(renderFocus);
 if (directRenderFocus) {
   phase = "combat";
   // Direct render audits are not a playable round. Keep the normal combat
