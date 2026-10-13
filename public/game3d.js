@@ -1114,8 +1114,10 @@ function addDestroyedCars() {
     const body = new THREE.InstancedMesh(boxGeometry(3.8, .9, 7.2), material(color, .04), cars.length);
     const cabin = new THREE.InstancedMesh(boxGeometry(3.05, .86, 3.5), material(0x29363a, .08), cars.length);
     const wheels = new THREE.InstancedMesh(wheelGeometry, material(0x151718), cars.length * 4);
+    const headlights = new THREE.InstancedMesh(boxGeometry(.34, .14, .06), material(0xffe5a0, .85), cars.length * 2);
     const transform = new THREE.Object3D();
     let wheelIndex = 0;
+    let headlightIndex = 0;
     cars.forEach((car, index) => {
       const groundY = sampleWorldElevation(worldLayout, car);
       const crush = car.crushed ? .5 : 1;
@@ -1144,8 +1146,19 @@ function addDestroyedCars() {
           wheels.setMatrixAt(wheelIndex++, transform.matrix);
         }
       }
+      for (const localX of [-1.1, 1.1]) {
+        transform.position.set(
+          car.x + localX * Math.cos(car.rotation) - (-2.82) * Math.sin(car.rotation),
+          groundY + .64 * crush,
+          car.z + localX * Math.sin(car.rotation) + (-2.82) * Math.cos(car.rotation),
+        );
+        transform.rotation.set(0, car.rotation, 0);
+        transform.scale.set(1, crush, 1);
+        transform.updateMatrix();
+        headlights.setMatrixAt(headlightIndex++, transform.matrix);
+      }
     });
-    for (const mesh of [body, cabin, wheels]) {
+    for (const mesh of [body, cabin, wheels, headlights]) {
       mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
       mesh.castShadow = effectiveGraphicsTier() === "high";
       world.add(mesh);
@@ -1240,6 +1253,11 @@ function addRoadsideClutter() {
 
 function addStructure(structure) {
   const groundY = sampleWorldElevation(worldLayout, structure);
+  const heading = structure.rotation || 0;
+  const frontPoint = (localX, localZ) => ({
+    x: structure.x + localX * Math.cos(heading) - localZ * Math.sin(heading),
+    z: structure.z + localX * Math.sin(heading) + localZ * Math.cos(heading),
+  });
   let mesh;
   if (structure.kind === "pentagon") {
     mesh = new THREE.Mesh(new THREE.CylinderGeometry(structure.w * .43, structure.w * .47, structure.h, 5), material(structure.color, .035));
@@ -1269,6 +1287,25 @@ function addStructure(structure) {
       emissive: .12,
       y: groundY + structure.h * .58,
     });
+  }
+  if (structure.kind === "house" || structure.kind === "tower") {
+    const windowColor = structure.damaged ? 0x8f5a38 : 0xf1c873;
+    const windowCount = structure.kind === "tower" ? 3 : 2;
+    for (let index = 0; index < windowCount; index += 1) {
+      const localX = (index - (windowCount - 1) / 2) * Math.min(2.8, structure.w * .28);
+      const point = frontPoint(localX, structure.d / 2 + .18);
+      addBox({
+        x: point.x,
+        z: point.z,
+        w: structure.kind === "tower" ? .7 : .9,
+        d: .08,
+        h: structure.kind === "tower" ? 1.1 : .85,
+        y: groundY + Math.min(structure.h * .62, structure.h - 1.2),
+        color: windowColor,
+        emissive: structure.damaged ? .08 : .42,
+        rotation: heading,
+      });
+    }
   }
   if (structure.damaged) {
     addBox({

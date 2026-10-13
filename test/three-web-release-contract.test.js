@@ -407,6 +407,14 @@ test("the world renderer adds visible roadside clutter without adding hidden blo
   assert.doesNotMatch(gameSource, /createWorldFieldBlockers[\s\S]*roadside-clutter/);
 });
 
+test("vehicles and structures expose authored readability details", () => {
+  assert.match(gameSource, /const headlights = new THREE\.InstancedMesh/);
+  assert.match(gameSource, /headlights\.setMatrixAt/);
+  assert.match(gameSource, /function frontPoint|const frontPoint =/);
+  assert.match(gameSource, /const windowColor = structure\.damaged/);
+  assert.match(gameSource, /emissive: structure\.damaged \? \.08 : \.42/);
+});
+
 test("the connected roads render visible markings over the textured terrain", () => {
   assert.match(gameSource, /function addRoadMarkings\(segment\)/);
   assert.match(gameSource, /addRoadMarkings\(road\)/);
