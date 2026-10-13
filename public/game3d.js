@@ -2804,6 +2804,14 @@ function fire(actor, target, profile = null) {
     const projectile = new THREE.Mesh(new THREE.SphereGeometry(.13, 8, 8), material(projectileColor, 1));
     if (actor.enemyType === "spider") {
       projectile.name = "acid-web-projectile";
+      projectile.userData.projectileKind = "acid-web";
+      const webRing = new THREE.Mesh(
+        new THREE.TorusGeometry(.22, .045, 6, 16),
+        new THREE.MeshBasicMaterial({ color: 0xc5ff85, transparent: true, opacity: .9, side: THREE.DoubleSide }),
+      );
+      webRing.name = "acid-web-ring";
+      webRing.rotation.y = Math.PI / 2;
+      projectile.add(webRing);
       actor.g.userData.attackPulseMs = 180;
     }
     projectile.position.copy(weaponMuzzleOrigin(actor, shotDirection));
@@ -3326,6 +3334,13 @@ function update(dt) {
   }
   for (const bullet of bullets) {
     bullet.m.position.addScaledVector(bullet.v, dt);
+    if (bullet.m.userData?.projectileKind === "acid-web") {
+      const ring = bullet.m.getObjectByName("acid-web-ring");
+      if (ring) {
+        ring.rotation.z += dt * 8;
+        ring.scale.setScalar(.82 + Math.sin(performance.now() * .018) * .14);
+      }
+    }
     bullet.life -= dt;
     if (bullet.blue) for (const enemy of enemies) {
       if (enemy.alive && !bullet.hits.has(enemy) && bullet.m.position.distanceTo(enemy.g.position) < (enemy.g.userData.hitRadius || 1.1)) {

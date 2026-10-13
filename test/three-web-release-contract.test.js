@@ -499,6 +499,9 @@ test("the gameplay renderer exposes a large ranged spider enemy", () => {
   assert.match(gameSource, /group\.userData\.spiderEyes = spiderEyes/);
   assert.match(gameSource, /actor\.g\.userData\.attackPulseMs = 180/);
   assert.match(gameSource, /projectile\.name = "acid-web-projectile"/);
+  assert.match(gameSource, /projectile\.userData\.projectileKind = "acid-web"/);
+  assert.match(gameSource, /acid-web-ring/);
+  assert.match(gameSource, /ring\.rotation\.z \+= dt \* 8/);
   assert.match(gameSource, /const attackT = Math\.max\(0, Math\.min\(1, group\.userData\.attackPulseMs \/ 180\)\)/);
   assert.match(gameSource, /leg\.upper\.rotation\.z = leg\.upper\.userData\.restRotation\.z \+ phase/);
   assert.match(gameSource, /enemy\.g\.userData\.hitRadius \|\| 1\.1/);
