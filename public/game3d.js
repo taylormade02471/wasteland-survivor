@@ -47,6 +47,7 @@ import { advanceWeaponPresentation, beginWeaponReload, createWeaponPresentationS
 import { renderQualityProfile } from "./render-quality.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { buildFireVfxProfile, fireVfxFrame } from "./fire-vfx.mjs";
+import { currencyPickupFrame, currencyPickupProfile } from "./currency-pickup-vfx.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { createLiveCharacterPreview, getPreferredCharacterModelPaths, loadFirstAvailableModel } from "./live-character-preview.mjs";
 import {
@@ -558,6 +559,10 @@ function applyExplorationDiscovery() {
   scrap += discovery.reward.scrap;
   silver += Math.max(1, Math.round(discovery.reward.scrap * .6));
   gold += discovery.events.some(event => event.kind === "completion") ? 8 : 2;
+  spawnCurrencyPickupBurst(player.g.position, {
+    gold: discovery.events.some(event => event.kind === "completion") ? 8 : 2,
+    silver: Math.max(1, Math.round(discovery.reward.scrap * .6)),
+  });
   updateStoryProgress();
   const completion = discovery.events.find(event => event.kind === "completion");
   const locations = discovery.events.filter(event => event.kind !== "completion").map(event => event.label);
@@ -2637,6 +2642,34 @@ function applyDamage(target, amount) {
   if (remaining > 0) target.g.userData.hitPulseMs = 180;
 }
 
+function spawnCurrencyPickupBurst(position, { gold: goldAmount = 0, silver: silverAmount = 0 } = {}) {
+  const rewards = [
+    { kind: "gold", amount: goldAmount },
+    { kind: "silver", amount: silverAmount },
+  ].filter(reward => reward.amount > 0);
+  rewards.forEach((reward, index) => {
+    const profile = currencyPickupProfile(reward.kind);
+    const coin = new THREE.Mesh(
+      new THREE.CylinderGeometry(profile.scale, profile.scale, .08, 16),
+      new THREE.MeshStandardMaterial({ color: profile.color, emissive: profile.accent, emissiveIntensity: .28, metalness: .82, roughness: .22, transparent: true }),
+    );
+    coin.name = reward.kind === "gold" ? "currency-pickup:gold" : "currency-pickup:silver";
+    coin.position.copy(position).add(new THREE.Vector3((index ? 1 : -1) * .48, .8, .15));
+    coin.rotation.z = Math.PI / 2;
+    coin.userData.currencyAmount = reward.amount;
+    world.add(coin);
+    effects.push({
+      mesh: coin,
+      kind: "currency-pickup",
+      profile,
+      origin: coin.position.clone(),
+      elapsed: 0,
+      life: profile.durationMs / 1000,
+      index,
+    });
+  });
+}
+
 function deadzone(value) { return Math.abs(value) < .18 ? 0 : value; }
 
 function updateControllerState(connected) {
@@ -3006,6 +3039,16 @@ function update(dt) {
   }
   effects.forEach(effect => {
     effect.life -= dt;
+    if (effect.kind === "currency-pickup") {
+      effect.elapsed += dt;
+      const frame = currencyPickupFrame({ profile: effect.profile, elapsed: effect.elapsed, index: effect.index });
+      effect.mesh.position.copy(effect.origin);
+      effect.mesh.position.y += frame.y;
+      effect.mesh.rotation.y = frame.rotation;
+      effect.mesh.material.opacity = frame.opacity;
+      effect.mesh.scale.setScalar(effect.profile.scale * (1 + Math.sin(effect.elapsed * 8) * .08));
+      return;
+    }
     effect.mesh.position.addScaledVector(effect.velocity, dt);
     effect.velocity.y -= 7 * dt;
     effect.mesh.scale.multiplyScalar(.94);
