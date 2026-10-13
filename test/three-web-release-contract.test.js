@@ -306,6 +306,8 @@ test("terrain surfaces add authored biome detail when texture sampling is unavai
   assert.match(gameSource, /function addTerrainSurfaceDetail\(mapId\)/);
   assert.match(gameSource, /terrain-detail:\$\{mapId\}/);
   assert.match(gameSource, /addTerrainSurfaceDetail\(mapKey\)/);
+  assert.match(gameSource, /function addSpatialBiomeAccents\(\)/);
+  assert.match(gameSource, /addSpatialBiomeAccents\(\)/);
   assert.match(gameSource, /new THREE\.MeshStandardMaterial\(\{[\s\S]*roughness: \.94[\s\S]*metalness: \.02/);
   assert.match(gameSource, /mesh\.receiveShadow = true/);
 });

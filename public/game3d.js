@@ -2139,6 +2139,33 @@ function addWorldFieldAssets() {
   }
 }
 
+function addSpatialBiomeAccents() {
+  const accents = {
+    inferno: { color: 0xff6a24, emissive: .42 },
+    ice: { color: 0xb9efff, emissive: .12 },
+    desert: { color: 0xd1a15b, emissive: .06 },
+    city: { color: 0x8f98a3, emissive: .08 },
+  };
+  worldLayout.biomes.forEach((biome, biomeIndex) => {
+    const profile = accents[biome.id];
+    if (!profile) return;
+    const random = seededRandom(`spatial-biome-accent:${biome.id}:${worldLayout.size}`);
+    for (let index = 0; index < 8; index += 1) {
+      const x = biome.x - biome.w / 2 + 12 + random() * Math.max(1, biome.w - 24);
+      const z = biome.z - biome.d / 2 + 12 + random() * Math.max(1, biome.d - 24);
+      const accent = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2 + random() * 1.8, 3.8 + random() * 4.6),
+        new THREE.MeshStandardMaterial({ color: profile.color, emissive: profile.color, emissiveIntensity: profile.emissive, roughness: .86, metalness: .02, transparent: true, opacity: .34, side: THREE.DoubleSide }),
+      );
+      accent.name = `spatial-biome-accent:${biome.id}:${biomeIndex}:${index + 1}`;
+      accent.rotation.set(-Math.PI / 2, 0, random() * Math.PI * 2);
+      accent.position.set(x, sampleWorldElevation(worldLayout, { x, z }) + .07, z);
+      accent.receiveShadow = true;
+      world.add(accent);
+    }
+  });
+}
+
 function publishWorldAssetAudit() {
   const summary = summarizeWorldAssetStates(worldFieldAssetHolders.map(holder => holder.userData.assetState));
   canvas.dataset.worldFieldTotal = String(summary.total);
@@ -2187,6 +2214,7 @@ function resetMap() {
   ground = createTerrainMesh(texture);
   world.add(ground);
   addTerrainSurfaceDetail(mapKey);
+  addSpatialBiomeAccents();
   addConnectedWorldObjects();
   addWorldFieldAssets();
   addMapVisuals();
