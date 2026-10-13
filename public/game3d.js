@@ -3258,6 +3258,13 @@ function update(dt) {
     } else if (!enemies.length && spawnQueue === 0) finishRound("blue");
   }
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
+  if (renderFocus === "roster") {
+    player.g.visible = false;
+    const rosterCameraTarget = new THREE.Vector3(0, 7.5, 25);
+    camera.position.lerp(rosterCameraTarget, Math.min(1, dt * 8));
+    camera.lookAt(0, 1.1, -1);
+    return;
+  }
   player.g.visible = !frontView && player.alive;
   // Keep the aim camera just above and ahead of the survivor so the head never
   // sits between the reticle and the world while running and firing.
