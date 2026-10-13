@@ -116,7 +116,7 @@ const curatedGlbCache = new Map();
 const ui = {
   hp: $("hpText"), hpBar: $("hpBar"), shield: $("shieldText"), shieldBar: $("shieldBar"), heat: $("heatText"), heatBar: $("heatBar"),
   ammo: $("ammoText"), ability: $("abilityText"), abilityBar: $("abilityBar"), team: $("teamText"), teamName: $("teamName"), teamHealth: $("teamHealthText"), teamHealthBar: $("teamHealthBar"), objective: $("objectiveText"),
-  scrap: $("scrapText"), gold: $("goldText"), silver: $("silverText"), quest: $("questText"), questProgress: $("questProgress"), questProgressFill: $("questProgressFill"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
+  scrap: $("scrapText"), gold: $("goldText"), silver: $("silverText"), quest: $("questText"), questDirection: $("questDirection"), questProgress: $("questProgress"), questProgressFill: $("questProgressFill"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
   discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"), combatFeedback: $("combatFeedback"),
   controllerStatus: $("controllerStatus"), controllerOnly: $("controllerOnlyToggle"), soundToggle: $("soundToggle"), volume: $("volumeSlider"), musicToggle: $("musicToggle"), musicVolume: $("musicVolumeSlider"), musicSource: $("musicSource"), musicStatus: $("musicStatus"),
@@ -3565,6 +3565,20 @@ function renderHud() {
     ? quest.requirements.map(requirement => `${QUEST_METRIC_LABELS[requirement.metric] || requirement.metric.toUpperCase()} ${Math.min(requirement.target, quest.progress[requirement.metric] || 0)}/${requirement.target}`).join(" · ")
     : `${quest.value}/${quest.target}`;
   ui.quest.textContent = `QUEST ${requirementSummary} · ${quest.objective}`;
+  const beaconProfile = questBeaconProfile({ questId: quest.id, mapKey });
+  if (quest.completed) {
+    ui.questDirection.textContent = "QUEST TARGET · SECURED";
+  } else if (!beaconProfile.visible || !player) {
+    ui.questDirection.textContent = `QUEST TARGET · ${beaconProfile.mapKey.toUpperCase()} MAP`;
+  } else {
+    const dx = beaconProfile.x - player.g.position.x;
+    const dz = beaconProfile.z - player.g.position.z;
+    const distance = Math.round(Math.hypot(dx, dz));
+    const bearing = Math.atan2(dx, dz);
+    const relative = ((bearing - viewYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((relative * 180 / Math.PI + 360) % 360 / 45) % 8];
+    ui.questDirection.textContent = `QUEST TARGET · ${compass} ${distance}m`;
+  }
   const questPercent = quest.target ? Math.min(100, Math.round(quest.value / quest.target * 100)) : 0;
   ui.questProgress.setAttribute("aria-valuemax", String(quest.target));
   ui.questProgress.setAttribute("aria-valuenow", String(quest.value));

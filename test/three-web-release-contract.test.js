@@ -618,6 +618,14 @@ test("the in-game map transfer controls remain reachable on the PWA", () => {
   assert.match(gameSource, /document\.querySelectorAll\("\[data-map\]"\)/);
 });
 
+test("the quest HUD exposes camera-relative beacon navigation", () => {
+  assert.match(pageSource, /id="questDirection"/);
+  assert.match(gameSource, /questDirection: \$\("questDirection"\)/);
+  assert.match(gameSource, /const beaconProfile = questBeaconProfile/);
+  assert.match(gameSource, /QUEST TARGET ·/);
+  assert.match(gameSource, /const relative = \(\(bearing - viewYaw/);
+});
+
 test("map transfer closes the paused in-game menu before rebuilding the selected map", () => {
   const transferBlock = gameSource.match(/document\.querySelectorAll\("\[data-map\]"\)[\s\S]*?\n\}\);/)?.[0] || "";
   assert.match(transferBlock, /closeGameMenu\(\)/);
