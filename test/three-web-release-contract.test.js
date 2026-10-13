@@ -301,6 +301,8 @@ test("the gameplay audit focus renders authored enemies, quest terrain, and both
   assert.match(gameSource, /canvas\.dataset\.gameplayAuditCurrency = "gold,silver"/);
   assert.match(gameSource, /spawnCurrencyPickupBurst\(goldPosition, \{ gold: 3 \}\)/);
   assert.match(gameSource, /spawnCurrencyPickupBurst\(silverPosition, \{ silver: 5 \}\)/);
+  assert.match(gameSource, /const prepareAuditFocus = \(\) =>/);
+  assert.match(gameSource, /welcomeScreen\.classList\.add\("hidden"\)/);
 });
 
 test("the terrain gallery focus exposes all four authored map textures for visual audit", () => {

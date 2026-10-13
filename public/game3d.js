@@ -2091,15 +2091,25 @@ function addBurnedArmoryVisual(root) {
 }
 
 function applyRequestedRenderFocus() {
+  const prepareAuditFocus = () => {
+    welcomeScreen.classList.add("hidden");
+    lobbyScreen.classList.add("hidden");
+    document.body.classList.remove("menu-active");
+    phase = "combat";
+    menuOpen = false;
+  };
   if (renderFocus === "terrain-gallery" && player && worldLayout) {
+    prepareAuditFocus();
     addTerrainGallery();
     return;
   }
   if (renderFocus === "roster" && player && worldLayout) {
+    prepareAuditFocus();
     addRenderAuditRoster();
     return;
   }
   if (renderFocus === "gameplay" && player && worldLayout) {
+    prepareAuditFocus();
     const auditEnemyTypes = ["rusher", "shooter", "spider", "boss"];
     const auditPositions = [[20, -20], [10, -12], [30, -10], [20, -2]];
     auditEnemyTypes.forEach((type, index) => {
@@ -2125,6 +2135,7 @@ function applyRequestedRenderFocus() {
   }
   const armoryFocusRequested = renderFocus === "armory";
   if (!armoryFocusRequested || !player || !worldLayout) return;
+  prepareAuditFocus();
   const structure = worldLayout.structures.find(item => item.id === "armory-shell");
   if (!structure) return;
   const focusPosition = {
