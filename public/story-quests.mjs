@@ -8,6 +8,9 @@ export const STORY_QUESTS = Object.freeze([
   Object.freeze({ id: "raider-breaker", missionId: "c2-m1", title: "Raider Breaker", objective: "Defeat 10 raiders", metric: "kills", target: 10, reward: Object.freeze({ gold: 30, silver: 80, xp: 200 }) }),
   Object.freeze({ id: "frontier-reach", missionId: "c2-m2", title: "Frontier Reach", objective: "Reach stage 3", metric: "stage", target: 3, reward: Object.freeze({ gold: 42, silver: 110, xp: 300 }) }),
   Object.freeze({ id: "defend-the-frontier", missionId: "c3-m1", title: "Defend the Frontier", objective: "Discover 4 landmarks", metric: "discoveries", target: 4, reward: Object.freeze({ gold: 60, silver: 160, xp: 450 }) }),
+  Object.freeze({ id: "white-signal", missionId: "c3-m2", title: "White Signal", objective: "Survive 180 seconds", metric: "survivedSeconds", target: 180, reward: Object.freeze({ gold: 76, silver: 210, xp: 600 }) }),
+  Object.freeze({ id: "across-the-cinders", missionId: "c4-m1", title: "Across the Cinders", objective: "Defeat 25 raiders", metric: "kills", target: 25, reward: Object.freeze({ gold: 94, silver: 260, xp: 800 }) }),
+  Object.freeze({ id: "crown-of-steel", missionId: "c4-m2", title: "Crown of Steel", objective: "Reach stage 4 and discover 10 landmarks", metric: "discoveries", target: 10, requirements: Object.freeze([{ metric: "stage", target: 4 }, { metric: "discoveries", target: 10 }]), reward: Object.freeze({ gold: 140, silver: 380, xp: 1200 }) }),
 ]);
 
 const whole = value => Math.max(0, Math.floor(Number(value) || 0));
@@ -47,7 +50,10 @@ export function advanceQuestState(state = {}, event = {}) {
   };
   for (const [key, value] of Object.entries(updates)) next.progress[key] = Math.max(next.progress[key], value);
   if (next.completedIds.includes(quest.id)) return { state: next, quest, completed: false, reward: { gold: 0, silver: 0, xp: 0 } };
-  const reached = next.progress[quest.metric] >= quest.target;
+  const requirements = Array.isArray(quest.requirements) && quest.requirements.length
+    ? quest.requirements
+    : [{ metric: quest.metric, target: quest.target }];
+  const reached = requirements.every(requirement => next.progress[requirement.metric] >= whole(requirement.target));
   if (!reached) return { state: next, quest, completed: false, reward: { gold: 0, silver: 0, xp: 0 } };
   next.completedIds.push(quest.id);
   const reward = { ...quest.reward };
@@ -65,6 +71,7 @@ export function questView(state = {}) {
     objective: quest.objective,
     metric: quest.metric,
     target: quest.target,
+    requirements: quest.requirements || Object.freeze([{ metric: quest.metric, target: quest.target }]),
     value: Math.min(quest.target, normalized.progress[quest.metric] || 0),
     completed: normalized.completedIds.includes(quest.id),
     reward: quest.reward,
