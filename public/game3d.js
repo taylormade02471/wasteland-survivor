@@ -805,7 +805,19 @@ function createTerrainMesh(texture) {
   // Keep the authored image readable in the combat frame.  The biome vertex
   // tint was multiplying the textured surface down to a flat gray wash on
   // some WebGL/mobile paths, hiding the terrain artwork entirely.
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, vertexColors: false, fog: false, side: THREE.DoubleSide }));
+  // Keep the authored albedo visible while allowing the field lighting rig to
+  // add depth to the terrain instead of rendering it as a flat unlit card.
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+    map: texture,
+    color: 0xffffff,
+    vertexColors: false,
+    roughness: .94,
+    metalness: .02,
+    emissive: 0x080604,
+    emissiveIntensity: .08,
+    side: THREE.DoubleSide,
+  }));
+  mesh.receiveShadow = true;
   mesh.receiveShadow = true;
   return mesh;
 }
