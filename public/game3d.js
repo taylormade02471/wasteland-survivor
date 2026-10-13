@@ -816,18 +816,25 @@ function attachAuthoredWeapon(group, gunName) {
 
 function attachAuthoredEnemy(group, enemyType, assetPath) {
   if (!assetPath) return;
+  if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadState = "loading";
   loadCuratedGlb([assetPath]).then(asset => {
     if (!group.parent) return;
     const root = cloneAuthoredRoot(asset?.scene);
-    if (!root) return;
+    if (!root) {
+      if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadError = enemyType;
+      return;
+    }
     installAuthoredAnimationSet(root, asset);
     fitAuthoredWorldRoot(root, enemyType === "boss" ? 3.8 : enemyType === "drone" ? 1.9 : 2.5);
     root.rotation.y = Math.PI;
     while (group.children.length) group.remove(group.children[0]);
     group.add(root);
     group.userData.authoredEnemy = enemyType;
+    if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadState = "ready";
     publishRenderAudit();
-  }).catch(() => {});
+  }).catch(() => {
+    if (renderFocus === "gameplay") canvas.dataset.authoredEnemyLoadError = enemyType;
+  });
 }
 
 function addRenderAuditRoster() {
