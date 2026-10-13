@@ -8,6 +8,7 @@ import {
   firstPersonMovementDelta,
   keyboardMovementAxes,
   nextMouseYaw,
+  wrapYaw,
 } from "../public/control-direction-lock.mjs";
 
 test("the immutable control contract keeps every horizontal input right-positive", () => {
@@ -33,6 +34,14 @@ test("rightward mouse input turns right at the locked sensitivity", () => {
 
   const forwardAfterRightTurn = firstPersonMovementDelta({ yaw: rightYaw, forward: 1, speed: 1 });
   assert.ok(forwardAfterRightTurn.x > 0, "moving forward after a right turn must travel toward screen-right");
+});
+
+test("mouse yaw wraps after complete turns without changing right-positive direction", () => {
+  assert.equal(wrapYaw(Math.PI * 4 + 0.25), 0.25);
+  assert.equal(wrapYaw(-Math.PI * 4 - 0.25), -0.25);
+  const fullTurn = nextMouseYaw({ yaw: 0, movementX: (Math.PI * 2) / 0.0026 });
+  assert.ok(Math.abs(fullTurn) < 1e-12, "a full 360-degree pan must return to the same heading");
+  assert.ok(nextMouseYaw({ yaw: 0, movementX: 1 }) > 0, "rightward movement remains positive after wrapping");
 });
 
 test("WASD movement remains camera-relative with D right and W forward", () => {

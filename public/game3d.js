@@ -4536,7 +4536,11 @@ canvas.addEventListener("pointerdown", event => {
     wakeAudio();
     return;
   }
-  const resumingPointer = pointerResumeRequired;
+  const resumingPointer = pointerResumeRequired && event.pointerType === "mouse";
+  if (resumingPointer) {
+    pointerResumeRequired = false;
+    updateInputRecoveryNotice();
+  }
   wakeAudio();
   if (resumingPointer || localGameplayInputPaused()) return;
   if (phase !== "combat" || menuOpen || event.button !== 0 || event.isPrimary === false) return;

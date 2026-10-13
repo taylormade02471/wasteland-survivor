@@ -160,6 +160,12 @@ test("mouse handoff preserves the pointer-lock eligibility path", async () => {
   assert.deepEqual(modes, ["mouse"]);
 });
 
+test("mouse return-click clears the paused-aim latch in the game path", async () => {
+  const game = fs.readFileSync(path.join(__dirname, "../public/game3d.js"), "utf8");
+  assert.match(game, /const resumingPointer = pointerResumeRequired && event\.pointerType === "mouse"/);
+  assert.match(game, /if \(resumingPointer\) \{\s*pointerResumeRequired = false;\s*updateInputRecoveryNotice\(\);/s);
+});
+
 test("unexpected capture loss from either touch stick routes through a complete reset", async () => {
   const { bindTransientPointerInterrupts } = await import(adapterPath);
   const { resolveTransientInputReset } = await import(modulePath);

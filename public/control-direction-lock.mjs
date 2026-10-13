@@ -17,6 +17,14 @@ function snapZero(value) {
   return Math.abs(value) < Number.EPSILON ? 0 : value;
 }
 
+export function wrapYaw(yaw) {
+  const tau = Math.PI * 2;
+  const value = finite(yaw);
+  if (value >= -Math.PI && value <= Math.PI) return snapZero(value);
+  const normalized = (value + Math.PI) % tau;
+  return snapZero((normalized < 0 ? normalized + tau : normalized) - Math.PI);
+}
+
 export function keyboardMovementAxes(keys = {}) {
   return {
     strafe: (keys.d ? 1 : 0) - (keys.a ? 1 : 0),
@@ -29,7 +37,7 @@ export function aimYawFromAxes(horizontal, vertical) {
 }
 
 export function nextMouseYaw({ yaw = 0, movementX = 0, sensitivity = 1 } = {}) {
-  return finite(yaw) + finite(movementX) * CONTROL_DIRECTION_LOCK.mouseYawSign * CONTROL_DIRECTION_LOCK.mouseRadiansPerPixel * Math.max(0, finite(sensitivity, 1));
+  return wrapYaw(finite(yaw) + finite(movementX) * CONTROL_DIRECTION_LOCK.mouseYawSign * CONTROL_DIRECTION_LOCK.mouseRadiansPerPixel * Math.max(0, finite(sensitivity, 1)));
 }
 
 export function firstPersonForwardInput(vertical) {
