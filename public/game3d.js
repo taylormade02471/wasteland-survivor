@@ -3507,6 +3507,12 @@ function update(dt) {
     } else if (!enemies.length && spawnQueue === 0) finishRound("blue");
   }
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
+  if (renderFocus === "gameplay") {
+    player.g.visible = false;
+    camera.position.lerp(new THREE.Vector3(20, 7.2, -32), Math.min(1, dt * 8));
+    camera.lookAt(20, 1.1, -11);
+    return;
+  }
   if (renderFocus === "roster") {
     player.g.visible = false;
     const rosterCameraTarget = new THREE.Vector3(0, 7.5, 25);
