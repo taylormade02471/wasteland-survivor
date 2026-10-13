@@ -878,7 +878,6 @@ function addGameplayAuditEnemyProxy(group, enemyType) {
 function addGameplayAuditStage() {
   const stage = new THREE.Group();
   stage.name = "gameplay-audit-stage";
-  stage.position.x = 20;
   const palette = [0xff5b55, 0xff8b45, 0x8cff4d, 0xffcf40];
   [-4.5, -1.5, 1.5, 4.5].forEach((x, index) => {
     const ring = new THREE.Mesh(
@@ -907,7 +906,9 @@ function addGameplayAuditStage() {
     pickup.rotation.x = Math.PI / 2;
     stage.add(pickup);
   });
-  scene.add(stage);
+  // Camera-local placement removes terrain/fog occlusion from the audit
+  // capture while leaving the real world-space combat scene untouched.
+  camera.add(stage);
 }
 
 function addRenderAuditRoster() {
