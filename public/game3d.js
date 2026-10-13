@@ -149,6 +149,7 @@ const MAPS = {
   ice: { label: "Icy Mountain", texture: "assets/icy-mountain-terrain-v2.png", fog: 0xc3d9e7, hazard: 0x4dbbff },
   inferno: { label: "Fire Inferno", texture: "assets/fire-inferno-terrain-v2.png", fog: 0x351510, hazard: 0xff5a24 }
 };
+const QUEST_METRIC_LABELS = Object.freeze({ survivedSeconds: "SURVIVAL", scrap: "SCRAP", kills: "RAIDERS", stage: "STAGE", discoveries: "LANDMARKS" });
 
 function updateAvatarCards(value = profileAvatar.value) {
   document.querySelectorAll(".avatar-choice").forEach(card => {
@@ -3018,7 +3019,7 @@ function renderHud() {
   ui.chapter.textContent = `Chapter ${campaign.chapterId}: ${campaign.chapterTitle}`;
   ui.mission.textContent = `Mission: ${campaign.missionTitle} · ${hud.mission.label.replace(/^Mission:\s*/i, "")}`;
   const requirementSummary = quest.requirements.length > 1
-    ? quest.requirements.map(requirement => `${requirement.metric} ${Math.min(requirement.target, quest.progress[requirement.metric] || 0)}/${requirement.target}`).join(" · ")
+    ? quest.requirements.map(requirement => `${QUEST_METRIC_LABELS[requirement.metric] || requirement.metric.toUpperCase()} ${Math.min(requirement.target, quest.progress[requirement.metric] || 0)}/${requirement.target}`).join(" · ")
     : `${quest.value}/${quest.target}`;
   ui.quest.textContent = `QUEST ${requirementSummary} · ${quest.objective}`;
   const questPercent = quest.target ? Math.min(100, Math.round(quest.value / quest.target * 100)) : 0;
