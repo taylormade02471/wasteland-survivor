@@ -80,10 +80,15 @@ export function getPreviewCharacterModelPaths(id) {
   ].filter(Boolean))];
 }
 
-export async function loadFirstAvailableModel({ loader, paths, cache = new Map() }) {
+export async function loadFirstAvailableModel({ loader, paths, cache = new Map(), preferBundled = false }) {
   for (const path of new Set((paths || []).filter(Boolean))) {
     const runtimePath = globalThis.window?.__WASTELAND_MEDIA__?.url?.(path) || path;
-    for (const candidate of [...new Set([runtimePath, path])]) {
+    // Authored GLBs are part of the reviewed release and should appear
+    // immediately even when the optional GCS mirror is slow or unavailable.
+    // Media-heavy menu/video files may still prefer the external route by
+    // leaving this opt-in disabled.
+    const candidates = preferBundled ? [path, runtimePath] : [runtimePath, path];
+    for (const candidate of [...new Set(candidates)]) {
       if (!cache.has(candidate)) cache.set(candidate, new Promise(resolve => loader.load(candidate, resolve, undefined, () => resolve(null))));
       const asset = await cache.get(candidate);
       if (asset?.scene) return asset;

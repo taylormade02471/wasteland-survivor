@@ -234,6 +234,27 @@ test("configured external media falls back to the bundled authored model", async
   }
 });
 
+test("authored gameplay models can prefer the bundled release before the optional mirror", async () => {
+  const preferred = "./assets/nightfall/aaa/enemies/meshy/shooter-meshy-v1.glb";
+  const attempted = [];
+  const previousWindow = globalThis.window;
+  globalThis.window = { __WASTELAND_MEDIA__: { url: value => `https://storage.googleapis.com/game-media/${value.replace(/^\.\//, "")}` } };
+  try {
+    const loader = {
+      load(file, onLoad) {
+        attempted.push(file);
+        onLoad({ scene: { name: "bundled-shooter" } });
+      },
+    };
+    const asset = await loadFirstAvailableModel({ loader, paths: [preferred], preferBundled: true });
+    assert.equal(asset.scene.name, "bundled-shooter");
+    assert.deepEqual(attempted, [preferred]);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
 test("the deployed shell wires authored 3D map props and a live survivor preview", () => {
   assert.ok(fs.existsSync(path.join(repo, "public", "vendor", "GLTFLoader.js")), "GLTFLoader must ship with the web release");
   assert.match(gameSource, /import \* as THREE from "\.\/vendor\/three\.module\.js"/);

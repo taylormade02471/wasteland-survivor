@@ -234,7 +234,7 @@ function fitAuthoredWorldRoot(root, maxDimension) {
 }
 
 function loadCuratedGlb(paths) {
-  return loadFirstAvailableModel({ loader: curatedGlbLoader, paths, cache: curatedGlbCache });
+  return loadFirstAvailableModel({ loader: curatedGlbLoader, paths, cache: curatedGlbCache, preferBundled: true });
 }
 
 const AUTHORED_ENEMY_MODELS = Object.freeze({
