@@ -382,6 +382,9 @@ test("the gameplay renderer exposes a large ranged spider enemy", () => {
   assert.match(gameSource, /spider-ranged/);
   assert.match(gameSource, /group\.scale\.setScalar\(1\.35\)/);
   assert.match(gameSource, /group\.userData\.hitRadius = 1\.35/);
+  assert.match(gameSource, /group\.userData\.spiderVisual = true/);
+  assert.match(gameSource, /group\.userData\.spiderLegs = spiderLegs/);
+  assert.match(gameSource, /leg\.upper\.rotation\.z = leg\.upper\.userData\.restRotation\.z \+ phase/);
   assert.match(gameSource, /enemy\.g\.userData\.hitRadius \|\| 1\.1/);
 });
 

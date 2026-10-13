@@ -625,8 +625,18 @@ function updateAuthoredCharacterAnimations(dt) {
   const actors = [player, ...allies, ...enemies];
   for (const actor of actors) {
     const group = actor?.g;
-    if (!group?.userData?.authoredCharacter) continue;
+    if (!group) continue;
     group.userData.animationTime = (group.userData.animationTime || 0) + dt;
+    if (group.userData.spiderVisual) {
+      const gait = actor.alive ? Math.sin(group.userData.animationTime * 8.5) * .16 : .035;
+      group.userData.spiderLegs?.forEach((leg, index) => {
+        const phase = index % 2 ? -gait : gait;
+        leg.upper.rotation.z = leg.upper.userData.restRotation.z + phase;
+        leg.lower.rotation.z = leg.lower.userData.restRotation.z - phase * .72;
+      });
+      group.position.y = actor.alive ? Math.abs(Math.sin(group.userData.animationTime * 8.5)) * .025 : 0;
+    }
+    if (!group.userData.authoredCharacter) continue;
     const previous = group.userData.animationPreviousPosition || group.position.clone();
     const moved = group.position.distanceTo(previous) > .001;
     const state = !actor.alive ? "downed" : actor === player && firing ? "fire" : moved ? "run" : actor === player && adsActive ? "aim" : "idle";
@@ -700,6 +710,7 @@ function createSpiderVisual(group) {
   const shellHighlight = material(0x6e9f59, .18);
   const eyeMaterial = material(0xff5d75, 1);
   const fangMaterial = material(0xd9f4c8, .35);
+  const spiderLegs = [];
   const abdomen = new THREE.Mesh(new THREE.SphereGeometry(.92, 12, 8), shell);
   abdomen.scale.set(1.05, .76, 1.28);
   abdomen.position.set(0, .94, -.28);
@@ -715,12 +726,17 @@ function createSpiderVisual(group) {
       const upper = new THREE.Mesh(new THREE.CylinderGeometry(.09, .13, 1.05, 6), shell);
       upper.position.set(side * (.72 + Math.cos(angle) * .34), .68 + Math.abs(index - 1.5) * .07, .42 + Math.sin(angle) * .72);
       upper.rotation.set(0, side * angle, side * Math.PI / 2);
+      upper.name = `spider-leg:${side}:${index}:upper`;
+      upper.userData.restRotation = { x: upper.rotation.x, y: upper.rotation.y, z: upper.rotation.z };
       upper.castShadow = true;
       const lower = new THREE.Mesh(new THREE.CylinderGeometry(.065, .1, .94, 6), shellHighlight);
       lower.position.set(side * (1.18 + Math.cos(angle) * .46), .39, .42 + Math.sin(angle) * 1.15);
       lower.rotation.set(0, side * (angle + .18), side * Math.PI / 2);
+      lower.name = `spider-leg:${side}:${index}:lower`;
+      lower.userData.restRotation = { x: lower.rotation.x, y: lower.rotation.y, z: lower.rotation.z };
       lower.castShadow = true;
       group.add(upper, lower);
+      spiderLegs.push({ upper, lower });
     }
   }
   for (const side of [-1, 1]) {
@@ -740,6 +756,8 @@ function createSpiderVisual(group) {
   group.userData.hitRadius = 1.35;
   group.userData.enemyVisual = "spider-ranged";
   group.userData.attackProfile = { projectile: "acid-web", range: 24 };
+  group.userData.spiderVisual = true;
+  group.userData.spiderLegs = spiderLegs;
 }
 
 function unit(color, x, z, avatarType = "scout", useAuthoredModel = false, authoredEnemy = null) {
