@@ -49,6 +49,7 @@ import { renderQualityProfile } from "./render-quality.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { buildFireVfxProfile, fireVfxFrame } from "./fire-vfx.mjs";
 import { currencyPickupFrame, currencyPickupProfile } from "./currency-pickup-vfx.mjs";
+import { summarizeWorldAssetStates } from "./world-asset-audit.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { createLiveCharacterPreview, getPreferredCharacterModelPaths, loadFirstAvailableModel } from "./live-character-preview.mjs";
 import {
@@ -296,6 +297,7 @@ let activeTerrainTexture = null;
 let mapVisuals = null;
 let armorySurfaceMaps = null;
 let activeQuestBeaconId = null;
+let worldFieldAssetHolders = [];
 let chests = [];
 let chestSpawnRadius = 70;
 let allies = [], enemies = [], bullets = [], hazards = [], flags = [], effects = [];
@@ -2073,6 +2075,7 @@ function createWorldFieldFallback(asset) {
 }
 
 function addWorldFieldAssets() {
+  worldFieldAssetHolders = [];
   for (const placement of getWorldFieldPlacements()) {
     const asset = getWorldFieldAsset(placement.assetId);
     const holder = new THREE.Group();
@@ -2083,11 +2086,14 @@ function addWorldFieldAssets() {
     holder.userData.assetState = "fallback-loading";
     holder.userData.requestedAssetPath = asset.runtimePath;
     world.add(holder);
+    worldFieldAssetHolders.push(holder);
+    publishWorldAssetAudit();
     loadCuratedGlb([asset.runtimePath]).then(loaded => {
       if (!holder.parent) return;
       const authoredRoot = cloneAuthoredRoot(loaded?.scene);
       if (!authoredRoot) {
         holder.userData.assetState = "fallback-invalid-authored-root";
+        publishWorldAssetAudit();
         return;
       }
       fitAuthoredWorldRoot(authoredRoot, asset.fit.maxDimension);
@@ -2095,12 +2101,23 @@ function addWorldFieldAssets() {
       holder.add(authoredRoot);
       holder.userData.authoredAssetPath = asset.runtimePath;
       holder.userData.assetState = "authored";
+      publishWorldAssetAudit();
     }).catch(error => {
       if (!holder.parent) return;
       holder.userData.assetState = "fallback-load-error";
       holder.userData.assetLoadError = String(error?.message || error || "unknown").slice(0, 160);
+      publishWorldAssetAudit();
     });
   }
+}
+
+function publishWorldAssetAudit() {
+  const summary = summarizeWorldAssetStates(worldFieldAssetHolders.map(holder => holder.userData.assetState));
+  canvas.dataset.worldFieldTotal = String(summary.total);
+  canvas.dataset.worldFieldAuthored = String(summary.authored);
+  canvas.dataset.worldFieldLoading = String(summary.loading);
+  canvas.dataset.worldFieldFallback = String(summary.fallback);
+  canvas.dataset.worldFieldComplete = String(summary.complete);
 }
 
 function createWorldFieldBlockers() {
