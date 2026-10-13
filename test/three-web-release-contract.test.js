@@ -392,6 +392,7 @@ test("weapon firing exposes rendered muzzle and tracer feedback", () => {
   assert.match(gameSource, /function weaponMuzzleFlash\(actor, direction, color\)/);
   assert.match(gameSource, /flash\.name = "weapon-muzzle-flash"/);
   assert.match(gameSource, /tracer\.name = "weapon-tracer-flash"/);
+  assert.match(gameSource, /smoke\.name = "weapon-smoke-puff"/);
   assert.match(gameSource, /weaponMuzzleFlash\(actor, shotDirection, projectileColor\)/);
   assert.match(gameSource, /effects\.push\(\{ mesh: tracer, velocity: direction\.clone\(\)\.multiplyScalar\(10\), life: \.09 \}\)/);
   assert.match(gameSource, /function impactFlash\(position, color = 0xffdf52\)/);

@@ -2190,6 +2190,16 @@ function weaponMuzzleFlash(actor, direction, color) {
   tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
   world.add(tracer);
   effects.push({ mesh: tracer, velocity: direction.clone().multiplyScalar(10), life: .09 });
+
+  const smoke = new THREE.Mesh(
+    new THREE.SphereGeometry(.12, 7, 6),
+    new THREE.MeshBasicMaterial({ color: 0x9a9a8b, transparent: true, opacity: .42 }),
+  );
+  smoke.name = "weapon-smoke-puff";
+  smoke.position.copy(origin).addScaledVector(direction, .3);
+  smoke.scale.set(.72, .72, .72);
+  world.add(smoke);
+  effects.push({ mesh: smoke, velocity: direction.clone().multiplyScalar(.65).add(new THREE.Vector3(0, .42, 0)), life: .32 });
 }
 
 function fire(actor, target, profile = null) {
