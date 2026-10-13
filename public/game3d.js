@@ -846,19 +846,26 @@ function createProceduralTerrainTexture(path) {
 
 function loadTerrainTexture(path) {
   const fallbackPath = String(path || "").replace(/^https?:\/\/[^/]+\//, "").replace(/^.*?assets\//, "assets/");
-  const texture = createProceduralTerrainTexture(path);
-  new THREE.TextureLoader().load(path, loaded => {
+  const loader = new THREE.TextureLoader();
+  const applyLoadedTexture = (texture, loaded) => {
+    texture.source = loaded.source;
     texture.image = loaded.image;
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.needsUpdate = true;
+  };
+  const procedural = createProceduralTerrainTexture(path);
+  const texture = loader.load(path, loaded => {
+    loaded.colorSpace = THREE.SRGBColorSpace;
+    loaded.needsUpdate = true;
   }, undefined, () => {
-    if (!fallbackPath || fallbackPath === path) return;
-    new THREE.TextureLoader().load(fallbackPath, loaded => {
-      loaded.colorSpace = THREE.SRGBColorSpace;
-      texture.image = loaded.image;
-      texture.needsUpdate = true;
-    });
+    const fallback = fallbackPath && fallbackPath !== path ? fallbackPath : null;
+    if (fallback) {
+      loader.load(fallback, loaded => applyLoadedTexture(texture, loaded), undefined, () => applyLoadedTexture(texture, procedural));
+    } else {
+      applyLoadedTexture(texture, procedural);
+    }
   });
+  texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
 
