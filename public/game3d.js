@@ -2894,7 +2894,7 @@ function impactFlash(position, color = 0xffdf52) {
   ring.position.copy(position);
   ring.position.y += .04;
   world.add(ring);
-  effects.push({ mesh: ring, velocity: new THREE.Vector3(), life: .18 });
+  effects.push({ mesh: ring, kind: "impact-flash", velocity: new THREE.Vector3(), life: .18, elapsed: 0 });
 }
 
 function hitEnemy(enemy, damage) {
@@ -3367,6 +3367,13 @@ function update(dt) {
       effect.mesh.scale.setScalar(Math.max(.01, frame.radius / .78));
       effect.mesh.rotation.z = frame.rotation;
       effect.mesh.material.opacity = frame.opacity;
+      return;
+    }
+    if (effect.kind === "impact-flash") {
+      effect.elapsed += dt;
+      const progress = Math.min(1, effect.elapsed / .18);
+      effect.mesh.scale.setScalar(.7 + progress * 2.4);
+      effect.mesh.material.opacity = .9 * (1 - progress);
       return;
     }
     if (effect.kind === "currency-pickup") {

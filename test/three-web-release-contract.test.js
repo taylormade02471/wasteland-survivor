@@ -525,6 +525,9 @@ test("weapon firing exposes rendered muzzle and tracer feedback", () => {
   assert.match(gameSource, /weaponMuzzleFlash\(actor, shotDirection, projectileColor\)/);
   assert.match(gameSource, /effects\.push\(\{ mesh: tracer, velocity: direction\.clone\(\)\.multiplyScalar\(10\), life: \.09 \}\)/);
   assert.match(gameSource, /function impactFlash\(position, color = 0xffdf52\)/);
+  assert.match(gameSource, /kind: "impact-flash"/);
+  assert.match(gameSource, /effect\.mesh\.scale\.setScalar\(\.7 \+ progress \* 2\.4\)/);
+  assert.match(gameSource, /effect\.mesh\.material\.opacity = \.9 \* \(1 - progress\)/);
   assert.match(gameSource, /ring\.name = "weapon-impact-flash"/);
   assert.match(gameSource, /impactFlash\(bullet\.m\.position, enemy\.enemyType === "spider" \? 0x9cff69 : 0xffdf52\)/);
 });
