@@ -854,10 +854,8 @@ function loadTerrainTexture(path) {
     texture.needsUpdate = true;
   };
   const procedural = createProceduralTerrainTexture(path);
-  const texture = loader.load(path, loaded => {
-    loaded.colorSpace = THREE.SRGBColorSpace;
-    loaded.needsUpdate = true;
-  }, undefined, () => {
+  const texture = procedural;
+  loader.load(path, loaded => applyLoadedTexture(texture, loaded), undefined, () => {
     const fallback = fallbackPath && fallbackPath !== path ? fallbackPath : null;
     if (fallback) {
       loader.load(fallback, loaded => applyLoadedTexture(texture, loaded), undefined, () => applyLoadedTexture(texture, procedural));
@@ -865,7 +863,6 @@ function loadTerrainTexture(path) {
       applyLoadedTexture(texture, procedural);
     }
   });
-  texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
 
