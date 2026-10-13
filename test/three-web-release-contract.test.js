@@ -366,6 +366,9 @@ test("quest completion visibly announces the authored story and currency reward"
   assert.match(gameSource, /\+\$\{questResult\.reward\.gold\} GOLD/);
   assert.match(gameSource, /\+\$\{questResult\.reward\.silver\} SILVER/);
   assert.match(gameSource, /discoveryToastUntil = performance\.now\(\) \+ 4200/);
+  assert.match(gameSource, /scrap-gold-v1\.svg/);
+  assert.match(gameSource, /scrap-silver-v1\.svg/);
+  assert.match(styleSource, /\.discovery-toast \.reward-chip/);
 });
 
 test("world props expose authored-load state while preserving a readable fallback", () => {

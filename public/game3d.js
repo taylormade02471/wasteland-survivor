@@ -560,7 +560,7 @@ function applyExplorationDiscovery() {
   const completion = discovery.events.find(event => event.kind === "completion");
   const locations = discovery.events.filter(event => event.kind !== "completion").map(event => event.label);
   ui.discoveryTitle.textContent = completion?.label || `Discovered: ${locations.join(" + ")}`;
-  ui.discoveryReward.textContent = `+${discovery.reward.score} SCORE / +${discovery.reward.scrap} SCRAP / +${Math.max(1, Math.round(discovery.reward.scrap * .6))} SILVER`;
+  ui.discoveryReward.innerHTML = `+${discovery.reward.score} SCORE / +${discovery.reward.scrap} SCRAP / <span class="reward-chip"><img src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">+${Math.max(1, Math.round(discovery.reward.scrap * .6))} SILVER</span>`;
   ui.discoveryToast.classList.remove("hidden");
   discoveryToastUntil = performance.now() + 3200;
   const progress = explorationProgress(worldLayout, explorationState);
@@ -4003,7 +4003,7 @@ function updateStoryProgress() {
       missionIndex = Math.min(1, missionIndex + 1);
     }
     ui.discoveryTitle.textContent = `QUEST COMPLETE: ${questResult.quest.title}`;
-    ui.discoveryReward.textContent = `+${questResult.reward.xp} XP / +${questResult.reward.gold} GOLD / +${questResult.reward.silver} SILVER`;
+    ui.discoveryReward.innerHTML = `+${questResult.reward.xp} XP / <span class="reward-chip"><img src="assets/nightfall/icons/scrap-gold-v1.svg" alt="" aria-hidden="true">+${questResult.reward.gold} GOLD</span> / <span class="reward-chip"><img src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">+${questResult.reward.silver} SILVER</span>`;
     ui.discoveryToast.classList.remove("hidden");
     discoveryToastUntil = performance.now() + 4200;
     document.dispatchEvent(new CustomEvent("wasteland:quest-complete", { detail: { quest: questResult.quest, reward: questResult.reward } }));
