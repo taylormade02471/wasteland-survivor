@@ -3482,12 +3482,14 @@ function update(dt) {
   const manualControllerAim = !inputPaused && Math.hypot(controller.ax, controller.az) > .08;
   if (manualTouchAim) {
     setInputMode("touch");
-    aim.copy(player.g.position).add(new THREE.Vector3(touch.ax, 0, touch.az).multiplyScalar(20));
-    viewYaw = aimYawFromAxes(touch.ax * CONTROL_DIRECTION_LOCK.touchYawSign, touch.az);
+    const aimX = touch.ax * CONTROL_DIRECTION_LOCK.touchYawSign;
+    aim.copy(player.g.position).add(new THREE.Vector3(aimX, 0, touch.az).multiplyScalar(20));
+    viewYaw = aimYawFromAxes(aimX, touch.az);
   }
   if (manualControllerAim) {
-    aim.copy(player.g.position).add(new THREE.Vector3(controller.ax, 0, controller.az).multiplyScalar(20));
-    viewYaw = aimYawFromAxes(controller.ax * CONTROL_DIRECTION_LOCK.controllerYawSign, controller.az);
+    const aimX = controller.ax * CONTROL_DIRECTION_LOCK.controllerYawSign;
+    aim.copy(player.g.position).add(new THREE.Vector3(aimX, 0, controller.az).multiplyScalar(20));
+    viewYaw = aimYawFromAxes(aimX, controller.az);
   }
   const wantsFire = !inputPaused && ((!controllerLocked() && firing) || touch.fire || controller.fire);
   if (shouldAutoLock({ coarsePointer: coarsePointer.matches, difficultyRatio, preset: aimSettings.preset, manualAim: manualTouchAim || manualControllerAim, mouseInputActive, controllerInputActive: inputMode === "controller" && manualControllerAim }) && wantsFire) {

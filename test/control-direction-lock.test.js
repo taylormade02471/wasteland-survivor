@@ -22,8 +22,10 @@ test("the immutable control contract keeps screen and world horizontal inputs ex
 
   assert.deepEqual(keyboardMovementAxes({ d: true }), { strafe: 1, vertical: 0 });
   assert.deepEqual(keyboardMovementAxes({ a: true }), { strafe: -1, vertical: 0 });
-  assert.ok(aimYawFromAxes(1 * CONTROL_DIRECTION_LOCK.touchYawSign, 0) > 0, "right touch/controller aim must turn camera-right");
-  assert.ok(aimYawFromAxes(-1 * CONTROL_DIRECTION_LOCK.touchYawSign, 0) < 0, "left touch/controller aim must turn camera-left");
+  assert.equal(CONTROL_DIRECTION_LOCK.touchYawSign, -1);
+  assert.equal(CONTROL_DIRECTION_LOCK.controllerYawSign, -1);
+  assert.ok(aimYawFromAxes(1 * CONTROL_DIRECTION_LOCK.touchYawSign, 0) < 0, "right touch/controller aim must turn camera-right");
+  assert.ok(aimYawFromAxes(-1 * CONTROL_DIRECTION_LOCK.touchYawSign, 0) > 0, "left touch/controller aim must turn camera-left");
   assert.equal(firstPersonForwardInput(-1), 1, "W must remain forward in first-person movement");
   assert.equal(firstPersonForwardInput(1), -1, "S must remain backward in first-person movement");
 });
@@ -59,8 +61,10 @@ test("mouse yaw wraps after complete turns without changing right-positive direc
 });
 
 test("WASD movement remains camera-relative with D right and W forward", () => {
-  assert.deepEqual(firstPersonMovementDelta({ yaw: 0, strafe: 1, speed: 1 }), { x: 1, z: 0 });
-  assert.deepEqual(firstPersonMovementDelta({ yaw: 0, strafe: -1, speed: 1 }), { x: -1, z: 0 });
+  assert.deepEqual(firstPersonMovementDelta({ yaw: 0, strafe: 1, speed: 1 }), { x: -1, z: 0 });
+  assert.deepEqual(firstPersonMovementDelta({ yaw: 0, strafe: -1, speed: 1 }), { x: 1, z: 0 });
+  assert.deepEqual(firstPersonMovementDelta({ yaw: Math.PI, strafe: 1, speed: 1 }), { x: 1, z: 0 });
+  assert.deepEqual(firstPersonMovementDelta({ yaw: Math.PI, strafe: -1, speed: 1 }), { x: -1, z: 0 });
   assert.deepEqual(firstPersonMovementDelta({ yaw: 0, forward: 1, speed: 1 }), { x: 0, z: 1 });
   assert.deepEqual(firstPersonMovementDelta({ yaw: 0, forward: -1, speed: 1 }), { x: 0, z: -1 });
 });

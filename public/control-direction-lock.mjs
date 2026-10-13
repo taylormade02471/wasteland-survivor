@@ -4,8 +4,10 @@ export const CONTROL_DIRECTION_LOCK = Object.freeze({
   // Three.js camera-right is the negative world-X direction at the default
   // forward heading, so a positive screen-space mouse delta must reduce yaw.
   mouseYawSign: -1,
-  touchYawSign: 1,
-  controllerYawSign: 1,
+  // Horizontal aim input is screen-space: positive X is the player's right.
+  // The camera faces +Z at yaw 0, whose screen-right world axis is -X.
+  touchYawSign: -1,
+  controllerYawSign: -1,
   keyboard: Object.freeze({ forward: "w", back: "s", left: "a", right: "d" }),
   firstPersonForwardSign: -1,
 });
@@ -58,8 +60,11 @@ export function firstPersonMovementDelta({ yaw = 0, strafe = 0, forward = 0, spe
   const magnitude = Math.hypot(safeStrafe, safeForward) || 1;
   const forwardX = Math.sin(safeYaw);
   const forwardZ = Math.cos(safeYaw);
-  const rightX = Math.cos(safeYaw);
-  const rightZ = -Math.sin(safeYaw);
+  // Camera-right is the cross product of the forward vector and world up.
+  // Keeping this explicit prevents D/right-stick-right from strafe-left when
+  // the camera is facing either the default or the south-facing heading.
+  const rightX = -Math.cos(safeYaw);
+  const rightZ = Math.sin(safeYaw);
   return {
     x: snapZero((rightX * safeStrafe + forwardX * safeForward) / magnitude * safeSpeed),
     z: snapZero((rightZ * safeStrafe + forwardZ * safeForward) / magnitude * safeSpeed),
