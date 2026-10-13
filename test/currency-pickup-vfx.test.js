@@ -32,6 +32,8 @@ test("discovery rewards create visible gold and silver pickup bursts", () => {
   assert.match(gameSource, /spawnCurrencyPickupBurst/);
   assert.match(gameSource, /currency-pickup:gold/);
   assert.match(gameSource, /currency-pickup:silver/);
+  assert.match(gameSource, /currency-pickup-rim:\$\{reward\.kind\}/);
+  assert.match(gameSource, /currencyKind = reward\.kind/);
 });
 
 test("enemy defeats award deterministic currency and spawn the same pickup visuals", () => {

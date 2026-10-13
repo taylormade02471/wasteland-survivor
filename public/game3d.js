@@ -2910,10 +2910,18 @@ function spawnCurrencyPickupBurst(position, { gold: goldAmount = 0, silver: silv
       new THREE.CylinderGeometry(profile.scale, profile.scale, .08, 16),
       new THREE.MeshStandardMaterial({ color: profile.color, emissive: profile.accent, emissiveIntensity: .28, metalness: .82, roughness: .22, transparent: true }),
     );
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(profile.scale * .72, .035, 6, 18),
+      new THREE.MeshStandardMaterial({ color: profile.accent, emissive: profile.accent, emissiveIntensity: .42, metalness: .9, roughness: .18, transparent: true }),
+    );
+    rim.name = `currency-pickup-rim:${reward.kind}`;
+    rim.rotation.z = Math.PI / 2;
+    coin.add(rim);
     coin.name = reward.kind === "gold" ? "currency-pickup:gold" : "currency-pickup:silver";
     coin.position.copy(position).add(new THREE.Vector3((index ? 1 : -1) * .48, .8, .15));
     coin.rotation.z = Math.PI / 2;
     coin.userData.currencyAmount = reward.amount;
+    coin.userData.currencyKind = reward.kind;
     world.add(coin);
     effects.push({
       mesh: coin,
