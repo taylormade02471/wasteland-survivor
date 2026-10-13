@@ -15,7 +15,7 @@ const clients = new Map();
 const roomMatchStates = new Map();
 const matchCountdownMs = 15000;
 let matchmakingRules;
-const matchmakingRulesReady = import("./public/matchmaking-rules.mjs").then(module => { matchmakingRules = module; });
+const matchmakingRulesReady = import("./backend/matchmaking-rules.mjs").then(module => { matchmakingRules = module; });
 const chestAccess = new ChestAccess(2);
 const store = createBackendStore({ rootDirectory: __dirname });
 const adminToken = process.env.ADMIN_TOKEN || "";
