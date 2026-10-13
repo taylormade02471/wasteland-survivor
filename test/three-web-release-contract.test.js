@@ -346,7 +346,8 @@ test("authored GLB animation clips drive live character and enemy states", () =>
   assert.match(gameSource, /driveAuthoredAnimation\(authoredRoot, authoredState, dt\)/);
   assert.match(gameSource, /if \(!group\.userData\.authoredCharacter && !group\.userData\.authoredEnemy\) continue;/);
   assert.match(gameSource, /const authoredState = group\.userData\.authoredEnemy/);
-  assert.match(gameSource, /\? \(!actor\.alive \? "hit" : actor\.cooldown > 0 \? "attack" : moved \? "move" : "idle"\)/);
+  assert.match(gameSource, /group\.userData\.hitPulseMs = Math\.max\(0, \(group\.userData\.hitPulseMs \|\| 0\) - dt \* 1000\)/);
+  assert.match(gameSource, /\? \(!actor\.alive \|\| group\.userData\.hitPulseMs > 0 \? "hit" : actor\.cooldown > 0 \? "attack" : moved \? "move" : "idle"\)/);
   assert.match(gameSource, /driveAuthoredAnimation\(authoredRoot, authoredState, dt\)/);
   assert.match(gameSource, /next\.reset\(\)\.fadeIn\(\.12\)\.play\(\)/);
 });
@@ -455,6 +456,11 @@ test("weapon firing exposes rendered muzzle and tracer feedback", () => {
   assert.match(gameSource, /function impactFlash\(position, color = 0xffdf52\)/);
   assert.match(gameSource, /ring\.name = "weapon-impact-flash"/);
   assert.match(gameSource, /impactFlash\(bullet\.m\.position, enemy\.enemyType === "spider" \? 0x9cff69 : 0xffdf52\)/);
+});
+
+test("authored combatants receive a visible hit reaction pulse", () => {
+  assert.match(gameSource, /enemy\.g\.userData\.hitPulseMs = 180/);
+  assert.match(gameSource, /if \(remaining > 0\) target\.g\.userData\.hitPulseMs = 180/);
 });
 
 test("the authored weapon presentation state drives the live player mesh", () => {

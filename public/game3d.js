@@ -680,8 +680,9 @@ function updateAuthoredCharacterAnimations(dt) {
     const previous = group.userData.animationPreviousPosition || group.position.clone();
     const moved = group.position.distanceTo(previous) > .001;
     const state = !actor.alive ? "downed" : actor === player && firing ? "fire" : moved ? "run" : actor === player && adsActive ? "aim" : "idle";
+    group.userData.hitPulseMs = Math.max(0, (group.userData.hitPulseMs || 0) - dt * 1000);
     const authoredState = group.userData.authoredEnemy
-      ? (!actor.alive ? "hit" : actor.cooldown > 0 ? "attack" : moved ? "move" : "idle")
+      ? (!actor.alive || group.userData.hitPulseMs > 0 ? "hit" : actor.cooldown > 0 ? "attack" : moved ? "move" : "idle")
       : state;
     const authoredRoot = group.children.find(child => child.userData?.animationMixer);
     driveAuthoredAnimation(authoredRoot, authoredState, dt);
@@ -2457,6 +2458,7 @@ function impactFlash(position, color = 0xffdf52) {
 
 function hitEnemy(enemy, damage) {
   enemy.hp -= damage;
+  enemy.g.userData.hitPulseMs = 180;
   burst(enemy.g.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xffdf52, 5);
   if (enemy.hp <= 0) {
     enemy.alive = false;
@@ -2485,6 +2487,7 @@ function applyDamage(target, amount) {
     remaining -= absorbed;
   }
   target.hp -= remaining;
+  if (remaining > 0) target.g.userData.hitPulseMs = 180;
 }
 
 function deadzone(value) { return Math.abs(value) < .18 ? 0 : value; }
