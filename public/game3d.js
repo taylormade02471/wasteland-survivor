@@ -844,6 +844,11 @@ function createTerrainMesh(texture) {
   // add depth to the terrain instead of rendering it as a flat unlit card.
   const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
     map: texture,
+    // Reuse the authored albedo as a restrained relief source so rubble and
+    // terrain grain catch the lighting without requiring a second network
+    // request or a platform-specific normal-map asset.
+    bumpMap: texture,
+    bumpScale: renderQuality.pass >= 5 ? .16 : renderQuality.pass >= 3 ? .12 : .08,
     color: 0xffffff,
     vertexColors: false,
     roughness: .94,

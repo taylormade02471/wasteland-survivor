@@ -301,6 +301,11 @@ test("terrain surfaces add authored biome detail when texture sampling is unavai
   assert.match(gameSource, /mesh\.receiveShadow = true/);
 });
 
+test("terrain materials add bounded relief from the authored texture", () => {
+  assert.match(gameSource, /bumpMap: texture/);
+  assert.match(gameSource, /bumpScale: renderQuality\.pass >= 5 \? \.16 : renderQuality\.pass >= 3 \? \.12 : \.08/);
+});
+
 test("each gameplay map receives a deterministic authored atmosphere", () => {
   assert.match(gameSource, /const biomeSkyTextures = new Map\(\)/);
   assert.match(gameSource, /function createBiomeSkyTexture\(mapId = "wasteland"\)/);
