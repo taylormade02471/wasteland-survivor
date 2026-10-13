@@ -174,6 +174,13 @@ test("authored 3D release assets contain meshes, materials, and embedded texture
   }
 });
 
+test("cloned authored materials preserve sRGB textures and bounded PBR values", () => {
+  assert.match(gameSource, /function prepareAuthoredMaterial\(source\)/);
+  assert.match(gameSource, /material\.map\.colorSpace = THREE\.SRGBColorSpace/);
+  assert.match(gameSource, /material\.roughness = THREE\.MathUtils\.clamp/);
+  assert.match(gameSource, /material\.metalness = THREE\.MathUtils\.clamp/);
+});
+
 test("authored enemy GLBs contain skinned combat motion clips", () => {
   const enemyRoot = path.join(repo, "public", "assets", "nightfall", "aaa", "enemies", "meshy");
   for (const fileName of fs.readdirSync(enemyRoot).filter(name => name.endsWith(".glb"))) {

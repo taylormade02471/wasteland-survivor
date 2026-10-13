@@ -167,14 +167,25 @@ function updateAvatarCards(value = profileAvatar.value) {
   ensureProfileAvatarPreview(value);
 }
 
+function prepareAuthoredMaterial(source) {
+  const material = source?.clone ? source.clone() : source;
+  if (!material) return material;
+  if (material.map) material.map.colorSpace = THREE.SRGBColorSpace;
+  if (material.emissiveMap) material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+  if ("roughness" in material) material.roughness = THREE.MathUtils.clamp(Number(material.roughness) || .72, .28, 1);
+  if ("metalness" in material) material.metalness = THREE.MathUtils.clamp(Number(material.metalness) || 0, 0, .86);
+  material.needsUpdate = true;
+  return material;
+}
+
 function cloneAuthoredRoot(scene) {
   const root = scene?.clone ? scene.clone(true) : null;
   root?.traverse?.(node => {
     if (!node.isMesh) return;
     node.castShadow = true;
     node.receiveShadow = true;
-    if (Array.isArray(node.material)) node.material = node.material.map(item => item?.clone ? item.clone() : item);
-    else if (node.material?.clone) node.material = node.material.clone();
+    if (Array.isArray(node.material)) node.material = node.material.map(prepareAuthoredMaterial);
+    else node.material = prepareAuthoredMaterial(node.material);
   });
   return root;
 }
