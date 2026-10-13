@@ -537,6 +537,14 @@ test("authored combatants receive a visible hit reaction pulse", () => {
   assert.match(gameSource, /if \(remaining > 0\) target\.g\.userData\.hitPulseMs = 180/);
 });
 
+test("incoming damage renders a timed combat feedback callout", () => {
+  assert.match(gameSource, /let damageFeedbackUntil = 0/);
+  assert.match(gameSource, /INCOMING DAMAGE/);
+  assert.match(gameSource, /classList\.add\("damage"\)/);
+  assert.match(gameSource, /combatFeedback\.classList\.toggle\("hidden"/);
+  assert.match(styleSource, /\.combat-feedback\.damage/);
+});
+
 test("the authored weapon presentation state drives the live player mesh", () => {
   assert.match(gameSource, /from "\.\/weapon-presentation\.mjs"/);
   assert.match(gameSource, /weaponPresentationState = triggerWeaponShot\(weaponPresentationState\)\.state/);

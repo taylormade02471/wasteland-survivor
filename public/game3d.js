@@ -118,7 +118,7 @@ const ui = {
   ammo: $("ammoText"), ability: $("abilityText"), abilityBar: $("abilityBar"), team: $("teamText"), teamName: $("teamName"), teamHealth: $("teamHealthText"), teamHealthBar: $("teamHealthBar"), objective: $("objectiveText"),
   scrap: $("scrapText"), gold: $("goldText"), silver: $("silverText"), quest: $("questText"), questProgress: $("questProgress"), questProgressFill: $("questProgressFill"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
-  discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"),
+  discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"), combatFeedback: $("combatFeedback"),
   controllerStatus: $("controllerStatus"), controllerOnly: $("controllerOnlyToggle"), soundToggle: $("soundToggle"), volume: $("volumeSlider"), musicToggle: $("musicToggle"), musicVolume: $("musicVolumeSlider"), musicSource: $("musicSource"), musicStatus: $("musicStatus"),
   voiceStatus: $("voiceStatus"), joinVoice: $("joinVoiceBtn"), muteVoice: $("muteVoiceBtn"), leaveVoice: $("leaveVoiceBtn"), offline: $("offlineToggle"), networkStatus: $("networkStatus"),
   aimPreset: $("aimPreset"), aimSensitivity: $("aimSensitivity"), adsSensitivity: $("adsSensitivity"), aimAssistStrength: $("aimAssistStrength"), graphicsTier: $("graphicsTier")
@@ -432,6 +432,7 @@ let reloadUntil = 0;
 let worldLayout = createConnectedWorldLayout();
 let explorationState = createExplorationState();
 let discoveryToastUntil = 0;
+let damageFeedbackUntil = 0;
 
 function setInputMode(nextMode) {
   const previousFamily = normalizeControlsFamily(inputMode);
@@ -2933,6 +2934,12 @@ function applyDamage(target, amount) {
   }
   target.hp -= remaining;
   if (remaining > 0) target.g.userData.hitPulseMs = 180;
+  if (target === player && remaining > 0) {
+    damageFeedbackUntil = performance.now() + 520;
+    ui.combatFeedback.textContent = `INCOMING DAMAGE -${Math.max(1, Math.ceil(remaining))}`;
+    ui.combatFeedback.classList.remove("hidden");
+    ui.combatFeedback.classList.add("damage");
+  }
 }
 
 function spawnCurrencyPickupBurst(position, { gold: goldAmount = 0, silver: silverAmount = 0 } = {}) {
@@ -3520,6 +3527,9 @@ function renderHud() {
   ui.prep.textContent = hud.timer.label;
   ui.blue.textContent = hud.score.blue;
   ui.red.textContent = hud.score.red;
+  const damageVisible = performance.now() < damageFeedbackUntil;
+  ui.combatFeedback.classList.toggle("hidden", !damageVisible || phase === "menu");
+  if (!damageVisible) ui.combatFeedback.classList.remove("damage");
 }
 
 function render() {
