@@ -49,6 +49,7 @@ import { renderQualityProfile } from "./render-quality.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { buildFireVfxProfile, fireVfxFrame } from "./fire-vfx.mjs";
 import { currencyPickupFrame, currencyPickupProfile } from "./currency-pickup-vfx.mjs";
+import { questCompleteFrame, questCompleteProfile } from "./quest-complete-vfx.mjs";
 import { summarizeWorldAssetStates } from "./world-asset-audit.mjs";
 import { summarizeRenderCoverage } from "./render-audit.mjs";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
@@ -2769,6 +2770,20 @@ function spawnCurrencyPickupBurst(position, { gold: goldAmount = 0, silver: silv
   });
 }
 
+function spawnQuestCompletionBurst(position, reward = {}) {
+  const profile = questCompleteProfile(reward);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(.78, .075, 10, 32),
+    new THREE.MeshBasicMaterial({ color: profile.goldColor, transparent: true, opacity: 1, side: THREE.DoubleSide }),
+  );
+  ring.name = "quest-complete-ring";
+  ring.position.copy(position).add(new THREE.Vector3(0, .12, 0));
+  ring.rotation.x = -Math.PI / 2;
+  world.add(ring);
+  effects.push({ mesh: ring, kind: "quest-complete", profile, elapsed: 0, life: profile.durationMs / 1000 });
+  spawnCurrencyPickupBurst(position, reward);
+}
+
 function deadzone(value) { return Math.abs(value) < .18 ? 0 : value; }
 
 function updateControllerState(connected) {
@@ -3138,6 +3153,14 @@ function update(dt) {
   }
   effects.forEach(effect => {
     effect.life -= dt;
+    if (effect.kind === "quest-complete") {
+      effect.elapsed += dt;
+      const frame = questCompleteFrame({ profile: effect.profile, elapsed: effect.elapsed });
+      effect.mesh.scale.setScalar(Math.max(.01, frame.radius / .78));
+      effect.mesh.rotation.z = frame.rotation;
+      effect.mesh.material.opacity = frame.opacity;
+      return;
+    }
     if (effect.kind === "currency-pickup") {
       effect.elapsed += dt;
       const frame = currencyPickupFrame({ profile: effect.profile, elapsed: effect.elapsed, index: effect.index });
@@ -4249,6 +4272,7 @@ function updateStoryProgress() {
     ui.discoveryReward.innerHTML = `+${questResult.reward.xp} XP / <span class="reward-chip"><img src="assets/nightfall/icons/scrap-gold-v1.svg" alt="" aria-hidden="true">+${questResult.reward.gold} GOLD</span> / <span class="reward-chip"><img src="assets/nightfall/icons/scrap-silver-v1.svg" alt="" aria-hidden="true">+${questResult.reward.silver} SILVER</span>`;
     ui.discoveryToast.classList.remove("hidden");
     discoveryToastUntil = performance.now() + 4200;
+    spawnQuestCompletionBurst(player.g.position, questResult.reward);
     document.dispatchEvent(new CustomEvent("wasteland:quest-complete", { detail: { quest: questResult.quest, reward: questResult.reward } }));
   }
 }
