@@ -180,6 +180,11 @@ button:disabled {
   text-shadow: 0 2px 8px #000;
 }
 
+/* The combat rail belongs to active play only. Keeping it out of the
+   profile/lobby hero prevents stale match values from competing with the
+   rendered survivor and menu controls. */
+body.menu-active #hud { display: none; }
+
 #combatRail {
   position: absolute;
   left: max(12px, env(safe-area-inset-left));

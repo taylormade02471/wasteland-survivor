@@ -387,6 +387,10 @@ test("the home profile menu exposes the same live textured survivor preview", ()
   assert.match(vercelIgnoreSource, /!public\/assets\/nightfall\/aaa\/characters\/menu\//);
 });
 
+test("the combat HUD stays out of the home and lobby hero", () => {
+  assert.match(styleSource, /body\.menu-active #hud\s*\{\s*display:\s*none;\s*\}/);
+});
+
 test("the home survivor preview keeps an idle motion loop while it is visible", () => {
   const previewSource = fs.readFileSync(path.join(repo, "public", "live-character-preview.mjs"), "utf8");
   assert.match(previewSource, /state\.raf = requestAnimationFrame\(render\)/);
