@@ -2262,6 +2262,19 @@ function burst(position, color, count = 7) {
   }
 }
 
+function impactFlash(position, color = 0xffdf52) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(.08, .28, 12),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .9, side: THREE.DoubleSide }),
+  );
+  ring.name = "weapon-impact-flash";
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.copy(position);
+  ring.position.y += .04;
+  world.add(ring);
+  effects.push({ mesh: ring, velocity: new THREE.Vector3(), life: .18 });
+}
+
 function hitEnemy(enemy, damage) {
   enemy.hp -= damage;
   burst(enemy.g.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xffdf52, 5);
@@ -2649,11 +2662,13 @@ function update(dt) {
     if (bullet.blue) for (const enemy of enemies) {
       if (enemy.alive && !bullet.hits.has(enemy) && bullet.m.position.distanceTo(enemy.g.position) < (enemy.g.userData.hitRadius || 1.1)) {
         bullet.hits.add(enemy);
+        impactFlash(bullet.m.position, enemy.enemyType === "spider" ? 0x9cff69 : 0xffdf52);
         hitEnemy(enemy, bullet.damage);
         if (bullet.pierce-- <= 0) bullet.life = 0;
       }
     }
     else if (bullet.m.position.distanceTo(player.g.position) < 1.1) {
+      impactFlash(bullet.m.position, 0xff5d75);
       applyDamage(player, bullet.damage);
       bullet.life = 0;
     }
