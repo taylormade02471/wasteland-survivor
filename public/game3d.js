@@ -809,14 +809,25 @@ function addRenderAuditRoster() {
   const enemyTypes = [...Object.keys(AUTHORED_ENEMY_MODELS), "spider"];
   const survivorColors = [0x55e5ff, 0x7ad7ff, 0xffb84d, 0x76ef9c, 0xff7bb5, 0xc8a8ff];
   const enemyColors = [0xff5b55, 0xff8b45, 0xb97aff, 0x4dbbff, 0xff3d3d, 0x66fcf1, 0x8cff4d, 0xffcf40, 0x8cff4d];
+  world.children.forEach(child => { child.visible = false; });
+  const displayStage = new THREE.Mesh(
+    new THREE.BoxGeometry(30, .32, 18),
+    new THREE.MeshStandardMaterial({ color: 0x18232a, roughness: .72, metalness: .28 }),
+  );
+  displayStage.name = "roster-display-stage";
+  displayStage.position.set(0, -.16, 0);
+  displayStage.receiveShadow = true;
+  world.add(displayStage);
   const survivors = survivorTypes.map((type, index) => {
-    const actor = unit(survivorColors[index], -10 + index * 4, 2.8, type, true);
+    const actor = unit(survivorColors[index], -8.75 + index * 3.5, 3.7, type, true);
+    actor.g.position.y = .05;
     actor.rosterAudit = true;
     return actor;
   });
   const visualClass = type => ["heavy", "shield", "boss", "mutant"].includes(type) ? "heavy" : type === "sniper" ? "ranger" : type === "drone" ? "tech" : type === "spider" ? "spider" : "scout";
   const enemiesForAudit = enemyTypes.map((type, index) => {
-    const actor = unit(enemyColors[index], -12 + index * 3, -5.5, visualClass(type), false, { type, path: AUTHORED_ENEMY_MODELS[type] });
+    const actor = unit(enemyColors[index], -10.5 + index * 2.625, -3.4, visualClass(type), false, { type, path: AUTHORED_ENEMY_MODELS[type] });
+    actor.g.position.y = .05;
     actor.enemyType = type;
     actor.rosterAudit = true;
     return actor;
@@ -827,6 +838,7 @@ function addRenderAuditRoster() {
   document.body.dataset.renderFocus = "roster";
   canvas.dataset.rosterCharacters = String(survivors.length);
   canvas.dataset.rosterEnemies = String(enemiesForAudit.length);
+  canvas.dataset.rosterDisplayStage = displayStage.name;
   canvas.dataset.rosterAuditComplete = "true";
 }
 

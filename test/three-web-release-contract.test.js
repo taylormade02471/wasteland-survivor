@@ -288,6 +288,8 @@ test("the live roster focus exposes every authored survivor and enemy family for
   assert.match(gameSource, /rosterCharacters/);
   assert.match(gameSource, /rosterEnemies/);
   assert.match(gameSource, /AUTHORED_ENEMY_MODELS/);
+  assert.match(gameSource, /roster-display-stage/);
+  assert.match(gameSource, /rosterDisplayStage/);
   assert.match(gameSource, /rosterCameraTarget/);
   assert.match(gameSource, /camera\.lookAt\(0, 1\.1, -1\)/);
 });
