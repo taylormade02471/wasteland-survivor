@@ -288,6 +288,7 @@ let countdownDeadline = 0;
 let graceUntil = 0;
 let frontView = true;
 let ground, player, ally;
+let activeTerrainTexture = null;
 let mapVisuals = null;
 let armorySurfaceMaps = null;
 let chests = [];
@@ -993,17 +994,24 @@ function createBiomeSkyTexture(mapId = "wasteland") {
 function loadTerrainTexture(path) {
   const fallbackPath = String(path || "").replace(/^https?:\/\/[^/]+\//, "").replace(/^.*?assets\//, "assets/");
   const loader = new THREE.TextureLoader();
-  const applyLoadedTexture = (texture, loaded) => {
-    texture.source = loaded.source;
-    texture.image = loaded.image;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.needsUpdate = true;
+  const applyLoadedTexture = loaded => {
+    loaded.colorSpace = THREE.SRGBColorSpace;
+    loaded.wrapS = loaded.wrapT = THREE.RepeatWrapping;
+    loaded.repeat.set(renderQuality.textureRepeat || 1, renderQuality.textureRepeat || 1);
+    loaded.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), renderQuality.textureAnisotropy || 1);
+    activeTerrainTexture = loaded;
+    if (ground?.material) {
+      ground.material.map = loaded;
+      ground.material.bumpMap = loaded;
+      ground.material.needsUpdate = true;
+    }
   };
   const procedural = createProceduralTerrainTexture(path);
   const texture = procedural;
+  activeTerrainTexture = texture;
   const bundledPath = fallbackPath || path;
-  const loadPath = source => loader.load(source, loaded => applyLoadedTexture(texture, loaded), undefined, () => {
-    if (source === bundledPath) applyLoadedTexture(texture, procedural);
+  const loadPath = source => loader.load(source, loaded => applyLoadedTexture(loaded), undefined, () => {
+    if (source === bundledPath) activeTerrainTexture = procedural;
   });
   // The bundled authored texture is the deterministic first render. The
   // configured cloud object can replace it later when it is reachable.

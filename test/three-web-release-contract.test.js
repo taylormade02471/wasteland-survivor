@@ -296,7 +296,9 @@ test("terrain texture loading keeps the external media route and restores the bu
   assert.match(gameSource, /const bundledPath = fallbackPath \|\| path;/);
   assert.match(gameSource, /loadPath\(bundledPath\);/);
   assert.match(gameSource, /if \(path && path !== bundledPath\) loadPath\(path\);/);
-  assert.match(gameSource, /texture\.source = loaded\.source/);
+  assert.match(gameSource, /activeTerrainTexture = loaded/);
+  assert.match(gameSource, /ground\.material\.map = loaded/);
+  assert.doesNotMatch(gameSource, /texture\.source = loaded\.source/);
   assert.match(gameSource, /const texture = loadTerrainTexture\(runtimeAssetPath\(cfg\.texture\)\)/);
 });
 
