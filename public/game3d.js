@@ -1709,7 +1709,10 @@ function resetMap() {
     world.add(group);
     return { id: `chest-${index + 1}`, group, x: 0, z: 0 };
   });
-  player = unit(0x55e5ff, 0, 0, activeProfile?.avatarType || "scout", true);
+  // Keep the first-person spawn on the open south approach, not inside the
+  // north overpass ramp that crosses the world origin and would fill the
+  // opening camera with its gray deck.
+  player = unit(0x55e5ff, 0, -36, activeProfile?.avatarType || "scout", true);
   applyWorldMovement(player);
   applyRequestedRenderFocus();
   classProgress = normalizeClassProgress({ ...classProgress, classId: avatarClass(activeProfile?.avatarType || "scout") });

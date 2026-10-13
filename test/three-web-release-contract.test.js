@@ -303,6 +303,10 @@ test("the gameplay renderer drives authored character motion states", () => {
   assert.match(gameSource, /animationBaseY/);
 });
 
+test("the first-person spawn stays clear of the origin overpass ramp", () => {
+  assert.match(gameSource, /player = unit\(0x55e5ff, 0, -36, activeProfile\?\.avatarType/);
+});
+
 test("the menu preview requests a compact textured authored 3D model before the large gameplay mesh", () => {
   const paths = getPreviewCharacterModelPaths("scout");
   assert.equal(paths[0], "./assets/nightfall/aaa/characters/menu/scout-meshy-v1-menu-v1.glb");
