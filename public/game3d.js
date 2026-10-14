@@ -3931,7 +3931,7 @@ function update(dt) {
       aim.lerp(target.g.position, Math.min(1, dt * 8));
       viewYaw = Math.atan2(aim.x - player.g.position.x, aim.z - player.g.position.z);
     }
-  } else if (aimSettings.preset === "assist" && (manualTouchAim || manualControllerAim || mouseInputActive)) {
+  } else if (aimSettings.preset === "assist" && (manualTouchAim || manualControllerAim)) {
     const target = nearest(player, enemies);
     if (target) {
       const targetYaw = Math.atan2(target.g.position.x - player.g.position.x, target.g.position.z - player.g.position.z);
@@ -6138,10 +6138,16 @@ canvas.addEventListener("pointermove", event => {
       aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(35));
     }
   }
-  pointer.set(mouseAimScreen.x / innerWidth * 2 - 1, -(mouseAimScreen.y / innerHeight) * 2 + 1);
-  raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObject(ground)[0];
-  if (hit) aim.copy(hit.point);
+  // First-person mouse yaw is direct: do not immediately replace it with a
+  // screen-ray target from the prior camera frame. That conflict could make a
+  // rightward mouse motion look leftward as the camera and cursor diverged.
+  const screenRaycastAim = !(frontView && event.pointerType === "mouse");
+  if (screenRaycastAim) {
+    pointer.set(mouseAimScreen.x / innerWidth * 2 - 1, -(mouseAimScreen.y / innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObject(ground)[0];
+    if (hit) aim.copy(hit.point);
+  }
 });
 canvas.addEventListener("pointerdown", event => {
   if (controllerLocked() || phase === "countdown") return;

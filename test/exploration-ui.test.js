@@ -40,6 +40,9 @@ test("mouse aim remains unlocked, right-positive, and clamped to the browser edg
   assert.match(pointerMove, /mouseAimScreen\.x\s*=\s*THREE\.MathUtils\.clamp\(event\.clientX, 0, innerWidth\)/);
   assert.match(pointerMove, /mouseAimScreen\.y\s*=\s*THREE\.MathUtils\.clamp\(event\.clientY, 0, innerHeight\)/);
   assert.match(pointerMove, /viewYaw\s*=\s*nextMouseYaw\(\{ yaw: viewYaw, movementX: event\.movementX, sensitivity:/);
+  assert.match(pointerMove, /const screenRaycastAim = !\(frontView && event\.pointerType === "mouse"\);/);
+  assert.match(pointerMove, /if \(screenRaycastAim\) \{[\s\S]*?const hit = raycaster\.intersectObject\(ground\)\[0\];[\s\S]*?if \(hit\) aim\.copy\(hit\.point\);/);
+  assert.match(game, /aimSettings\.preset === "assist" && \(manualTouchAim \|\| manualControllerAim\)/);
   assert.equal(CONTROL_DIRECTION_LOCK.mouseYawSign, 1, "rightward mouse input must remain right-positive");
   assert.ok(nextMouseYaw({ yaw: 0, movementX: 1, sensitivity: 1 }) > 0, "the live yaw helper must turn right for rightward input");
   assert.doesNotMatch(pointerMove, /document\.pointerLockElement/);
