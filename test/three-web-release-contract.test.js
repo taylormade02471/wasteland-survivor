@@ -331,7 +331,7 @@ test("the gameplay audit focus renders authored enemies, quest terrain, and both
   assert.match(gameSource, /camera\.lookAt\(21\.5, 1\.5, -6\)/);
   assert.match(gameSource, /const prepareAuditFocus = \(\) =>/);
   assert.match(gameSource, /welcomeScreen\.classList\.add\("hidden"\)/);
-  assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory", "world"\]\)/);
+  assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory", "world", "story-objective", "weapon-viewmodel"\]\)\.has\(renderFocus\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) showProfileChoice\(\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) initializeMenuBackdrop\(\)/);
 });
@@ -535,7 +535,7 @@ test("world showcase focus frames the live city, rail, and outpost authored map 
   assert.match(gameSource, /if \(renderFocus === "world" && player && worldLayout\)/);
   assert.match(gameSource, /canvas\.dataset\.worldShowcaseScene/);
   assert.match(gameSource, /renderFocus === "world"/);
-  assert.match(gameSource, /"world"\]\)\.has\(renderFocus\)/);
+  assert.match(gameSource, /"world", "story-objective", "weapon-viewmodel"\]\)\.has\(renderFocus\)/);
 });
 
 test("world showcases isolate the requested authored placements from procedural map scaffolding", () => {
@@ -549,7 +549,7 @@ test("world showcases bypass gameplay simulation while keeping the authored came
   assert.match(gameSource, /function frameWorldShowcase\(dt\) \{/);
   assert.match(gameSource, /if \(renderFocus === "world"\) \{\s*frameWorldShowcase\(dt\);\s*return;\s*\}/);
   assert.match(gameSource, /applyWorldShowcaseVisibility\(showcase\);/);
-  assert.match(gameSource, /timer: renderFocus === "world" \? "RENDER" : phase === "loadout" \? "WAITING" : formatTime\(timer\),/);
+  assert.match(gameSource, /timer: directRenderFocus \? "RENDER" : phase === "loadout" \? "WAITING" : formatTime\(timer\),/);
 });
 
 test("world fallbacks preserve readable car, structure, and prop silhouettes", () => {

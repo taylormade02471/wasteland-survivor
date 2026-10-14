@@ -47,6 +47,7 @@ test("signed-in lobby removes the redundant avatar square and prioritizes profil
   assert.match(html, /id="teamLobbyBtn"[\s\S]*?<b>Multiplayer<\/b>/);
   assert.match(css, /#lobbyScreen\s+\.lobby-avatar-button\s*\{[^}]*display:\s*none/s);
   assert.match(css, /@media \(min-width:\s*761px\) and \(min-height:\s*521px\)\s*\{[\s\S]*?#lobbyScreen\s+\.lobby-survivor-hero\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /@media \(min-width:\s*761px\) and \(min-height:\s*521px\)\s*\{[\s\S]*?#lobbyScreen\s+\.lobby-survivor-hero\s*\{[^}]*grid-template-columns:\s*minmax\(240px,\s*310px\)[^}]*justify-content:\s*end/s);
   assert.match(css, /@media \(max-width:\s*760px\)\s*\{[\s\S]*?#lobbyScreen\s+\.lobby-survivor-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
 });
 

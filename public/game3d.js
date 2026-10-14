@@ -43,8 +43,10 @@ import { getWorldFieldAsset, getWorldFieldPlacements } from "./world-field-asset
 import { createHudViewModel } from "./hud-view-model.mjs";
 import { createQuestState, advanceQuestState, questView } from "./story-quests.mjs";
 import { questBeaconFrame, questBeaconProfile } from "./quest-beacon.mjs";
+import { applyStoryObjectiveEvent, createStoryObjectiveState, objectiveInteractionEligibility, storyObjectiveForQuest, storyObjectiveStatus } from "./story-objectives.mjs";
 import { sampleCharacterAnimation } from "./character-animation-runtime.mjs";
 import { advanceWeaponPresentation, beginWeaponReload, createWeaponPresentationState, sampleWeaponPresentationFrame, triggerWeaponShot } from "./weapon-presentation.mjs";
+import { FIRST_PERSON_WEAPON_VIEW, firstPersonWeaponPose } from "./first-person-weapon-view.mjs";
 import { renderQualityProfile } from "./render-quality.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { buildFireVfxProfile, fireVfxFrame } from "./fire-vfx.mjs";
@@ -110,6 +112,15 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.16;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(52, 1, .1, 620);
+// The authored weapon needs a separate camera child in first person. Keeping
+// the camera in the scene lets Three traverse and render that child, while the
+// original world-space weapon remains available for projectile muzzle origin.
+const firstPersonWeaponRig = new THREE.Group();
+firstPersonWeaponRig.name = FIRST_PERSON_WEAPON_VIEW.rigName;
+firstPersonWeaponRig.visible = false;
+firstPersonWeaponRig.renderOrder = FIRST_PERSON_WEAPON_VIEW.renderOrder;
+camera.add(firstPersonWeaponRig);
+scene.add(camera);
 const clock = new THREE.Clock();
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -120,6 +131,7 @@ const ui = {
   ammo: $("ammoText"), ability: $("abilityText"), abilityBar: $("abilityBar"), team: $("teamText"), teamName: $("teamName"), teamHealth: $("teamHealthText"), teamHealthBar: $("teamHealthBar"), objective: $("objectiveText"),
   scrap: $("scrapText"), gold: $("goldText"), silver: $("silverText"), quest: $("questText"), questDirection: $("questDirection"), questProgress: $("questProgress"), questProgressFill: $("questProgressFill"), kills: $("killsText"), wave: $("waveText"), level: $("levelText"), stage: $("stageText"), chapter: $("chapterText"), mission: $("missionText"), weapon: $("weaponText"), map: $("mapText"), exploration: $("explorationText"), phase: $("phaseText"), timer: $("timerText"), blue: $("blueScore"), red: $("redScore"),
   chest: $("chestPrompt"), prep: $("prepTimer"), shop: $("shopModal"), over: $("gameOverModal"), settings: $("settingsModal"),
+  questPrompt: $("questPrompt"), questPromptTitle: $("questPromptTitle"), questPromptHint: $("questPromptHint"), questPromptAction: $("questPromptAction"),
   discoveryToast: $("discoveryToast"), discoveryTitle: $("discoveryTitle"), discoveryReward: $("discoveryReward"), combatFeedback: $("combatFeedback"),
   controllerStatus: $("controllerStatus"), controllerOnly: $("controllerOnlyToggle"), soundToggle: $("soundToggle"), volume: $("volumeSlider"), musicToggle: $("musicToggle"), musicVolume: $("musicVolumeSlider"), musicSource: $("musicSource"), musicStatus: $("musicStatus"),
   voiceStatus: $("voiceStatus"), joinVoice: $("joinVoiceBtn"), muteVoice: $("muteVoiceBtn"), leaveVoice: $("leaveVoiceBtn"), offline: $("offlineToggle"), networkStatus: $("networkStatus"),
@@ -210,6 +222,108 @@ function frameWorldShowcase(dt) {
 }
 const QUEST_METRIC_LABELS = Object.freeze({ survivedSeconds: "SURVIVAL", scrap: "SCRAP", kills: "RAIDERS", stage: "STAGE", discoveries: "LANDMARKS" });
 
+function currentStoryObjectiveContext() {
+  const quest = questView(questState);
+  const objective = storyObjectiveForQuest(quest.id);
+  if (!objective) return null;
+  return {
+    quest,
+    objective,
+    status: storyObjectiveStatus(storyObjectiveState, objective.missionId),
+    visibleOnMap: objective.beacon.mapKey === mapKey,
+  };
+}
+
+function storyObjectiveDistance(objective) {
+  if (!objective || !player?.g) return Number.POSITIVE_INFINITY;
+  return Math.hypot(objective.approach.x - player.g.position.x, objective.approach.z - player.g.position.z);
+}
+
+function showStoryObjectiveNotice(title, detail) {
+  ui.discoveryTitle.textContent = title;
+  ui.discoveryReward.textContent = detail;
+  ui.discoveryToast.classList.remove("hidden");
+  discoveryToastUntil = performance.now() + 3600;
+}
+
+function updateStoryObjectiveArrival({ announce = true } = {}) {
+  const context = currentStoryObjectiveContext();
+  if (!context || mode !== "solo" || context.quest.completed || !context.visibleOnMap) return false;
+  if (activeQuestBeaconId && activeQuestBeaconId !== context.quest.id) return false;
+  if (storyObjectiveDistance(context.objective) > context.objective.approach.radius) return false;
+  const result = applyStoryObjectiveEvent(storyObjectiveState, {
+    type: "arrived",
+    missionId: context.objective.missionId,
+    currentMissionId: context.quest.missionId,
+  });
+  if (!result.changed) return false;
+  storyObjectiveState = result.state;
+  refreshQuestBeacon();
+  if (announce) {
+    showStoryObjectiveNotice(
+      `OBJECTIVE FOUND: ${context.objective.title.toUpperCase()}`,
+      `${context.objective.actionLabel} · Press E / A / Interact`,
+    );
+  }
+  saveProgress();
+  return true;
+}
+
+function interactWithStoryObjective() {
+  const context = currentStoryObjectiveContext();
+  if (!context || mode !== "solo" || context.quest.completed || !context.visibleOnMap) return false;
+  if (storyObjectiveDistance(context.objective) > context.objective.approach.radius) return false;
+  updateStoryObjectiveArrival({ announce: false });
+  const eligibility = objectiveInteractionEligibility(storyObjectiveState, {
+    missionId: context.objective.missionId,
+    currentMissionId: context.quest.missionId,
+  });
+  if (!eligibility.eligible) return false;
+  const result = applyStoryObjectiveEvent(storyObjectiveState, {
+    type: "interacted",
+    missionId: context.objective.missionId,
+    currentMissionId: context.quest.missionId,
+  });
+  if (!result.changed) return false;
+  storyObjectiveState = result.state;
+  refreshQuestBeacon();
+  const activationPoint = new THREE.Vector3(
+    context.objective.approach.x,
+    sampleWorldElevation(worldLayout, context.objective.approach) + .6,
+    context.objective.approach.z,
+  );
+  burst(activationPoint, context.objective.beacon.color, 12);
+  showStoryObjectiveNotice(
+    `OBJECTIVE ACTIVE: ${context.objective.actionLabel.toUpperCase()}`,
+    `${context.objective.progression.objective} · Complete the field task for gold and silver.`,
+  );
+  saveProgress();
+  return true;
+}
+
+function renderStoryObjectivePrompt() {
+  if (!ui.questPrompt) return;
+  const context = currentStoryObjectiveContext();
+  const nearObjective = context
+    && mode === "solo"
+    && phase === "combat"
+    && !context.quest.completed
+    && context.visibleOnMap
+    && storyObjectiveDistance(context.objective) <= context.objective.approach.radius;
+  const eligibility = nearObjective
+    ? objectiveInteractionEligibility(storyObjectiveState, {
+      missionId: context.objective.missionId,
+      currentMissionId: context.quest.missionId,
+    })
+    : null;
+  const visible = Boolean(eligibility?.eligible);
+  ui.questPrompt.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  ui.questPromptTitle.textContent = context.objective.actionLabel.toUpperCase();
+  ui.questPromptHint.textContent = `${context.objective.title} is within range.`;
+  ui.questPromptAction.textContent = `Activate ${context.objective.actionLabel}`;
+}
+
 function updateAvatarCards(value = profileAvatar.value) {
   document.querySelectorAll(".avatar-choice").forEach(card => {
     const selected = card.dataset.avatar === value;
@@ -246,6 +360,28 @@ function cloneAuthoredRoot(scene) {
     node.receiveShadow = true;
     if (Array.isArray(node.material)) node.material = node.material.map(prepareAuthoredMaterial);
     else node.material = prepareAuthoredMaterial(node.material);
+  });
+  return root;
+}
+
+function cloneFirstPersonWeaponRoot(scene) {
+  const root = cloneAuthoredRoot(scene);
+  root?.traverse?.(node => {
+    if (!node.isMesh) return;
+    // The view model is a deliberate foreground layer. It cannot clip into
+    // terrain or disappear behind the survivor while the player turns.
+    node.castShadow = false;
+    node.receiveShadow = false;
+    node.frustumCulled = false;
+    node.renderOrder = FIRST_PERSON_WEAPON_VIEW.renderOrder;
+    const prepareViewMaterial = material => {
+      if (!material) return;
+      material.depthTest = false;
+      material.depthWrite = false;
+      material.needsUpdate = true;
+    };
+    if (Array.isArray(node.material)) node.material.forEach(prepareViewMaterial);
+    else prepareViewMaterial(node.material);
   });
   return root;
 }
@@ -374,6 +510,7 @@ let score = 0, kills = 0, scrap = 0, gold = 0, silver = 0, wave = 1, blue = 0, r
 let playerLevel = 1, storyStage = 1, missionIndex = 0, kingdomUnlocked = false;
 let weaponPresentationState = createWeaponPresentationState("scout");
 let questState = createQuestState();
+let storyObjectiveState = createStoryObjectiveState();
 let renderQuality = renderQualityProfile(3);
 let riskLevel = localStorage.getItem("wastland-survivor-risk") || "standard";
 const timelineAdvantages = ["Field Scavenger", "Reinforced Plating", "Rapid Reload", "Kingdom Vanguard"];
@@ -845,25 +982,68 @@ function updateAuthoredCharacterAnimations(dt) {
 function updateWeaponPresentation(dt) {
   weaponPresentationState = advanceWeaponPresentation(weaponPresentationState, dt);
   const weapon = player?.g?.getObjectByName?.("authored-weapon");
-  if (!weapon) return;
   const frame = sampleWeaponPresentationFrame(weaponPresentationState, {
     aim: adsActive ? 1 : 0,
     viewportWidth: innerWidth,
   });
-  weapon.position.z = .56 + frame.pose.kickZ;
-  weapon.position.y = 1.05 + frame.pose.liftY;
-  weapon.rotation.z = frame.pose.roll;
-  weapon.userData.presentationStatus = frame.muzzleFlash.visible ? "firing" : weaponPresentationState.smokeMs > 0 ? "smoking" : weaponPresentationState.reloading ? "reloading" : "ready";
-  weapon.userData.presentationFrame = frame;
+  const status = frame.muzzleFlash.visible ? "firing" : weaponPresentationState.smokeMs > 0 ? "smoking" : weaponPresentationState.reloading ? "reloading" : "ready";
+  if (weapon) {
+    weapon.position.z = .56 + frame.pose.kickZ;
+    weapon.position.y = 1.05 + frame.pose.liftY;
+    weapon.rotation.z = frame.pose.roll;
+    weapon.userData.presentationStatus = status;
+    weapon.userData.presentationFrame = frame;
+  }
+
+  const viewWeapon = firstPersonWeaponRig.getObjectByName(FIRST_PERSON_WEAPON_VIEW.weaponName);
+  const showViewWeapon = Boolean(
+    viewWeapon
+    && frontView
+    && phase === "combat"
+    && player?.alive
+    && (!renderFocus || renderFocus === "weapon-viewmodel")
+  );
+  firstPersonWeaponRig.visible = showViewWeapon;
+  if (!viewWeapon) return;
+  const pose = firstPersonWeaponPose(frame, { aim: adsActive ? 1 : 0 });
+  viewWeapon.position.set(pose.position.x, pose.position.y, pose.position.z);
+  viewWeapon.rotation.set(pose.rotation.x, pose.rotation.y, pose.rotation.z);
+  viewWeapon.userData.presentationStatus = status;
+  viewWeapon.userData.presentationFrame = frame;
+  canvas.dataset.firstPersonWeaponState = showViewWeapon ? "visible" : "ready";
+}
+
+function attachFirstPersonWeapon(asset, gunName) {
+  const root = cloneFirstPersonWeaponRoot(asset?.scene);
+  if (!root) return false;
+  while (firstPersonWeaponRig.children.length) firstPersonWeaponRig.remove(firstPersonWeaponRig.children[0]);
+  fitAuthoredWorldRoot(root, FIRST_PERSON_WEAPON_VIEW.fitDimension);
+  const pose = firstPersonWeaponPose();
+  root.name = FIRST_PERSON_WEAPON_VIEW.weaponName;
+  root.position.set(pose.position.x, pose.position.y, pose.position.z);
+  root.rotation.set(pose.rotation.x, pose.rotation.y, pose.rotation.z);
+  root.userData.authoredWeapon = gunName;
+  firstPersonWeaponRig.add(root);
+  firstPersonWeaponRig.userData.authoredWeapon = gunName;
+  canvas.dataset.firstPersonWeapon = gunName;
+  canvas.dataset.firstPersonWeaponState = "ready";
+  return true;
 }
 
 function attachAuthoredWeapon(group, gunName) {
   const assetPath = AUTHORED_WEAPON_MODELS[gunName];
   if (!assetPath) return;
+  const isPlayerWeapon = group === player?.g;
   group.userData.requestedWeapon = gunName;
+  if (isPlayerWeapon) {
+    firstPersonWeaponRig.userData.requestedWeapon = gunName;
+    firstPersonWeaponRig.visible = false;
+    while (firstPersonWeaponRig.children.length) firstPersonWeaponRig.remove(firstPersonWeaponRig.children[0]);
+    canvas.dataset.firstPersonWeaponState = "loading";
+  }
   group.getObjectByName("authored-weapon")?.removeFromParent();
   loadCuratedGlb([assetPath]).then(asset => {
-    if (!group.parent || group.userData.requestedWeapon !== gunName) return;
+    if (!group.parent || group.userData.requestedWeapon !== gunName || (isPlayerWeapon && firstPersonWeaponRig.userData.requestedWeapon !== gunName)) return;
     const root = cloneAuthoredRoot(asset?.scene);
     if (!root) return;
     group.getObjectByName("authored-weapon")?.removeFromParent();
@@ -873,6 +1053,7 @@ function attachAuthoredWeapon(group, gunName) {
     root.rotation.y = Math.PI;
     group.add(root);
     group.userData.authoredWeapon = gunName;
+    if (isPlayerWeapon) attachFirstPersonWeapon(asset, gunName);
     publishRenderAudit();
   }).catch(() => {});
 }
@@ -1865,10 +2046,53 @@ function addBiomeGateways() {
   });
 }
 
+function addStoryObjectiveTerminal(root, objective, status) {
+  const palette = status === "interacted"
+    ? { body: 0x183f3a, accent: 0x8cff4d, screen: 0xb8ffd4 }
+    : status === "arrived"
+      ? { body: 0x433116, accent: 0xffdf52, screen: 0xfff2a8 }
+      : { body: 0x14272d, accent: objective.beacon.color, screen: 0xc7fbff };
+  const terminal = new THREE.Group();
+  terminal.name = `story-objective-terminal:${objective.missionId}`;
+  const casing = new THREE.MeshStandardMaterial({ color: palette.body, roughness: .44, metalness: .62 });
+  const trim = new THREE.MeshStandardMaterial({ color: palette.accent, emissive: palette.accent, emissiveIntensity: .42, roughness: .28, metalness: .74 });
+  const display = new THREE.MeshStandardMaterial({ color: palette.screen, emissive: palette.screen, emissiveIntensity: .82, roughness: .2, metalness: .4 });
+  const plinth = new THREE.Mesh(boxGeometry(1.92, .42, 1.46), casing);
+  plinth.position.y = .21;
+  const upright = new THREE.Mesh(boxGeometry(.82, 1.58, .34), casing);
+  upright.position.set(0, 1.1, 0);
+  const console = new THREE.Mesh(boxGeometry(1.24, .14, .78), casing);
+  console.position.set(0, 1.48, .34);
+  console.rotation.x = -.32;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(.66, .42), display);
+  screen.position.set(0, 1.28, .186);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(.18, 12, 8), trim);
+  core.position.set(0, 2.02, 0);
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(.58, .038, 8, 24), trim);
+  halo.position.y = 2.02;
+  halo.rotation.x = Math.PI / 2;
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(.035, .055, .74, 8), trim);
+  antenna.position.set(.29, 2.2, 0);
+  antenna.rotation.z = -.22;
+  [plinth, upright, console, screen, core, halo, antenna].forEach(mesh => {
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    terminal.add(mesh);
+  });
+  const groundY = sampleWorldElevation(worldLayout, objective.approach);
+  terminal.position.set(objective.approach.x, groundY, objective.approach.z);
+  terminal.userData = { mapAnim: "story-objective-terminal", objective, status, core, halo, screen };
+  root.add(terminal);
+  root.userData.questObjectiveTerminal = terminal;
+  return terminal;
+}
+
 function addQuestBeacon(root) {
-  const quest = questView(questState);
+  const context = currentStoryObjectiveContext();
+  const quest = context?.quest || questView(questState);
+  const objective = context?.objective || storyObjectiveForQuest(quest.id);
   const profile = questBeaconProfile({ questId: quest.id, mapKey });
-  if (!profile.visible) return null;
+  if (!profile.visible || quest.completed || !objective) return null;
   const group = new THREE.Group();
   group.name = `quest-beacon:${profile.questId}`;
   const glow = material(profile.color, .82);
@@ -1891,21 +2115,30 @@ function addQuestBeacon(root) {
   [post, core, ring, arrow, beam].forEach(mesh => { mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh); });
   const groundY = sampleWorldElevation(worldLayout, profile);
   group.position.set(profile.x, groundY, profile.z);
-  group.userData = { mapAnim: "quest-beacon", profile, core, ring, arrow, beam };
+  group.userData = { mapAnim: "quest-beacon", profile, core, ring, arrow, beam, objectiveStatus: context?.status || "available" };
   root.add(group);
   root.userData.questBeacon = group;
+  addStoryObjectiveTerminal(root, objective, context?.status || "available");
   return group;
 }
 
 function refreshQuestBeacon() {
   if (!mapVisuals) return;
-  const quest = questView(questState);
+  const context = currentStoryObjectiveContext();
+  const quest = context?.quest || questView(questState);
   const profile = questBeaconProfile({ questId: quest.id, mapKey });
   const existing = mapVisuals.userData.questBeacon;
-  if (existing?.userData?.profile?.questId === profile.questId && Boolean(existing.userData.profile.visible) === profile.visible) return;
+  const terminal = mapVisuals.userData.questObjectiveTerminal;
+  const status = context?.status || "available";
+  if (existing?.userData?.profile?.questId === profile.questId
+    && Boolean(existing.userData.profile.visible) === profile.visible
+    && existing.userData.objectiveStatus === status
+    && terminal?.userData?.objective?.missionId === context?.objective?.missionId) return;
   if (existing) mapVisuals.remove(existing);
+  if (terminal) mapVisuals.remove(terminal);
   mapVisuals.userData.questBeacon = null;
-  activeQuestBeaconId = profile.visible ? profile.questId : null;
+  mapVisuals.userData.questObjectiveTerminal = null;
+  activeQuestBeaconId = profile.visible && !quest.completed ? profile.questId : null;
   addQuestBeacon(mapVisuals);
 }
 
@@ -2314,6 +2547,18 @@ function applyRequestedRenderFocus() {
     addRenderAuditRoster();
     return;
   }
+  if (renderFocus === "weapon-viewmodel" && player && worldLayout) {
+    prepareAuditFocus();
+    const spawn = { x: 20, z: -36 };
+    player.g.position.set(spawn.x, sampleWorldElevation(worldLayout, spawn), spawn.z);
+    viewYaw = Math.PI;
+    aim.copy(player.g.position).add(new THREE.Vector3(0, 0, -35));
+    frontView = true;
+    graceUntil = Number.POSITIVE_INFINITY;
+    document.body.dataset.renderFocus = "weapon-viewmodel";
+    canvas.dataset.firstPersonWeaponAudit = "scout";
+    return;
+  }
   if (renderFocus === "gameplay" && player && worldLayout) {
     prepareAuditFocus();
     addGameplayAuditStage();
@@ -2338,6 +2583,26 @@ function applyRequestedRenderFocus() {
     document.body.dataset.renderFocus = "gameplay";
     canvas.dataset.gameplayAuditEnemies = auditEnemyTypes.join(",");
     canvas.dataset.gameplayAuditCurrency = "gold,silver";
+    return;
+  }
+  if (renderFocus === "story-objective" && player && worldLayout) {
+    prepareAuditFocus();
+    const context = currentStoryObjectiveContext();
+    if (!context?.objective || !context.visibleOnMap) return;
+    const approach = context.objective.approach;
+    const staged = resolveWorldMovement(worldLayout, approach, {
+      x: approach.x,
+      z: approach.z + Math.min(3.8, approach.radius * .5),
+    }).position;
+    player.g.position.set(staged.x, staged.y, staged.z);
+    viewYaw = Math.atan2(approach.x - staged.x, approach.z - staged.z);
+    aim.copy(player.g.position).add(new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw)).multiplyScalar(20));
+    frontView = true;
+    graceUntil = Number.POSITIVE_INFINITY;
+    document.body.dataset.renderFocus = "story-objective";
+    canvas.dataset.storyObjectiveAudit = context.objective.missionId;
+    canvas.dataset.storyObjectiveTerminal = `story-objective-terminal:${context.objective.missionId}`;
+    updateStoryObjectiveArrival({ announce: false });
     return;
   }
   if (renderFocus === "world" && player && worldLayout) {
@@ -2404,6 +2669,15 @@ function updateMapVisuals(dt) {
       }
     }
     weather.points.geometry.attributes.position.needsUpdate = true;
+  }
+  const objectiveTerminal = mapVisuals.userData.questObjectiveTerminal;
+  if (objectiveTerminal?.userData?.core) {
+    const active = objectiveTerminal.userData.status === "interacted";
+    const pulse = 1 + Math.sin(elapsed * (active ? 4.8 : 2.7)) * (active ? .16 : .08);
+    objectiveTerminal.userData.core.scale.setScalar(pulse);
+    objectiveTerminal.userData.halo.rotation.z += dt * (active ? 2.7 : 1.25);
+    objectiveTerminal.userData.halo.scale.setScalar(.96 + Math.sin(elapsed * 2.4) * .08);
+    objectiveTerminal.userData.screen.material.emissiveIntensity = active ? .98 : .72 + Math.sin(elapsed * 2.2) * .12;
   }
   mapVisuals.children.forEach((beacon, index) => {
     if (!beacon.userData?.ring || !beacon.userData?.core) return;
@@ -2654,6 +2928,9 @@ function createWorldFieldBlockers() {
 
 function resetMap() {
   world.clear();
+  firstPersonWeaponRig.visible = false;
+  firstPersonWeaponRig.userData.requestedWeapon = null;
+  while (firstPersonWeaponRig.children.length) firstPersonWeaponRig.remove(firstPersonWeaponRig.children[0]);
   terrainMicrodetailCount = 0;
   rosterAuditActors = [];
   mapVisuals = null;
@@ -2828,6 +3105,7 @@ function start() {
   blue = red = score = kills = scrap = gold = silver = shieldLevel = 0;
   survivalSeconds = 0;
   questState = createQuestState();
+  storyObjectiveState = createStoryObjectiveState();
   wave = 1;
   activeGun = "scout";
   weaponPresentationState = createWeaponPresentationState("scout");
@@ -3165,6 +3443,10 @@ function cycleWeapon(direction = 1) {
 }
 
 function interact() {
+  // This uses the existing E / controller A / touch Interact action.  It is
+  // intentionally visual/story-only and does not change any movement or aim
+  // direction handling.
+  if (interactWithStoryObjective()) return;
   if (phase !== "prep") return;
   if (!canAccessChest(player.g.position, chests)) return;
   if (offlineMode || mode === "solo" || lobbySocket?.readyState !== WebSocket.OPEN) {
@@ -3663,6 +3945,7 @@ function update(dt) {
   lookDirection.y = 0;
   if (lookDirection.lengthSq() > .01) player.g.rotation.y = Math.atan2(lookDirection.x, lookDirection.z);
   applyWorldMovement(player, playerFrom);
+  updateStoryObjectiveArrival();
   applyExplorationDiscovery();
   for (const hazard of hazards) if (player.g.position.distanceTo(hazard) < 4) applyDamage(player, 10 * dt);
   if (!menuOpen && wantsFire) fire(player, aim);
@@ -3749,6 +4032,17 @@ function update(dt) {
     } else if (!directRenderFocus && !enemies.length && spawnQueue === 0) finishRound("blue");
   }
   const facing = new THREE.Vector3(Math.sin(viewYaw), 0, Math.cos(viewYaw));
+  if (renderFocus === "story-objective") {
+    player.g.visible = false;
+    const terminal = mapVisuals?.userData?.questObjectiveTerminal;
+    if (terminal) {
+      const target = terminal.position.clone().add(new THREE.Vector3(0, 1.28, 0));
+      const cameraPosition = target.clone().add(new THREE.Vector3(0, 2.7, 7.4));
+      camera.position.lerp(cameraPosition, Math.min(1, dt * 8));
+      camera.lookAt(target);
+    }
+    return;
+  }
   if (renderFocus === "gameplay") {
     player.g.visible = false;
     // Keep the deterministic audit lineup in the camera frustum instead of
@@ -3806,8 +4100,10 @@ function renderHud() {
   const teamHealthMax = teamMembers.reduce((total, member) => total + Math.max(0, member?.maxHp || 0), 0);
   const campaign = storyCampaignView({ stage: storyStage, missionIndex, kingdomUnlocked });
   const chapter = soldierStory[Math.min(campaign.chapterId - 1, soldierStory.length - 1)];
-  const objective = campaign.objective;
-  const quest = questView(questState);
+  const objectiveContext = currentStoryObjectiveContext();
+  const storyObjective = objectiveContext?.objective;
+  const objective = storyObjective?.narrative || campaign.objective;
+  const quest = objectiveContext?.quest || questView(questState);
   const hud = createHudViewModel({
     health: player.hp,
     maxHealth: player.maxHp,
@@ -3821,7 +4117,7 @@ function renderHud() {
     teamHealthMax,
     mission: `Mission: ${objective}`,
     round: wave,
-    timer: renderFocus === "world" ? "RENDER" : phase === "loadout" ? "WAITING" : formatTime(timer),
+    timer: directRenderFocus ? "RENDER" : phase === "loadout" ? "WAITING" : formatTime(timer),
     objective,
     score: { blue: mode === "ctf" ? Math.floor(blue) : blue, red: mode === "ctf" ? Math.floor(red) : red },
   });
@@ -3847,20 +4143,28 @@ function renderHud() {
   ui.wave.textContent = wave;
   ui.level.textContent = playerLevel;
   ui.stage.textContent = storyStage;
-  ui.chapter.textContent = `Chapter ${campaign.chapterId}: ${campaign.chapterTitle}`;
-  ui.mission.textContent = `Mission: ${campaign.missionTitle} · ${hud.mission.label.replace(/^Mission:\s*/i, "")}`;
+  ui.chapter.textContent = `Chapter ${storyObjective?.chapterId || campaign.chapterId}: ${storyObjective?.chapterTitle || campaign.chapterTitle}`;
+  ui.mission.textContent = `Mission: ${storyObjective?.title || campaign.missionTitle} · ${hud.mission.label.replace(/^Mission:\s*/i, "")}`;
   const requirementSummary = quest.requirements.length > 1
     ? quest.requirements.map(requirement => `${QUEST_METRIC_LABELS[requirement.metric] || requirement.metric.toUpperCase()} ${Math.min(requirement.target, quest.progress[requirement.metric] || 0)}/${requirement.target}`).join(" · ")
     : `${quest.value}/${quest.target}`;
-  ui.quest.textContent = `QUEST ${requirementSummary} · ${quest.objective}`;
+  const questLead = objectiveContext?.status === "interacted" || objectiveContext?.status === "completed"
+    ? requirementSummary
+    : objectiveContext?.status === "arrived"
+      ? `${storyObjective.actionLabel.toUpperCase()} · INTERACT`
+      : storyObjective
+        ? `${storyObjective.actionLabel.toUpperCase()} · ${requirementSummary}`
+        : requirementSummary;
+  ui.quest.textContent = `QUEST ${questLead} · ${quest.objective}`;
   const beaconProfile = questBeaconProfile({ questId: quest.id, mapKey });
   if (quest.completed) {
     ui.questDirection.textContent = "QUEST TARGET · SECURED";
   } else if (!beaconProfile.visible || !player) {
     ui.questDirection.textContent = `QUEST TARGET · ${beaconProfile.mapKey.toUpperCase()} MAP`;
   } else {
-    const dx = beaconProfile.x - player.g.position.x;
-    const dz = beaconProfile.z - player.g.position.z;
+    const navigationTarget = storyObjective?.approach || beaconProfile;
+    const dx = navigationTarget.x - player.g.position.x;
+    const dz = navigationTarget.z - player.g.position.z;
     const distance = Math.round(Math.hypot(dx, dz));
     const bearing = Math.atan2(dx, dz);
     const relative = ((bearing - viewYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -3873,7 +4177,10 @@ function renderHud() {
   ui.questProgress.classList.toggle("is-complete", quest.completed);
   ui.questProgressFill.style.setProperty("--hud-fill", `${questPercent}%`);
   ui.weapon.textContent = `${weapon.name} L${weapon.level} ${weapon.shots}x`;
-  ui.map.textContent = biomeAt(worldLayout, player.g.position).label.toUpperCase();
+  // The HUD names the selected arena, not a neighboring biome patch inside
+  // the connected world layout. This keeps the visible mission and map labels
+  // aligned while a player follows a story objective across map seams.
+  ui.map.textContent = (MAPS[mapKey]?.label || biomeAt(worldLayout, player.g.position).label).toUpperCase();
   const exploration = explorationProgress(worldLayout, explorationState);
   ui.exploration.textContent = `EXPLORE ${exploration.discovered}/${exploration.total}`;
   ui.phase.textContent = mode === "ctf" ? "CAPTURE" : phase.toUpperCase();
@@ -3884,6 +4191,7 @@ function renderHud() {
   const damageVisible = performance.now() < damageFeedbackUntil;
   ui.combatFeedback.classList.toggle("hidden", !damageVisible || phase === "menu");
   if (!damageVisible) ui.combatFeedback.classList.remove("damage");
+  renderStoryObjectivePrompt();
 }
 
 function render() {
@@ -4799,7 +5107,7 @@ function saveProfile(profile = activeProfile) {
 
 function saveProgress() {
   if (!activeProfile || activeProfile.youthAccount) return;
-  activeProfile.progress = { wave, score, kills, scrap, gold, silver, survivalSeconds, questState, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, completedMissions: Array.isArray(activeProfile.progress?.completedMissions) ? activeProfile.progress.completedMissions : [], classProgress, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
+  activeProfile.progress = { wave, score, kills, scrap, gold, silver, survivalSeconds, questState, storyObjectiveState, shieldLevel, playerLevel, totalXp, storyStage, missionIndex, kingdomUnlocked, completedMissions: Array.isArray(activeProfile.progress?.completedMissions) ? activeProfile.progress.completedMissions : [], classProgress, unlockedMaps: unlockedMaps(playerLevel), timelineAdvantages: timelineAdvantages.slice(0, Math.min(timelineAdvantages.length, storyStage)), guns: Object.fromEntries(Object.entries(guns).map(([key, gun]) => [key, gun.level])), rewards: activeProfile.progress?.rewards || { winStreak: 0, lifetimeRewards: 0 } };
   saveProfile();
 }
 
@@ -4814,6 +5122,17 @@ function loadProgress(profile) {
   silver = Math.max(0, Number(progress.silver) || 0);
   survivalSeconds = Math.max(0, Number(progress.survivalSeconds) || 0);
   questState = createQuestState(progress.questState);
+  const completedObjectiveMissionIds = [
+    ...(Array.isArray(progress.completedMissions) ? progress.completedMissions : []),
+    ...questState.completedIds.map(questId => storyObjectiveForQuest(questId)?.missionId).filter(Boolean),
+  ];
+  storyObjectiveState = createStoryObjectiveState({
+    ...(progress.storyObjectiveState && typeof progress.storyObjectiveState === "object" ? progress.storyObjectiveState : {}),
+    completedMissionIds: [
+      ...(Array.isArray(progress.storyObjectiveState?.completedMissionIds) ? progress.storyObjectiveState.completedMissionIds : []),
+      ...completedObjectiveMissionIds,
+    ],
+  });
   shieldLevel = Math.max(0, Number(progress.shieldLevel) || 0);
   playerLevel = Math.max(1, Number(progress.playerLevel) || 1);
   totalXp = Math.max(0, Number(progress.totalXp) || (Number(progress.kills) || 0) * 100 + (Number(progress.score) || 0));
@@ -4834,14 +5153,28 @@ function updateStoryProgress() {
     if (scrap >= 60 || kills >= 10 || storyStage >= 3) missionIndex = 1;
   }
   const discoveryCount = worldLayout && player ? explorationProgress(worldLayout, explorationState).discovered : 0;
+  const activeQuest = questView(questState);
+  const activeObjective = storyObjectiveForQuest(activeQuest.id);
+  const activeObjectiveStatus = activeObjective
+    ? storyObjectiveStatus(storyObjectiveState, activeObjective.missionId)
+    : "interacted";
   const questResult = advanceQuestState(questState, {
     survivedSeconds: Math.floor(survivalSeconds),
     scrap,
     kills,
     stage: storyStage,
     discoveries: discoveryCount,
+    objectiveReady: activeObjectiveStatus === "interacted" || activeObjectiveStatus === "completed",
   });
   questState = questResult.state;
+  if (questResult.completed && activeObjective) {
+    const completion = applyStoryObjectiveEvent(storyObjectiveState, {
+      type: "completed",
+      missionId: activeObjective.missionId,
+      currentMissionId: activeQuest.missionId,
+    });
+    storyObjectiveState = completion.state;
+  }
   refreshQuestBeacon();
   if (questResult.completed) {
     gold += questResult.reward.gold;
@@ -5899,6 +6232,7 @@ $("openShopBtn").onclick = () => {
   }
 };
 $("openChestBtn").onclick = interact;
+$("openQuestObjectiveBtn").onclick = () => { interactWithStoryObjective(); };
 $("closeShopBtn").onclick = () => {
   ui.shop.classList.add("hidden");
   restoreVisibleMenuSection();
@@ -6182,7 +6516,7 @@ refreshInputMode();
 updateVoiceButtons();
 updateNetworkStatus();
 start();
-const directRenderFocus = new Set(["gameplay", "roster", "terrain-gallery", "armory", "world"]).has(renderFocus);
+const directRenderFocus = new Set(["gameplay", "roster", "terrain-gallery", "armory", "world", "story-objective", "weapon-viewmodel"]).has(renderFocus);
 if (directRenderFocus) {
   phase = "combat";
   // Direct render audits are not a playable round. Keep the normal combat

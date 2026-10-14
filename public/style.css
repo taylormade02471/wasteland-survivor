@@ -102,8 +102,8 @@ body.menu-active .aim-reticle, .aim-reticle.hidden { opacity: 0; }
 .input-recovery-notice[data-recovery-kind="graphics"] .input-recovery-panel { border-color: rgba(102,252,241,.72); border-left-color: #66fcf1; }
 .input-recovery-notice[data-recovery-kind="graphics"] .input-recovery-panel span { color: #66fcf1; }
 body.input-recovery-active .aim-reticle { opacity: 0; }
-.welcome-screen, .modal, #topRightMenu, #hud, #touchControls, .chest-prompt { z-index: 40; }
-body.menu-active #hud, body.menu-active #topRightMenu, body.menu-active #touchControls, body.menu-active .chest-prompt { visibility: hidden; pointer-events: none; }
+.welcome-screen, .modal, #topRightMenu, #hud, #touchControls, .chest-prompt, .quest-prompt { z-index: 40; }
+body.menu-active #hud, body.menu-active #topRightMenu, body.menu-active #touchControls, body.menu-active .chest-prompt, body.menu-active .quest-prompt { visibility: hidden; pointer-events: none; }
 .match-countdown { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; align-content: center; gap: 6px; background: rgba(4,7,10,.48); color: #f8f3df; text-align: center; pointer-events: none; }
 .match-countdown span { color: #66fcf1; font-weight: 900; letter-spacing: .18em; }
 .match-countdown b { font-size: clamp(80px, 18vw, 180px); line-height: .8; text-shadow: 0 0 32px rgba(102,252,241,.48); }
@@ -257,6 +257,10 @@ body.menu-active .discovery-toast { display: none; }
   .combat-feedback.damage { border-color: rgba(255,93,117,.92); color: #ff8b9b; box-shadow: 0 0 24px rgba(255,53,83,.32); }
 .chest-prompt { position: fixed; left: 50%; bottom: 22px; z-index: 12; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; padding: 12px 16px; background: rgba(12,17,23,.9); border: 1px solid #ffdf52; color: #ffdf52; text-align: center; }
 .chest-prompt span { color: #f8f3df; font-size: 12px; }.chest-prompt i { font-style: normal; color: #ffdf52; }.chest-prompt button { min-height: 34px; padding: 0 14px; }.hidden, .welcome-screen.hidden, .parent-setup.hidden, .game-menu.hidden, .match-countdown.hidden { display: none !important; }
+.quest-prompt { position: fixed; left: 50%; bottom: 22px; z-index: 13; width: min(360px, calc(100vw - 28px)); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; padding: 12px 16px; border: 1px solid rgba(102,252,241,.88); border-left: 3px solid #ffdf52; background: linear-gradient(145deg, rgba(8,21,24,.96), rgba(5,10,13,.9)); box-shadow: 0 0 24px rgba(102,252,241,.18); color: #aef3ed; text-align: center; }
+.quest-prompt b { color: #ffdf52; font: 900 14px "Bahnschrift Condensed", "Arial Narrow", sans-serif; letter-spacing: .08em; }
+.quest-prompt span { color: #eef8f4; font-size: 12px; line-height: 1.35; }
+.quest-prompt button { min-height: 38px; padding: 0 14px; border-color: rgba(102,252,241,.78); background: rgba(102,252,241,.1); color: #f8f3df; font-weight: 900; }
 .chest-locator { position:fixed; z-index:18; top:86px; left:50%; display:flex; gap:9px; align-items:center; transform:translateX(-50%); padding:7px 11px; border:1px solid rgba(255,223,82,.7); background:rgba(7,11,13,.82); color:#ffdf52; font-size:10px; letter-spacing:.08em; box-shadow:0 0 18px rgba(255,194,60,.16); }
 .chest-locator span { color:#f8f3df; font-weight:800; }
 .loadout-room-card { width:min(560px,100%); background:linear-gradient(145deg,#111923,#0a1115); }
@@ -444,7 +448,7 @@ body[data-input-mode="touch"] #touchControls { display: flex; }
 body.loadout-active #touchControls { display: none !important; visibility: hidden; pointer-events: none; }
 body.menu-active #touchControls, body[data-input-mode="mouse"] #touchControls, body[data-input-mode="controller"] #touchControls { display: none; }
 @media (pointer: coarse) {
-  .chest-prompt { bottom: 144px; }
+  .chest-prompt, .quest-prompt { bottom: 144px; }
   .floating-command small { max-height: 0; overflow: hidden; opacity: 0; }
   .floating-command.is-selected small { max-height: 4.2em; opacity: 1; }
 }
@@ -1342,7 +1346,12 @@ body:has(#lobbyScreen:not(.hidden)) #lobbyScreen { background: transparent; }
 
 @media (min-width: 761px) and (min-height: 521px) {
   #lobbyScreen .lobby-survivor-hero {
+    /* The character action square is intentionally hidden for signed-in users.
+       Collapse its former grid track so the profile readout no longer floats
+       beside a blank left-hand block. */
+    grid-template-columns: minmax(240px, 310px);
     grid-template-rows: minmax(0, 1fr);
+    justify-content: end;
     align-content: start;
   }
 

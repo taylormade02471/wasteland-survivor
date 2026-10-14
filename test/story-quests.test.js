@@ -46,3 +46,22 @@ test("quest progress is monotonic and duplicate events do not duplicate rewards"
   assert.equal(duplicate.state.completedIds.length, 1);
   assert.equal(questView(duplicate.state).value, 0);
 });
+
+test("an active world objective can gate a completed metric until its interaction is confirmed", () => {
+  const waitingForRelay = advanceQuestState(createQuestState(), {
+    survivedSeconds: 60,
+    objectiveReady: false,
+  });
+
+  assert.equal(waitingForRelay.completed, false);
+  assert.equal(waitingForRelay.state.completedIds.length, 0);
+  assert.equal(questView(waitingForRelay.state).value, 60);
+
+  const relayActivated = advanceQuestState(waitingForRelay.state, {
+    survivedSeconds: 60,
+    objectiveReady: true,
+  });
+  assert.equal(relayActivated.completed, true);
+  assert.equal(relayActivated.reward.gold, 18);
+  assert.equal(relayActivated.reward.silver, 42);
+});

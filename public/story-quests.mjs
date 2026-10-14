@@ -53,7 +53,12 @@ export function advanceQuestState(state = {}, event = {}) {
   const requirements = Array.isArray(quest.requirements) && quest.requirements.length
     ? quest.requirements
     : [{ metric: quest.metric, target: quest.target }];
-  const reached = requirements.every(requirement => next.progress[requirement.metric] >= whole(requirement.target));
+  // The renderer may supply an explicit spatial-objective gate.  Leave it
+  // opt-in so persisted/legacy callers retain their existing deterministic
+  // quest behavior, while live story play can require the authored world
+  // interaction before a completed counter pays out.
+  const objectiveReady = event.objectiveReady !== false;
+  const reached = objectiveReady && requirements.every(requirement => next.progress[requirement.metric] >= whole(requirement.target));
   if (!reached) return { state: next, quest, completed: false, reward: { gold: 0, silver: 0, xp: 0 } };
   next.completedIds.push(quest.id);
   const reward = { ...quest.reward };

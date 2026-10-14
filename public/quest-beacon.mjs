@@ -1,16 +1,8 @@
-const QUEST_BEACONS = Object.freeze({
-  "first-watch": Object.freeze({ mapKey: "wasteland", x: -86, z: 184, label: "Relay at the Looted Armory", color: 0xff9b42 }),
-  "scrap-run": Object.freeze({ mapKey: "wasteland", x: -126, z: 78, label: "Scrap cache at the old depot", color: 0xffc34e }),
-  "raider-breaker": Object.freeze({ mapKey: "toxic", x: 172, z: -172, label: "Raiders at the flooded pumping station", color: 0xff5d75 }),
-  "frontier-reach": Object.freeze({ mapKey: "toxic", x: -162, z: -112, label: "Purifier route through poisoned ground", color: 0x8ee9ff }),
-  "defend-the-frontier": Object.freeze({ mapKey: "ice", x: 166, z: 156, label: "Mountain transmitter signal", color: 0xffd36a }),
-  "white-signal": Object.freeze({ mapKey: "ice", x: 166, z: -2, label: "White signal in the storm", color: 0xd5d9de }),
-  "across-the-cinders": Object.freeze({ mapKey: "inferno", x: -202, z: 18, label: "Ash Castle cinder gate", color: 0xff542e }),
-  "crown-of-steel": Object.freeze({ mapKey: "inferno", x: 178, z: -90, label: "Crown of Steel command ruin", color: 0xb7c4d8 }),
-});
+import { storyObjectiveForMission, storyObjectiveForQuest } from "./story-objectives.mjs";
 
 export function questBeaconProfile({ questId, mapKey } = {}) {
-  const beacon = QUEST_BEACONS[questId] || QUEST_BEACONS["first-watch"];
+  const objective = storyObjectiveForQuest(questId) || storyObjectiveForMission("c1-m1");
+  const beacon = objective.beacon;
   return Object.freeze({
     ...beacon,
     questId: String(questId || "first-watch"),

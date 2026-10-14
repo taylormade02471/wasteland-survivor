@@ -278,6 +278,11 @@
 
   <div id="chestLocator" class="chest-locator hidden"><b>SUPPLY</b><span id="chestDirection">N · 0m</span></div>
   <div id="chestPrompt" class="chest-prompt hidden"><b>SHARED SUPPLY CHEST</b><span id="chestOccupancy">Access slots: 0/2</span><span>Prep phase ends in <i id="prepTimer">01:00</i></span><button id="openChestBtn" type="button">Access Chest</button></div>
+  <div id="questPrompt" class="quest-prompt hidden" role="status" aria-live="polite">
+    <b id="questPromptTitle">FIELD OBJECTIVE</b>
+    <span id="questPromptHint">Move into range to activate the story objective.</span>
+    <button id="openQuestObjectiveBtn" type="button"><span id="questPromptAction">Activate Objective</span></button>
+  </div>
 
   <section id="loadoutRoomModal" class="modal hidden" aria-label="Pre-match loadout room">
     <div class="modal-card loadout-room-card">
