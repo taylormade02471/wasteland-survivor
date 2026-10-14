@@ -331,7 +331,8 @@ test("the gameplay audit focus renders authored enemies, quest terrain, and both
   assert.match(gameSource, /camera\.lookAt\(21\.5, 1\.5, -6\)/);
   assert.match(gameSource, /const prepareAuditFocus = \(\) =>/);
   assert.match(gameSource, /welcomeScreen\.classList\.add\("hidden"\)/);
-  assert.match(gameSource, /const directRenderFocus = new Set\(\["gameplay", "roster", "terrain-gallery", "armory", "world", "story-objective", "weapon-viewmodel"\]\)\.has\(renderFocus\)/);
+  assert.match(gameSource, /const AUDIT_RENDER_FOCUSES = new Set\(\["gameplay", "roster", "terrain-gallery", "armory", "world", "story-objective", "weapon-viewmodel"\]\)/);
+  assert.match(gameSource, /const directRenderFocus = AUDIT_RENDER_FOCUSES\.has\(renderFocus\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) showProfileChoice\(\)/);
   assert.match(gameSource, /if \(!directRenderFocus\) initializeMenuBackdrop\(\)/);
 });
@@ -535,7 +536,7 @@ test("world showcase focus frames the live city, rail, and outpost authored map 
   assert.match(gameSource, /if \(renderFocus === "world" && player && worldLayout\)/);
   assert.match(gameSource, /canvas\.dataset\.worldShowcaseScene/);
   assert.match(gameSource, /renderFocus === "world"/);
-  assert.match(gameSource, /"world", "story-objective", "weapon-viewmodel"\]\)\.has\(renderFocus\)/);
+  assert.match(gameSource, /AUDIT_RENDER_FOCUSES\.has\(renderFocus\)/);
 });
 
 test("world showcases isolate the requested authored placements from procedural map scaffolding", () => {

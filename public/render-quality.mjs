@@ -1,3 +1,5 @@
+import { landmarkRenderPassReport } from "./landmark-render-profile.mjs";
+
 // A deterministic, mobile-aware quality ladder for the authored 3D field.
 // Each pass increases the previous pass by 12–20% so visual upgrades can be
 // rendered, checked, and rolled forward without changing gameplay controls.
@@ -59,4 +61,10 @@ export function renderQualityPassReport(pass = 1) {
     textureRepeat: current.textureRepeat,
     visualPoints: current.visualPoints,
   });
+}
+
+export function renderPassEvidence(pass = 1) {
+  const quality = renderQualityPassReport(pass);
+  const landmarks = landmarkRenderPassReport(quality.pass);
+  return Object.freeze({ pass: quality.pass, quality, landmarks });
 }
