@@ -38,6 +38,8 @@ test("the runtime wires generated armory surface maps and instanced triangle det
   assert.match(ARMORY_SURFACE_TEXTURES.bump, /burned-armory-steel-bump-v1\.webp$/);
   assert.match(gameSource, /armory-visual-profile\.mjs/);
   assert.match(gameSource, /buildArmoryRubblePlan\(renderQuality\.pass\)/);
+  assert.match(gameSource, /buildArmorySalvagePlan\(renderQuality\.pass\)/);
+  assert.match(gameSource, /armory-salvage-pass-/);
   assert.match(gameSource, /new THREE\.InstancedMesh\(rubbleGeometry, rubbleMaterial, rubblePlan\.length\)/);
   assert.match(gameSource, /ARMORY_SURFACE_TEXTURES\.baseColor/);
   assert.match(gameSource, /ARMORY_SURFACE_TEXTURES\.bump/);

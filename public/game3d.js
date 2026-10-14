@@ -48,6 +48,7 @@ import { sampleCharacterAnimation } from "./character-animation-runtime.mjs";
 import { advanceWeaponPresentation, beginWeaponReload, createWeaponPresentationState, sampleWeaponPresentationFrame, triggerWeaponShot } from "./weapon-presentation.mjs";
 import { FIRST_PERSON_WEAPON_VIEW, firstPersonWeaponPose } from "./first-person-weapon-view.mjs";
 import { renderQualityProfile } from "./render-quality.mjs";
+import { buildArmorySalvagePlan, buildInfernoFirelinePlan, buildMountainCragPlan } from "./landmark-render-profile.mjs";
 import { ARMORY_SURFACE_TEXTURES, armoryVisualProfile, buildArmoryRubblePlan } from "./armory-visual-profile.mjs";
 import { buildFireVfxProfile, fireVfxFrame } from "./fire-vfx.mjs";
 import { currencyPickupFrame, currencyPickupProfile } from "./currency-pickup-vfx.mjs";
@@ -99,6 +100,12 @@ function runtimeAssetPath(path) {
 const canvas = $("game");
 const renderFocus = new URLSearchParams(window.location.search).get("renderFocus");
 const worldShowcaseRequest = new URLSearchParams(window.location.search).get("worldScene");
+const AUDIT_RENDER_FOCUSES = new Set(["gameplay", "roster", "terrain-gallery", "armory", "world", "story-objective", "weapon-viewmodel"]);
+function resolveAuditRenderPass() {
+  if (!AUDIT_RENDER_FOCUSES.has(renderFocus)) return null;
+  const requested = Number(new URLSearchParams(window.location.search).get("renderPass"));
+  return Number.isInteger(requested) && requested >= 1 && requested <= 5 ? requested : null;
+}
 canvas.dataset.controlDirectionLock = CONTROL_DIRECTION_LOCK.id;
 const aimReticle = $("aimReticle");
 const controllerDebug = $("controllerDebug");
@@ -2264,6 +2271,7 @@ function addMountainVisuals(root) {
   ridge.name = "mountain-ridge-visuals";
   const rock = material(0x4b5a65, .025);
   const snow = material(0xcfe7ef, .08);
+  const exposedMetal = material(0x665e58, .04);
   [
     { x: -212, z: -202, scale: 1.12, rotation: -.16 },
     { x: -174, z: -218, scale: .88, rotation: .12 },
@@ -2283,6 +2291,30 @@ function addMountainVisuals(root) {
     mountain.position.set(peak.x, sampleWorldElevation(worldLayout, peak), peak.z);
     ridge.add(mountain);
   });
+  const cragPlan = buildMountainCragPlan(renderQuality.pass);
+  cragPlan.forEach((crag, index) => {
+    const group = new THREE.Group();
+    group.name = `mountain-crag-pass-${renderQuality.pass}:${index + 1}`;
+    const body = new THREE.Mesh(new THREE.DodecahedronGeometry(2.6 * crag.scale, 1), index % 5 === 0 ? exposedMetal : rock);
+    body.position.y = 2.05 * crag.scale;
+    body.scale.y = 1.42;
+    body.rotation.y = crag.rotation;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+    if (crag.snow) {
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(1.32 * crag.scale, 1.8 * crag.scale, 6), snow);
+      cap.position.y = 4.06 * crag.scale;
+      cap.rotation.y = crag.rotation + .21;
+      cap.castShadow = true;
+      cap.receiveShadow = true;
+      group.add(cap);
+    }
+    group.position.set(crag.x, sampleWorldElevation(worldLayout, crag), crag.z);
+    ridge.add(group);
+  });
+  ridge.userData.mountainCragCount = cragPlan.length;
+  canvas.dataset.mountainCragCount = String(cragPlan.length);
   root.add(ridge);
 }
 
@@ -2306,18 +2338,14 @@ function addInfernoFireVisuals(root) {
   fireline.name = "inferno-fireline-visuals";
   const fireVfxProfile = buildFireVfxProfile(renderQuality.pass);
   const fireBase = material(0x7e1f12, .42);
-  [
-    { x: -198, z: 76, scale: .82 },
-    { x: -164, z: 80, scale: 1.08 },
-    { x: -126, z: 76, scale: .9 },
-    { x: -84, z: 79, scale: 1.18 },
-    { x: -48, z: 75, scale: .76 },
-  ].forEach((point, index) => {
+  const firelinePlan = buildInfernoFirelinePlan(renderQuality.pass);
+  const fireColor = { hot: 0xffdc63, amber: 0xffb72e, red: 0xff5a24 };
+  firelinePlan.forEach((point, index) => {
     const groundY = sampleWorldElevation(worldLayout, point);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(1.45 * point.scale, 1.8 * point.scale, .16, 16), fireBase);
     base.position.set(point.x, groundY + .08, point.z);
     base.receiveShadow = true;
-    const flame = createFlameVisual(index % 2 ? 0xffb72e : 0xff5a24, point.scale, index * .8);
+    const flame = createFlameVisual(fireColor[point.color] || 0xff5a24, point.scale, index * .8);
     flame.position.set(point.x, groundY + .12, point.z);
     fireline.add(base, flame);
 
@@ -2379,6 +2407,8 @@ function addInfernoFireVisuals(root) {
     heat.scale.y = .6;
     fireline.add(heat);
   });
+  fireline.userData.infernoFireClusterCount = firelinePlan.length;
+  canvas.dataset.infernoFireClusterCount = String(firelinePlan.length);
   root.add(fireline);
 }
 
@@ -2508,6 +2538,48 @@ function addBurnedArmoryVisual(root) {
   rubble.receiveShadow = true;
   rubble.userData.rubbleTriangles = visualProfile.rubbleTriangles;
   outpost.add(rubble);
+
+  const salvagePlan = buildArmorySalvagePlan(renderQuality.pass);
+  salvagePlan.forEach((piece, index) => {
+    const salvage = new THREE.Group();
+    salvage.name = `armory-salvage-pass-${renderQuality.pass}:${index + 1}`;
+    const localX = piece.x - structure.x;
+    const localZ = piece.z - structure.z;
+    if (piece.kind === "barricade") {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(1.9 * piece.scale, .75 * piece.scale, .18), char);
+      plate.rotation.y = piece.rotation;
+      plate.position.y = .5 * piece.scale;
+      plate.castShadow = true;
+      const brace = new THREE.Mesh(new THREE.BoxGeometry(.14, 1.15 * piece.scale, .16), rust);
+      brace.position.set(.5 * piece.scale, .58 * piece.scale, 0);
+      brace.rotation.z = -.34;
+      brace.castShadow = true;
+      salvage.add(plate, brace);
+    } else if (piece.kind === "equipment") {
+      const canister = new THREE.Mesh(new THREE.CylinderGeometry(.28 * piece.scale, .38 * piece.scale, 1.18 * piece.scale, 8), rust);
+      canister.position.y = .59 * piece.scale;
+      canister.castShadow = true;
+      const warningBand = new THREE.Mesh(new THREE.TorusGeometry(.31 * piece.scale, .045, 6, 12), warning);
+      warningBand.rotation.x = Math.PI / 2;
+      warningBand.position.y = .7 * piece.scale;
+      salvage.add(canister, warningBand);
+    } else {
+      const supply = new THREE.Mesh(new THREE.BoxGeometry(1.15 * piece.scale, .62 * piece.scale, .88 * piece.scale), rust);
+      supply.position.y = .31 * piece.scale;
+      supply.rotation.y = piece.rotation;
+      supply.castShadow = true;
+      const latch = new THREE.Mesh(new THREE.BoxGeometry(.26 * piece.scale, .1, .08), warning);
+      latch.position.set(0, .56 * piece.scale, .47 * piece.scale);
+      latch.rotation.y = piece.rotation;
+      salvage.add(supply, latch);
+    }
+    salvage.position.set(localX, .03, localZ);
+    salvage.rotation.y = piece.rotation;
+    salvage.traverse(node => { node.receiveShadow = true; });
+    outpost.add(salvage);
+  });
+  outpost.userData.armorySalvageCount = salvagePlan.length;
+  canvas.dataset.armorySalvageCount = String(salvagePlan.length);
 
   const lightPositions = [
     [-10.5, 2.2, structure.d / 2 + 1.2],
@@ -2948,7 +3020,9 @@ function resetMap() {
   applyBiomeLighting(mapKey);
   scene.background = createBiomeSkyTexture(mapKey);
   const texture = loadTerrainTexture(runtimeAssetPath(cfg.texture));
-  renderQuality = renderQualityProfile(effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1);
+  const deviceRenderPass = effectiveGraphicsTier() === "high" ? 5 : effectiveGraphicsTier() === "medium" ? 3 : 1;
+  renderQuality = renderQualityProfile(resolveAuditRenderPass() ?? deviceRenderPass);
+  canvas.dataset.landmarkRenderPass = String(renderQuality.pass);
   // Keep the authored terrain readable in first-person combat. The previous
   // density hid the road, elevation, and texture under a single flat wash.
   const baseFogDensity = renderQuality.pass >= 5 ? .0038 : renderQuality.pass >= 3 ? .0046 : .0054;
@@ -6516,7 +6590,7 @@ refreshInputMode();
 updateVoiceButtons();
 updateNetworkStatus();
 start();
-const directRenderFocus = new Set(["gameplay", "roster", "terrain-gallery", "armory", "world", "story-objective", "weapon-viewmodel"]).has(renderFocus);
+const directRenderFocus = AUDIT_RENDER_FOCUSES.has(renderFocus);
 if (directRenderFocus) {
   phase = "combat";
   // Direct render audits are not a playable round. Keep the normal combat
