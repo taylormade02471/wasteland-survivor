@@ -2,7 +2,7 @@ export const CONTROL_DIRECTION_LOCK = Object.freeze({
   id: "right-positive-v1",
   // Slightly increased so a normal mouse sweep can complete a full turn
   // without forcing circular wrist motion, while remaining conservative.
-  mouseRadiansPerPixel: 0.0032,
+  mouseRadiansPerPixel: 0.0042,
   // Positive horizontal input is locked to the player's right across every
   // input device; this keeps mouse, touch, controller, and keyboard aligned.
   mouseYawSign: 1,
