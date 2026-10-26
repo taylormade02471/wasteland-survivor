@@ -564,19 +564,19 @@ function serveStatic(request, response) {
 const server = http.createServer(serveStatic);
 const websocketServer = new WebSocketServer({ noServer: true, maxPayload: 32768 });
 
-server.on("upgrade", (request, socket, head) => {
-  const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
-  if (requestUrl.pathname !== "/signal") return socket.destroy();
-  const origin = request.headers.origin;
-  if (origin) {
-    try {
-      if (new URL(origin).host !== request.headers.host) return socket.destroy();
-    } catch {
-      return socket.destroy();
+function handleUpgrade(request, socket, head) {
+    const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+    if (requestUrl.pathname !== "/signal") return socket.destroy();
+    const origin = request.headers.origin;
+    if (origin) {
+      try {
+        if (new URL(origin).host !== request.headers.host) return socket.destroy();
+      } catch {
+        return socket.destroy();
+      }
     }
-  }
-  websocketServer.handleUpgrade(request, socket, head, websocket => websocketServer.emit("connection", websocket));
-});
+    websocketServer.handleUpgrade(request, socket, head, websocket => websocketServer.emit("connection", websocket));
+}
 
 websocketServer.on("connection", socket => {
   socket.on("message", raw => handleMessage(socket, raw));
@@ -584,9 +584,23 @@ websocketServer.on("connection", socket => {
   socket.on("error", () => removeClient(socket));
 });
 
-Promise.all([store.ready, matchmakingRulesReady])
-  .then(() => server.listen(port, "0.0.0.0", () => console.log(`Wasteland Survivor listening on ${port} with ${store.storageType} storage`)))
-  .catch(error => {
-    console.error("Backend storage failed to initialize", error);
-    process.exitCode = 1;
-  });
+function requestHandler(request, response) {
+  Promise.all([store.ready, matchmakingRulesReady])
+    .then(() => serveStatic(request, response))
+    .catch(error => {
+      console.error("Backend storage failed to initialize", error);
+      json(response, 503, { error: "Backend storage unavailable" });
+    });
+}
+
+module.exports = requestHandler;
+
+if (require.main === module) {
+  server.on("upgrade", handleUpgrade);
+  Promise.all([store.ready, matchmakingRulesReady])
+    .then(() => server.listen(port, "0.0.0.0", () => console.log(`Wasteland Survivor listening on ${port} with ${store.storageType} storage`)))
+    .catch(error => {
+      console.error("Backend storage failed to initialize", error);
+      process.exitCode = 1;
+    });
+}
